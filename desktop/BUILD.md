@@ -6,15 +6,23 @@
 # 在 desktop 目录下执行
 cd /opt/1panel/www/sites/192.168.110.2519923/desktop
 
+# ⚠️ 重要：每次打包前必须更新版本号！
+# 修改 package.json 和 src-tauri/tauri.conf.json 中的 version 字段
+# 版本号格式：主版本.次版本.修订号 (如 1.6.81)
+
 # 安装依赖（首次或依赖更新后）
 npm install
 
 # Windows 交叉编译（生成免安装exe）
 npm run tauri build -- --target x86_64-pc-windows-gnu
 
+# 复制到输出目录（带版本号命名）
+VERSION=$(node -p "require('./package.json').version")
+cp src-tauri/target/x86_64-pc-windows-gnu/release/tech-resource-sync.exe ../output/tech-resource-sync-v${VERSION}.exe
+
 # 输出文件位置
-# 免安装exe: desktop/src-tauri/target/x86_64-pc-windows-gnu/release/tech-resource-sync.exe
-# 安装包:    desktop/src-tauri/target/x86_64-pc-windows-gnu/release/bundle/nsis/项目管理工具_x.x.x_x64-setup.exe
+# 免安装exe: output/tech-resource-sync-v{版本号}.exe
+# 安装包:    desktop/src-tauri/target/x86_64-pc-windows-gnu/release/bundle/nsis/项目管理工具_{版本号}_x64-setup.exe
 ```
 
 ## 输出位置
