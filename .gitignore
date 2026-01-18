@@ -8,10 +8,10 @@ vendor/
 # 构建产物
 # ===========================
 # 前端构建
-index/desktop/dist/
+desktop/dist/
 
 # Rust/Tauri 构建
-index/desktop/src-tauri/target/
+desktop/src-tauri/target/
 
 # ===========================
 # 敏感配置文件
@@ -69,6 +69,9 @@ niuma-data.json
 
 # SSL 证书（敏感）
 ssl/
+
+# 构建产物目录
+output/
 
 # 临时文件
 *.tmp
