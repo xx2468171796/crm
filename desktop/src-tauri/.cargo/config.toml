@@ -1,6 +1,3 @@
 [target.x86_64-pc-windows-gnu]
 linker = "x86_64-w64-mingw32-gcc"
-
-[env]
-# 静态链接 WebView2Loader.dll 到 exe 中
-WEBVIEW2_COM_SYS_STATIC = "1"
+ar = "x86_64-w64-mingw32-ar"
