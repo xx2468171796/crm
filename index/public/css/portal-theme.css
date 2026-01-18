@@ -1,0 +1,1271 @@
+/**
+ * 客户门户主题样式
+ * redesign-customer-portal
+ */
+
+/* ========== 1. CSS 变量定义 ========== */
+:root {
+  /* 主色调 - 青蓝色系 */
+  --portal-primary: #0891b2;
+  --portal-primary-light: #22d3ee;
+  --portal-primary-dark: #0e7490;
+  
+  /* 渐变 - 青蓝色系 */
+  --portal-gradient: linear-gradient(135deg, #0891b2 0%, #06b6d4 100%);
+  --portal-gradient-hover: linear-gradient(135deg, #0e7490 0%, #0891b2 100%);
+  --portal-gradient-bg: linear-gradient(135deg, #0ea5e9 0%, #14b8a6 100%);
+  
+  /* 强调色 */
+  --portal-accent: #0ea5e9;
+  --portal-accent-light: #38bdf8;
+  
+  /* 语义色 */
+  --portal-success: #10b981;
+  --portal-warning: #f59e0b;
+  --portal-error: #ef4444;
+  --portal-info: #3b82f6;
+  
+  /* 中性色 */
+  --portal-bg: #f0f4f8;
+  --portal-card: rgba(255, 255, 255, 0.85);
+  --portal-card-solid: #ffffff;
+  --portal-border: #e2e8f0;
+  --portal-text: #1e293b;
+  --portal-text-secondary: #64748b;
+  --portal-text-muted: #94a3b8;
+  
+  /* 阴影 */
+  --portal-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
+  --portal-shadow: 0 4px 6px rgba(0, 0, 0, 0.07);
+  --portal-shadow-lg: 0 10px 25px rgba(0, 0, 0, 0.1);
+  --portal-shadow-xl: 0 20px 40px rgba(0, 0, 0, 0.15);
+  
+  /* 圆角 */
+  --portal-radius-sm: 6px;
+  --portal-radius: 12px;
+  --portal-radius-lg: 16px;
+  --portal-radius-xl: 24px;
+  --portal-radius-full: 9999px;
+  
+  /* 间距 */
+  --portal-spacing-xs: 4px;
+  --portal-spacing-sm: 8px;
+  --portal-spacing: 16px;
+  --portal-spacing-lg: 24px;
+  --portal-spacing-xl: 32px;
+  
+  /* 动画 */
+  --portal-transition-fast: 150ms;
+  --portal-transition: 200ms;
+  --portal-transition-slow: 300ms;
+  --portal-ease-out: cubic-bezier(0.33, 1, 0.68, 1);
+  --portal-ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  
+  /* 布局 */
+  --portal-sidebar-width: 240px;
+  --portal-header-height: 64px;
+  --portal-tabbar-height: 64px;
+}
+
+/* ========== 2. 基础重置 ========== */
+.portal-page {
+  margin: 0;
+  padding: 0;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-size: 15px;
+  line-height: 1.6;
+  color: var(--portal-text);
+  background: transparent;
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+.portal-page * {
+  box-sizing: border-box;
+}
+
+/* 磨砂质感背景 - 柔和模糊氛围感 */
+.portal-bg-decoration {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  pointer-events: none;
+  z-index: 0;
+  overflow: hidden;
+  background: #f5f7fa;
+}
+
+/* 右上角 - 柔和蓝紫色光晕 */
+.portal-bg-decoration::before {
+  content: '';
+  position: absolute;
+  top: -30%;
+  right: -20%;
+  width: 80%;
+  height: 80%;
+  background: radial-gradient(ellipse at center, 
+    rgba(99, 102, 241, 0.25) 0%, 
+    rgba(139, 92, 246, 0.15) 30%,
+    rgba(139, 92, 246, 0.05) 50%,
+    transparent 70%
+  );
+  filter: blur(60px);
+}
+
+/* 左下角 - 柔和粉紫色光晕 */
+.portal-bg-decoration::after {
+  content: '';
+  position: absolute;
+  bottom: -30%;
+  left: -20%;
+  width: 70%;
+  height: 70%;
+  background: radial-gradient(ellipse at center, 
+    rgba(168, 85, 247, 0.2) 0%, 
+    rgba(236, 72, 153, 0.12) 30%,
+    rgba(236, 72, 153, 0.04) 50%,
+    transparent 70%
+  );
+  filter: blur(80px);
+}
+
+/* 额外装饰层 */
+.portal-bg-decoration-extra {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* 右下角 - 柔和暖色光晕 */
+.portal-bg-decoration-extra::before {
+  content: '';
+  position: fixed;
+  bottom: -20%;
+  right: -10%;
+  width: 50%;
+  height: 50%;
+  background: radial-gradient(ellipse at center, 
+    rgba(251, 191, 36, 0.15) 0%, 
+    rgba(251, 146, 60, 0.08) 40%,
+    transparent 70%
+  );
+  filter: blur(70px);
+}
+
+/* 中间 - 极淡的整体光晕 */
+.portal-bg-decoration-extra::after {
+  content: '';
+  position: fixed;
+  top: 20%;
+  left: 30%;
+  width: 40%;
+  height: 40%;
+  background: radial-gradient(ellipse at center, 
+    rgba(14, 165, 233, 0.08) 0%, 
+    transparent 60%
+  );
+  filter: blur(100px);
+}
+
+/* ========== 3. 按钮组件 ========== */
+
+/* 主按钮 */
+.portal-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px 24px;
+  font-size: 15px;
+  font-weight: 600;
+  border-radius: var(--portal-radius);
+  border: none;
+  cursor: pointer;
+  transition: all var(--portal-transition) var(--portal-ease-out);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.portal-btn-primary {
+  background: var(--portal-gradient);
+  color: white;
+  box-shadow: 0 4px 14px rgba(99, 102, 241, 0.4);
+}
+
+.portal-btn-primary:hover {
+  background: var(--portal-gradient-hover);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(99, 102, 241, 0.5);
+}
+
+.portal-btn-primary:active {
+  transform: translateY(0);
+}
+
+/* 次按钮 */
+.portal-btn-secondary {
+  background: transparent;
+  color: var(--portal-primary);
+  border: 2px solid var(--portal-primary);
+}
+
+.portal-btn-secondary:hover {
+  background: var(--portal-primary);
+  color: white;
+}
+
+/* 幽灵按钮 */
+.portal-btn-ghost {
+  background: rgba(99, 102, 241, 0.1);
+  color: var(--portal-primary);
+}
+
+.portal-btn-ghost:hover {
+  background: rgba(99, 102, 241, 0.2);
+}
+
+/* 文字按钮 */
+.portal-btn-text {
+  background: transparent;
+  color: var(--portal-primary);
+  padding: 8px 12px;
+}
+
+.portal-btn-text:hover {
+  background: rgba(99, 102, 241, 0.08);
+}
+
+/* 按钮尺寸 */
+.portal-btn-sm {
+  padding: 8px 16px;
+  font-size: 13px;
+}
+
+.portal-btn-lg {
+  padding: 16px 32px;
+  font-size: 16px;
+}
+
+.portal-btn-block {
+  width: 100%;
+}
+
+/* 禁用状态 */
+.portal-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none !important;
+}
+
+/* 图标按钮 */
+.portal-btn-icon {
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border-radius: var(--portal-radius);
+}
+
+.portal-btn-icon.portal-btn-sm {
+  width: 32px;
+  height: 32px;
+}
+
+/* ========== 4. 卡片组件 ========== */
+
+.portal-card {
+  background: var(--portal-card);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: var(--portal-radius-lg);
+  padding: var(--portal-spacing-lg);
+  box-shadow: var(--portal-shadow);
+  transition: all var(--portal-transition-slow) var(--portal-ease-out);
+}
+
+.portal-card-hover:hover {
+  box-shadow: var(--portal-shadow-lg);
+  transform: translateY(-4px);
+  border-color: rgba(99, 102, 241, 0.3);
+}
+
+.portal-card-solid {
+  background: var(--portal-card-solid);
+  backdrop-filter: none;
+}
+
+.portal-card-header {
+  margin-bottom: var(--portal-spacing);
+  padding-bottom: var(--portal-spacing);
+  border-bottom: 1px solid var(--portal-border);
+}
+
+.portal-card-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--portal-text);
+  margin: 0;
+}
+
+.portal-card-subtitle {
+  font-size: 14px;
+  color: var(--portal-text-secondary);
+  margin-top: 4px;
+}
+
+/* ========== 5. 表单组件 ========== */
+
+.portal-form-group {
+  margin-bottom: var(--portal-spacing);
+}
+
+.portal-label {
+  display: block;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--portal-text);
+  margin-bottom: 8px;
+}
+
+.portal-input {
+  width: 100%;
+  padding: 14px 16px;
+  font-size: 15px;
+  border: 2px solid var(--portal-border);
+  border-radius: var(--portal-radius);
+  background: white;
+  color: var(--portal-text);
+  transition: all var(--portal-transition-fast) ease;
+}
+
+.portal-input:focus {
+  outline: none;
+  border-color: var(--portal-primary);
+  box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.1);
+}
+
+.portal-input::placeholder {
+  color: var(--portal-text-muted);
+}
+
+.portal-input:disabled {
+  background: var(--portal-bg);
+  cursor: not-allowed;
+}
+
+/* 输入框变体 */
+.portal-input-error {
+  border-color: var(--portal-error);
+}
+
+.portal-input-error:focus {
+  box-shadow: 0 0 0 4px rgba(239, 68, 68, 0.1);
+}
+
+.portal-input-success {
+  border-color: var(--portal-success);
+}
+
+/* 选择框 */
+.portal-select {
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  padding-right: 40px;
+}
+
+/* 文本域 */
+.portal-textarea {
+  min-height: 120px;
+  resize: vertical;
+}
+
+/* 表单提示 */
+.portal-form-hint {
+  font-size: 13px;
+  color: var(--portal-text-muted);
+  margin-top: 6px;
+}
+
+.portal-form-error {
+  font-size: 13px;
+  color: var(--portal-error);
+  margin-top: 6px;
+}
+
+/* ========== 6. 状态标签 ========== */
+
+.portal-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  border-radius: var(--portal-radius-full);
+}
+
+.portal-badge-primary {
+  background: rgba(99, 102, 241, 0.1);
+  color: var(--portal-primary);
+}
+
+.portal-badge-success {
+  background: rgba(16, 185, 129, 0.1);
+  color: var(--portal-success);
+}
+
+.portal-badge-warning {
+  background: rgba(245, 158, 11, 0.1);
+  color: var(--portal-warning);
+}
+
+.portal-badge-error {
+  background: rgba(239, 68, 68, 0.1);
+  color: var(--portal-error);
+}
+
+.portal-badge-info {
+  background: rgba(59, 130, 246, 0.1);
+  color: var(--portal-info);
+}
+
+.portal-badge-gray {
+  background: rgba(100, 116, 139, 0.1);
+  color: var(--portal-text-secondary);
+}
+
+/* 小圆点标记 */
+.portal-badge-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--portal-error);
+}
+
+/* ========== 7. 进度条 ========== */
+
+.portal-progress {
+  width: 100%;
+  height: 10px;
+  background: var(--portal-border);
+  border-radius: var(--portal-radius-full);
+  overflow: hidden;
+}
+
+.portal-progress-bar {
+  height: 100%;
+  background: var(--portal-gradient);
+  border-radius: var(--portal-radius-full);
+  transition: width 0.5s var(--portal-ease-out);
+}
+
+.portal-progress-sm {
+  height: 6px;
+}
+
+.portal-progress-lg {
+  height: 14px;
+}
+
+/* 带标签的进度条 */
+.portal-progress-with-label {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.portal-progress-label {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--portal-text);
+  min-width: 48px;
+  text-align: right;
+}
+
+/* ========== 8. 布局组件 ========== */
+
+/* 隐藏滚动条但保持滚动功能 */
+.portal-page::-webkit-scrollbar,
+.portal-main::-webkit-scrollbar,
+.portal-view::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
+}
+
+.portal-page,
+.portal-main,
+.portal-view {
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* IE/Edge */
+}
+
+/* 主容器 */
+.portal-container {
+  position: relative;
+  z-index: 1;
+  min-height: 100vh;
+}
+
+/* 桌面端布局 */
+@media (min-width: 768px) {
+  .portal-layout {
+    display: flex;
+    min-height: 100vh;
+  }
+  
+  .portal-sidebar {
+    width: var(--portal-sidebar-width);
+    background: var(--portal-card);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border-right: 1px solid rgba(255, 255, 255, 0.2);
+    padding: var(--portal-spacing-lg);
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    display: flex;
+    flex-direction: column;
+    z-index: 100;
+  }
+  
+  .portal-main {
+    flex: 1;
+    margin-left: var(--portal-sidebar-width);
+    padding: var(--portal-spacing-lg);
+    min-height: 100vh;
+  }
+  
+  .portal-tabbar {
+    display: none;
+  }
+}
+
+/* 移动端布局 */
+@media (max-width: 767px) {
+  .portal-sidebar {
+    display: none;
+  }
+  
+  .portal-main {
+    padding: var(--portal-spacing);
+    padding-bottom: calc(var(--portal-tabbar-height) + var(--portal-spacing));
+  }
+  
+  .portal-tabbar {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: var(--portal-tabbar-height);
+    background: var(--portal-card);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border-top: 1px solid rgba(255, 255, 255, 0.2);
+    display: flex;
+    align-items: center;
+    justify-content: space-around;
+    z-index: 100;
+    padding-bottom: env(safe-area-inset-bottom, 0);
+  }
+}
+
+/* 侧边栏导航 */
+.portal-logo {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--portal-primary);
+  margin-bottom: var(--portal-spacing-xl);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.portal-logo-icon {
+  width: 36px;
+  height: 36px;
+  background: var(--portal-gradient);
+  border-radius: var(--portal-radius);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-size: 18px;
+}
+
+.portal-nav {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  flex: 1;
+}
+
+.portal-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  color: var(--portal-text-secondary);
+  text-decoration: none;
+  border-radius: var(--portal-radius);
+  margin-bottom: 4px;
+  cursor: pointer;
+  transition: all var(--portal-transition-fast) ease;
+  font-weight: 500;
+}
+
+.portal-nav-item:hover {
+  background: rgba(99, 102, 241, 0.08);
+  color: var(--portal-primary);
+}
+
+.portal-nav-item.active {
+  background: rgba(99, 102, 241, 0.12);
+  color: var(--portal-primary);
+  font-weight: 600;
+}
+
+.portal-nav-item i {
+  font-size: 20px;
+  width: 24px;
+  text-align: center;
+}
+
+/* 底部标签栏 */
+.portal-tabbar-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 16px;
+  color: var(--portal-text-muted);
+  text-decoration: none;
+  font-size: 12px;
+  font-weight: 500;
+  transition: color var(--portal-transition-fast) ease;
+}
+
+.portal-tabbar-item i {
+  font-size: 22px;
+}
+
+.portal-tabbar-item.active {
+  color: var(--portal-primary);
+}
+
+.portal-tabbar-item.active i {
+  transform: scale(1.1);
+}
+
+/* ========== 9. 顶部栏 ========== */
+
+.portal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--portal-spacing);
+  margin-bottom: var(--portal-spacing);
+}
+
+.portal-header-title {
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--portal-text);
+  margin: 0;
+}
+
+.portal-header-subtitle {
+  font-size: 14px;
+  color: var(--portal-text-secondary);
+  margin-top: 4px;
+}
+
+.portal-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+/* 移动端顶部栏 */
+.portal-mobile-header {
+  display: none;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--portal-spacing);
+  background: var(--portal-card);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+  position: sticky;
+  top: 0;
+  z-index: 99;
+}
+
+@media (max-width: 767px) {
+  .portal-mobile-header {
+    display: flex;
+  }
+  
+  .portal-header {
+    padding-top: 0;
+  }
+}
+
+/* ========== 10. Tab 切换 ========== */
+
+.portal-tabs {
+  display: flex;
+  gap: 8px;
+  border-bottom: 2px solid var(--portal-border);
+  margin-bottom: var(--portal-spacing-lg);
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.portal-tabs::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+.portal-tab {
+  padding: 12px 20px;
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--portal-text-secondary);
+  text-decoration: none;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -2px;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: all var(--portal-transition-fast) ease;
+}
+
+.portal-tab:hover {
+  color: var(--portal-primary);
+}
+
+.portal-tab.active {
+  color: var(--portal-primary);
+  border-bottom-color: var(--portal-primary);
+  font-weight: 600;
+}
+
+.portal-tab-content {
+  display: none;
+}
+
+.portal-tab-content.active {
+  display: block;
+  animation: fadeIn var(--portal-transition-slow) ease;
+}
+
+/* ========== 11. 空状态 ========== */
+
+.portal-empty {
+  text-align: center;
+  padding: var(--portal-spacing-xl) var(--portal-spacing);
+}
+
+.portal-empty-icon {
+  font-size: 64px;
+  color: var(--portal-text-muted);
+  margin-bottom: var(--portal-spacing);
+  opacity: 0.5;
+}
+
+.portal-empty-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--portal-text);
+  margin-bottom: 8px;
+}
+
+.portal-empty-desc {
+  font-size: 14px;
+  color: var(--portal-text-secondary);
+  margin-bottom: var(--portal-spacing);
+}
+
+/* ========== 12. 列表组件 ========== */
+
+.portal-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.portal-list-item {
+  display: flex;
+  align-items: center;
+  gap: var(--portal-spacing);
+  padding: var(--portal-spacing);
+  border-bottom: 1px solid var(--portal-border);
+  transition: background var(--portal-transition-fast) ease;
+}
+
+.portal-list-item:last-child {
+  border-bottom: none;
+}
+
+.portal-list-item:hover {
+  background: rgba(99, 102, 241, 0.04);
+}
+
+.portal-list-item-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.portal-list-item-title {
+  font-weight: 600;
+  color: var(--portal-text);
+  margin-bottom: 4px;
+}
+
+.portal-list-item-desc {
+  font-size: 14px;
+  color: var(--portal-text-secondary);
+}
+
+/* ========== 13. 动画 ========== */
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fadeInDown {
+  from {
+    opacity: 0;
+    transform: translateY(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes slideInUp {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
+@keyframes pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.05); }
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.portal-animate-fadeIn {
+  animation: fadeIn var(--portal-transition-slow) ease;
+}
+
+.portal-animate-fadeInUp {
+  animation: fadeInUp var(--portal-transition-slow) ease;
+}
+
+/* ========== 14. 加载状态 ========== */
+
+.portal-spinner {
+  width: 24px;
+  height: 24px;
+  border: 3px solid var(--portal-border);
+  border-top-color: var(--portal-primary);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+.portal-spinner-sm {
+  width: 16px;
+  height: 16px;
+  border-width: 2px;
+}
+
+.portal-spinner-lg {
+  width: 40px;
+  height: 40px;
+  border-width: 4px;
+}
+
+.portal-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--portal-spacing);
+  padding: var(--portal-spacing-xl);
+}
+
+.portal-loading-text {
+  font-size: 14px;
+  color: var(--portal-text-secondary);
+}
+
+/* 骨架屏 */
+.portal-skeleton {
+  background: linear-gradient(90deg, var(--portal-border) 25%, #f1f5f9 50%, var(--portal-border) 75%);
+  background-size: 200% 100%;
+  animation: skeleton-loading 1.5s infinite;
+  border-radius: var(--portal-radius-sm);
+}
+
+@keyframes skeleton-loading {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+.portal-skeleton-text {
+  height: 16px;
+  margin-bottom: 8px;
+}
+
+.portal-skeleton-title {
+  height: 24px;
+  width: 60%;
+  margin-bottom: 12px;
+}
+
+.portal-skeleton-avatar {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+}
+
+/* ========== 15. 工具类 ========== */
+
+.portal-text-center { text-align: center; }
+.portal-text-left { text-align: left; }
+.portal-text-right { text-align: right; }
+
+.portal-text-primary { color: var(--portal-primary); }
+.portal-text-success { color: var(--portal-success); }
+.portal-text-warning { color: var(--portal-warning); }
+.portal-text-error { color: var(--portal-error); }
+.portal-text-muted { color: var(--portal-text-muted); }
+
+.portal-mt-0 { margin-top: 0; }
+.portal-mt-1 { margin-top: var(--portal-spacing-xs); }
+.portal-mt-2 { margin-top: var(--portal-spacing-sm); }
+.portal-mt-3 { margin-top: var(--portal-spacing); }
+.portal-mt-4 { margin-top: var(--portal-spacing-lg); }
+
+.portal-mb-0 { margin-bottom: 0; }
+.portal-mb-1 { margin-bottom: var(--portal-spacing-xs); }
+.portal-mb-2 { margin-bottom: var(--portal-spacing-sm); }
+.portal-mb-3 { margin-bottom: var(--portal-spacing); }
+.portal-mb-4 { margin-bottom: var(--portal-spacing-lg); }
+
+.portal-flex { display: flex; }
+.portal-flex-center { display: flex; align-items: center; justify-content: center; }
+.portal-flex-between { display: flex; align-items: center; justify-content: space-between; }
+.portal-flex-col { flex-direction: column; }
+.portal-gap-1 { gap: var(--portal-spacing-xs); }
+.portal-gap-2 { gap: var(--portal-spacing-sm); }
+.portal-gap-3 { gap: var(--portal-spacing); }
+
+.portal-hidden { display: none !important; }
+.portal-visible { display: block !important; }
+
+@media (max-width: 767px) {
+  .portal-hidden-mobile { display: none !important; }
+}
+
+@media (min-width: 768px) {
+  .portal-hidden-desktop { display: none !important; }
+}
+
+/* ========== 16. 工具栏组件 ========== */
+
+.portal-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.portal-toolbar-search {
+  flex: 1;
+  min-width: 200px;
+  max-width: 280px;
+  position: relative;
+}
+
+.portal-toolbar-search i {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--portal-text-muted);
+  font-size: 13px;
+}
+
+.portal-toolbar-search input {
+  width: 100%;
+  padding: 8px 12px 8px 36px;
+  border: 1px solid var(--portal-border);
+  border-radius: var(--portal-radius);
+  font-size: 13px;
+  background: rgba(255, 255, 255, 0.7);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  transition: all var(--portal-transition);
+}
+
+.portal-toolbar-search input::placeholder {
+  color: var(--portal-text-muted);
+}
+
+.portal-toolbar-search input:focus {
+  outline: none;
+  border-color: var(--portal-primary);
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.08);
+}
+
+.portal-toolbar-filters {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.portal-select {
+  padding: 8px 28px 8px 12px;
+  border: 1px solid var(--portal-border);
+  border-radius: var(--portal-radius);
+  font-size: 13px;
+  color: var(--portal-text-secondary);
+  background: rgba(255, 255, 255, 0.7) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 12 12'%3E%3Cpath fill='%2394a3b8' d='M2.5 4.5L6 8l3.5-3.5'/%3E%3C/svg%3E") no-repeat right 10px center;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  appearance: none;
+  cursor: pointer;
+  transition: all var(--portal-transition);
+}
+
+.portal-select:focus {
+  outline: none;
+  border-color: var(--portal-primary);
+  background-color: rgba(255, 255, 255, 0.9);
+}
+
+.portal-select:hover {
+  border-color: var(--portal-primary-light);
+  background-color: rgba(255, 255, 255, 0.85);
+}
+
+/* 分组容器 */
+.portal-group {
+  margin-bottom: 8px;
+}
+
+.portal-group-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  background: rgba(255, 255, 255, 0.6);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border-radius: var(--portal-radius);
+  margin-bottom: 12px;
+  transition: background var(--portal-transition);
+  user-select: none;
+}
+
+.portal-group-header:hover {
+  background: rgba(255, 255, 255, 0.8);
+}
+
+.portal-group-icon {
+  font-size: 12px;
+  color: var(--portal-text-muted);
+  transition: transform 0.2s ease;
+}
+
+.portal-group-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--portal-text);
+}
+
+.portal-group-count {
+  font-size: 12px;
+  color: var(--portal-text-muted);
+  background: rgba(99, 102, 241, 0.1);
+  color: var(--portal-primary);
+  padding: 2px 8px;
+  border-radius: var(--portal-radius-full);
+  margin-left: auto;
+}
+
+.portal-group-content {
+  padding-left: 4px;
+}
+
+@media (max-width: 767px) {
+  .portal-toolbar {
+    gap: 10px;
+  }
+  
+  .portal-toolbar-search {
+    flex: 1 1 100%;
+    max-width: none;
+    order: -1;
+  }
+  
+  .portal-toolbar-filters {
+    flex: 1 1 100%;
+    gap: 6px;
+  }
+  
+  .portal-select {
+    flex: 1;
+    min-width: 0;
+    padding: 7px 24px 7px 10px;
+    font-size: 12px;
+  }
+  
+  .portal-toolbar-search input {
+    padding: 7px 10px 7px 32px;
+    font-size: 12px;
+  }
+}
+
+/* ========== 状态步骤条 ========== */
+.portal-stepper {
+  display: flex;
+  justify-content: space-between;
+  position: relative;
+  padding: 0 20px;
+}
+
+.portal-stepper-track {
+  position: absolute;
+  top: 18px;
+  left: 50px;
+  right: 50px;
+  height: 3px;
+  background: var(--portal-border);
+  border-radius: 2px;
+  z-index: 1;
+}
+
+.portal-stepper-progress {
+  position: absolute;
+  top: 18px;
+  left: 50px;
+  height: 3px;
+  background: var(--portal-gradient);
+  border-radius: 2px;
+  z-index: 2;
+  transition: width 0.5s ease;
+}
+
+.portal-step {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  position: relative;
+  z-index: 3;
+  flex: 1;
+}
+
+.portal-step-circle {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--portal-card-solid);
+  border: 3px solid var(--portal-border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--portal-text-muted);
+  transition: all 0.3s ease;
+  box-shadow: var(--portal-shadow-sm);
+}
+
+.portal-step.completed .portal-step-circle {
+  background: var(--portal-gradient);
+  border-color: var(--portal-primary);
+  color: white;
+}
+
+.portal-step.active .portal-step-circle {
+  background: var(--portal-card-solid);
+  border-color: var(--portal-primary);
+  color: var(--portal-primary);
+  box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.15);
+}
+
+.portal-step-label {
+  margin-top: 8px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--portal-text-muted);
+  text-align: center;
+  max-width: 70px;
+  line-height: 1.3;
+}
+
+.portal-step.completed .portal-step-label,
+.portal-step.active .portal-step-label {
+  color: var(--portal-text);
+}
+
+@media (max-width: 767px) {
+  .portal-stepper {
+    padding: 0 10px;
+  }
+  
+  .portal-stepper-track {
+    left: 30px;
+    right: 30px;
+  }
+  
+  .portal-step-circle {
+    width: 28px;
+    height: 28px;
+    font-size: 11px;
+    border-width: 2px;
+  }
+  
+  .portal-step-label {
+    font-size: 9px;
+    max-width: 50px;
+  }
+}

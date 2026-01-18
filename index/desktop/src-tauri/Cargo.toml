@@ -1,0 +1,49 @@
+[package]
+name = "tech-resource-sync"
+version = "1.6.21"
+description = "技术资源同步客户端"
+authors = ["Tech Team"]
+edition = "2021"
+
+[lib]
+name = "tech_resource_sync_lib"
+crate-type = ["lib", "cdylib", "staticlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["tray-icon", "devtools"] }
+tauri-plugin-dialog = "2"
+tauri-plugin-fs = "2"
+tauri-plugin-http = "2"
+tauri-plugin-os = "2"
+tauri-plugin-shell = "2"
+tauri-plugin-store = "2"
+tauri-plugin-autostart = "2"
+tauri-plugin-notification = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["full"] }
+walkdir = "2"
+regex = "1"
+chrono = "0.4"
+sha2 = "0.10"
+hex = "0.4"
+log = "0.4"
+env_logger = "0.11"
+reqwest = { version = "0.12", features = ["stream", "multipart", "blocking"] }
+futures-util = "0.3"
+
+# 悬浮窗功能依赖
+clipboard-rs = "0.2"
+enigo = { version = "0.2", features = ["serde"] }
+tauri-plugin-global-shortcut = "2"
+rdev = "0.5"
+lazy_static = "1.4"
+
+[profile.release]
+strip = true
+lto = "thin"
+codegen-units = 12
+panic = "abort"

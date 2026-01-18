@@ -1,0 +1,897 @@
+/**
+ * 统一资源管理中心样式
+ */
+
+.rc-container {
+    background: #fff;
+    border-radius: 12px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    overflow: hidden;
+}
+
+/* 顶部工具栏 */
+.rc-toolbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 16px 20px;
+    background: #f8fafc;
+    border-bottom: 1px solid #e2e8f0;
+    flex-wrap: wrap;
+    gap: 12px;
+}
+
+.rc-filter-tabs {
+    display: flex;
+    gap: 8px;
+}
+
+.rc-tab {
+    padding: 8px 16px;
+    border: none;
+    background: #fff;
+    border-radius: 8px;
+    font-size: 14px;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.rc-tab:hover {
+    background: #f1f5f9;
+}
+
+.rc-tab.active {
+    background: #6366f1;
+    color: #fff;
+}
+
+.rc-tab.active .rc-badge {
+    background: rgba(255,255,255,0.2);
+    color: #fff;
+}
+
+.rc-actions {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+}
+
+.rc-search {
+    padding: 8px 12px;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    font-size: 14px;
+    width: 200px;
+}
+
+.rc-search:focus {
+    outline: none;
+    border-color: #6366f1;
+}
+
+/* 批量操作栏 */
+.rc-batch-bar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 20px;
+    background: #6366f1;
+    color: #fff;
+}
+
+.rc-batch-actions {
+    display: flex;
+    gap: 8px;
+}
+
+/* 主体区域 */
+.rc-main {
+    display: flex;
+    min-height: 400px;
+}
+
+/* 左侧边栏 */
+.rc-sidebar {
+    width: 240px;
+    border-right: 1px solid #e2e8f0;
+    background: #fafbfc;
+    display: flex;
+    flex-direction: column;
+}
+
+.rc-tree-section {
+    border-bottom: 1px solid #e2e8f0;
+}
+
+.rc-tree-header {
+    padding: 12px 16px;
+    font-weight: 600;
+    font-size: 14px;
+    color: #1e293b;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: #fff;
+    transition: background 0.2s;
+}
+
+.rc-tree-header:hover {
+    background: #f1f5f9;
+}
+
+.rc-tree-header i {
+    font-size: 16px;
+}
+
+.rc-tree-content {
+    padding: 8px 0;
+    max-height: 200px;
+    overflow-y: auto;
+}
+
+.rc-tree-empty {
+    padding: 12px 16px;
+    color: #94a3b8;
+    font-size: 13px;
+}
+
+.rc-tree-node {
+    display: flex;
+    align-items: center;
+    padding: 6px 12px;
+    cursor: pointer;
+    font-size: 13px;
+    color: #475569;
+    gap: 6px;
+    transition: background 0.15s;
+}
+
+.rc-tree-node:hover {
+    background: #e2e8f0;
+}
+
+.rc-tree-node.selected {
+    background: #dbeafe;
+    color: #1e40af;
+}
+
+.rc-tree-toggle {
+    width: 16px;
+    height: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+}
+
+.rc-tree-toggle.invisible {
+    visibility: hidden;
+}
+
+.rc-tree-name {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* 文件夹操作按钮 - 始终显示 */
+.rc-folder-actions {
+    display: flex;
+    gap: 4px;
+    margin-left: auto;
+    opacity: 0.5;
+}
+
+.rc-tree-node:hover .rc-folder-actions {
+    opacity: 1;
+}
+
+.rc-folder-btn {
+    padding: 2px 4px;
+    border: none;
+    border-radius: 4px;
+    font-size: 12px;
+    cursor: pointer;
+    background: #e2e8f0;
+    transition: all 0.15s;
+    line-height: 1;
+}
+
+.rc-folder-btn:hover {
+    background: #cbd5e1;
+}
+
+.rc-folder-btn-danger:hover {
+    background: #fee2e2;
+}
+
+.rc-tree-actions {
+    padding: 12px 16px;
+    margin-top: auto;
+}
+
+/* 右侧内容区 */
+.rc-content {
+    flex: 1;
+    padding: 16px;
+    overflow: auto;
+    position: relative;
+}
+
+.rc-content.dragover {
+    background: #eff6ff;
+}
+
+.rc-drop-zone {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 300px;
+    border: 2px dashed #cbd5e1;
+    border-radius: 12px;
+    color: #94a3b8;
+    text-align: center;
+    transition: all 0.2s;
+}
+
+.rc-drop-zone i {
+    font-size: 48px;
+    margin-bottom: 12px;
+}
+
+.rc-drop-zone p {
+    margin: 4px 0;
+}
+
+.rc-drop-zone p.small {
+    font-size: 13px;
+}
+
+.rc-content.dragover .rc-drop-zone {
+    border-color: #6366f1;
+    background: #eff6ff;
+    color: #6366f1;
+}
+
+/* 文件表格 */
+.rc-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.rc-table th {
+    text-align: left;
+    padding: 12px;
+    font-size: 12px;
+    font-weight: 600;
+    color: #64748b;
+    text-transform: uppercase;
+    background: #f8fafc;
+    border-bottom: 1px solid #e2e8f0;
+}
+
+.rc-table td {
+    padding: 12px;
+    font-size: 14px;
+    border-bottom: 1px solid #f1f5f9;
+    vertical-align: middle;
+}
+
+.rc-table tbody tr:hover {
+    background: #f8fafc;
+}
+
+.rc-file-name {
+    cursor: pointer;
+    color: #3b82f6;
+}
+
+.rc-file-name:hover {
+    text-decoration: underline;
+}
+
+.rc-actions-cell {
+    white-space: nowrap;
+}
+
+.rc-actions-cell .rc-action-btn {
+    margin-right: 4px;
+}
+
+.rc-actions-cell .rc-action-btn:last-child {
+    margin-right: 0;
+}
+
+.rc-table td .rc-btn-icon {
+    display: inline-flex;
+    visibility: visible;
+}
+
+.rc-upload-hint {
+    text-align: center;
+    padding: 16px;
+    color: #94a3b8;
+    font-size: 13px;
+    border-top: 1px dashed #e2e8f0;
+    margin-top: 16px;
+}
+
+/* 按钮 */
+.rc-btn {
+    padding: 8px 16px;
+    border: none;
+    border-radius: 8px;
+    font-size: 14px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    transition: all 0.2s;
+}
+
+.rc-btn.primary {
+    background: #6366f1;
+    color: #fff;
+}
+
+.rc-btn.primary:hover {
+    background: #4f46e5;
+}
+
+.rc-btn.success {
+    background: #10b981;
+    color: #fff;
+}
+
+.rc-btn.success:hover {
+    background: #059669;
+}
+
+.rc-btn.danger {
+    background: #ef4444;
+    color: #fff;
+}
+
+.rc-btn.danger:hover {
+    background: #dc2626;
+}
+
+.rc-btn.secondary {
+    background: #f1f5f9;
+    color: #475569;
+}
+
+.rc-btn.secondary:hover {
+    background: #e2e8f0;
+}
+
+.rc-btn.small {
+    padding: 6px 12px;
+    font-size: 13px;
+}
+
+/* 文字按钮样式（紧凑型） */
+.rc-action-btn {
+    padding: 2px 6px;
+    font-size: 12px;
+    line-height: 1.4;
+    border: none;
+    border-radius: 3px;
+    background: #f1f5f9;
+    color: #475569;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: all 0.15s;
+}
+
+.rc-action-btn:hover {
+    background: #e2e8f0;
+    color: #1e293b;
+}
+
+.rc-action-btn.danger {
+    color: #dc2626;
+}
+
+.rc-action-btn.danger:hover {
+    background: #fee2e2;
+}
+
+.rc-action-btn.success {
+    color: #16a34a;
+}
+
+.rc-action-btn.success:hover {
+    background: #dcfce7;
+}
+
+.rc-action-btn.warning {
+    color: #d97706;
+}
+
+.rc-action-btn.warning:hover {
+    background: #fef3c7;
+}
+
+/* 徽章 */
+.rc-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 20px;
+    height: 20px;
+    padding: 0 6px;
+    border-radius: 10px;
+    font-size: 12px;
+    font-weight: 500;
+}
+
+.rc-badge.warning {
+    background: #fef3c7;
+    color: #92400e;
+}
+
+.rc-badge.success {
+    background: #d1fae5;
+    color: #065f46;
+}
+
+.rc-badge.danger {
+    background: #fee2e2;
+    color: #991b1b;
+}
+
+.rc-badge.info {
+    background: #dbeafe;
+    color: #1e40af;
+}
+
+.rc-badge.small {
+    font-size: 10px;
+    height: 16px;
+    min-width: 16px;
+    padding: 0 4px;
+}
+
+/* 状态 */
+.rc-status {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 12px;
+    font-weight: 500;
+}
+
+.rc-status.warning {
+    background: #fef3c7;
+    color: #92400e;
+}
+
+.rc-status.success {
+    background: #d1fae5;
+    color: #065f46;
+}
+
+.rc-status.danger {
+    background: #fee2e2;
+    color: #991b1b;
+}
+
+/* ===== 新增样式：分类Tab ===== */
+.rc-category-tabs {
+    display: flex;
+    gap: 4px;
+    background: #f1f5f9;
+    padding: 4px;
+    border-radius: 10px;
+}
+
+.rc-category-tab {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 16px;
+    border: none;
+    background: transparent;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 500;
+    color: #64748b;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.rc-category-tab:hover {
+    background: #fff;
+    color: #334155;
+}
+
+.rc-category-tab.active {
+    background: #fff;
+    color: #6366f1;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
+.rc-category-tab i {
+    font-size: 16px;
+}
+
+/* ===== 状态筛选栏 ===== */
+.rc-status-bar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 20px;
+    background: #fff;
+    border-bottom: 1px solid #e2e8f0;
+    flex-wrap: wrap;
+    gap: 12px;
+}
+
+/* ===== 上传下拉菜单 ===== */
+.rc-upload-dropdown {
+    position: relative;
+}
+
+.rc-upload-trigger {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.rc-upload-menu {
+    position: absolute;
+    top: 100%;
+    right: 0;
+    margin-top: 4px;
+    background: #fff;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    min-width: 160px;
+    z-index: 100;
+    opacity: 0;
+    visibility: hidden;
+    transform: translateY(-8px);
+    transition: all 0.2s;
+}
+
+.rc-upload-menu.show {
+    opacity: 1;
+    visibility: visible;
+    transform: translateY(0);
+}
+
+.rc-upload-option {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    padding: 12px 16px;
+    border: none;
+    background: transparent;
+    font-size: 14px;
+    color: #334155;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.rc-upload-option:hover {
+    background: #f1f5f9;
+}
+
+.rc-upload-option:first-child {
+    border-radius: 8px 8px 0 0;
+}
+
+.rc-upload-option:last-child {
+    border-radius: 0 0 8px 8px;
+}
+
+/* ===== 增强型空状态 ===== */
+.rc-empty-state {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 300px;
+    padding: 40px;
+}
+
+.rc-drop-zone-enhanced {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 48px 40px;
+    border: 2px dashed #cbd5e1;
+    border-radius: 16px;
+    background: #f8fafc;
+    text-align: center;
+    transition: all 0.3s;
+    max-width: 400px;
+    width: 100%;
+}
+
+.rc-drop-zone-enhanced:hover,
+.rc-content.dragover .rc-drop-zone-enhanced {
+    border-color: #6366f1;
+    background: #f5f3ff;
+}
+
+.rc-drop-zone-enhanced i {
+    font-size: 48px;
+    color: #94a3b8;
+    margin-bottom: 16px;
+}
+
+.rc-drop-zone-enhanced h4 {
+    margin: 0 0 8px;
+    font-size: 18px;
+    font-weight: 600;
+    color: #334155;
+}
+
+.rc-drop-zone-enhanced p {
+    margin: 0 0 20px;
+    font-size: 14px;
+    color: #64748b;
+}
+
+.rc-empty-actions {
+    display: flex;
+    gap: 12px;
+}
+
+/* ===== 统一徽标样式 ===== */
+.rc-badge-info {
+    background: #dbeafe;
+    color: #1e40af;
+}
+
+.rc-badge-warning {
+    background: #fef3c7;
+    color: #92400e;
+}
+
+.rc-badge-success {
+    background: #d1fae5;
+    color: #065f46;
+}
+
+.rc-badge-danger {
+    background: #fee2e2;
+    color: #991b1b;
+}
+
+/* ===== 单栏主体布局 ===== */
+.rc-main-single {
+    min-height: 400px;
+}
+
+.rc-main-single .rc-sidebar {
+    width: 200px;
+    flex-shrink: 0;
+}
+
+/* ===== 文件操作按钮hover显示 ===== */
+.rc-table tr .rc-actions-cell {
+    opacity: 0.3;
+    transition: opacity 0.2s;
+}
+
+.rc-table tr:hover .rc-actions-cell {
+    opacity: 1;
+}
+
+/* ===== 响应式 ===== */
+@media (max-width: 768px) {
+    .rc-main {
+        flex-direction: column;
+    }
+    
+    .rc-sidebar {
+        width: 100%;
+        border-right: none;
+        border-bottom: 1px solid #e2e8f0;
+    }
+    
+    .rc-tree-content {
+        max-height: 150px;
+    }
+    
+    .rc-toolbar {
+        flex-direction: column;
+        align-items: stretch;
+    }
+    
+    .rc-category-tabs {
+        flex-wrap: wrap;
+    }
+    
+    .rc-filter-tabs {
+        flex-wrap: wrap;
+    }
+    
+    .rc-actions {
+        flex-direction: column;
+    }
+    
+    .rc-search {
+        width: 100%;
+    }
+    
+    .rc-empty-actions {
+        flex-direction: column;
+    }
+}
+
+/* 新增：图标按钮组和下拉菜单 */
+.rc-action-group {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.rc-icon-btn {
+    width: 32px;
+    height: 32px;
+    border: 1px solid #cbd5e1;
+    background: #fff;
+    border-radius: 6px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+    color: #475569;
+    font-size: 15px;
+}
+
+.rc-icon-btn:hover {
+    background: #6366f1;
+    border-color: #6366f1;
+    color: #fff;
+}
+
+.rc-icon-btn-success {
+    background: #dcfce7;
+    border-color: #86efac;
+    color: #16a34a;
+}
+
+.rc-icon-btn-success:hover {
+    background: #16a34a;
+    border-color: #16a34a;
+    color: #fff;
+}
+
+.rc-icon-btn-danger {
+    background: #fee2e2;
+    border-color: #fca5a5;
+    color: #dc2626;
+}
+
+.rc-icon-btn-danger:hover {
+    background: #dc2626;
+    border-color: #dc2626;
+    color: #fff;
+}
+
+/* 下拉菜单 */
+.rc-dropdown {
+    position: relative;
+}
+
+.rc-dropdown-menu {
+    position: absolute;
+    top: 100%;
+    right: 0;
+    min-width: 140px;
+    background: #fff;
+    border-radius: 8px;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+    padding: 6px 0;
+    z-index: 100;
+    display: none;
+}
+
+.rc-dropdown-menu.show {
+    display: block;
+}
+
+.rc-dropdown-menu button {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 8px 14px;
+    border: none;
+    background: none;
+    font-size: 13px;
+    color: #334155;
+    cursor: pointer;
+    text-align: left;
+    transition: background 0.15s;
+}
+
+.rc-dropdown-menu button:hover {
+    background: #f1f5f9;
+}
+
+.rc-dropdown-menu button i {
+    width: 16px;
+    text-align: center;
+    color: #64748b;
+}
+
+.rc-dropdown-danger {
+    color: #dc2626 !important;
+}
+
+.rc-dropdown-danger i {
+    color: #dc2626 !important;
+}
+
+.rc-dropdown-danger:hover {
+    background: #fef2f2 !important;
+}
+
+/* 文字操作按钮 */
+.rc-action-btn {
+    padding: 4px 10px;
+    border: 1px solid #e2e8f0;
+    background: #fff;
+    border-radius: 4px;
+    font-size: 12px;
+    color: #475569;
+    cursor: pointer;
+    transition: all 0.15s;
+    margin-right: 4px;
+}
+
+.rc-action-btn:hover {
+    background: #6366f1;
+    border-color: #6366f1;
+    color: #fff;
+}
+
+.rc-action-btn-success {
+    background: #dcfce7;
+    border-color: #86efac;
+    color: #16a34a;
+}
+
+.rc-action-btn-success:hover {
+    background: #16a34a;
+    border-color: #16a34a;
+    color: #fff;
+}
+
+.rc-action-btn-danger {
+    background: #fee2e2;
+    border-color: #fca5a5;
+    color: #dc2626;
+}
+
+.rc-action-btn-danger:hover {
+    background: #dc2626;
+    border-color: #dc2626;
+    color: #fff;
+}
+
+.rc-action-btn-warning {
+    background: #fef3c7;
+    border-color: #fcd34d;
+    color: #d97706;
+}
+
+.rc-action-btn-warning:hover {
+    background: #d97706;
+    border-color: #d97706;
+    color: #fff;
+}

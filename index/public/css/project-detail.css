@@ -1,0 +1,370 @@
+/**
+ * 项目详情页样式
+ * @description 项目详情页面的CSS样式定义
+ */
+
+/* ========== CSS 变量 ========== */
+:root {
+    --pd-primary: #6366f1;
+    --pd-primary-light: #818cf8;
+    --pd-primary-dark: #4f46e5;
+    --pd-success: #10b981;
+    --pd-warning: #f59e0b;
+    --pd-danger: #ef4444;
+    --pd-info: #3b82f6;
+    
+    --pd-text-primary: #1e293b;
+    --pd-text-secondary: #64748b;
+    --pd-text-muted: #94a3b8;
+    
+    --pd-bg-primary: #ffffff;
+    --pd-bg-secondary: #f8fafc;
+    --pd-bg-tertiary: #f1f5f9;
+    
+    --pd-border-color: #e2e8f0;
+    --pd-border-radius: 12px;
+    --pd-border-radius-lg: 16px;
+    
+    --pd-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
+    --pd-shadow-md: 0 4px 6px rgba(0, 0, 0, 0.07);
+    --pd-shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.1);
+}
+
+/* ========== 页面布局 ========== */
+.project-detail-container {
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 24px;
+}
+
+.project-detail-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 24px;
+    flex-wrap: wrap;
+    gap: 16px;
+}
+
+.project-detail-title {
+    font-size: 24px;
+    font-weight: 700;
+    color: var(--pd-text-primary);
+    margin: 0;
+}
+
+.project-detail-subtitle {
+    font-size: 14px;
+    color: var(--pd-text-secondary);
+    margin-top: 4px;
+}
+
+/* ========== 卡片样式 ========== */
+.pd-card {
+    background: var(--pd-bg-primary);
+    border-radius: var(--pd-border-radius-lg);
+    border: 1px solid var(--pd-border-color);
+    box-shadow: var(--pd-shadow-sm);
+    margin-bottom: 24px;
+    overflow: hidden;
+}
+
+.pd-card-header {
+    padding: 20px 24px;
+    border-bottom: 1px solid var(--pd-border-color);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.pd-card-title {
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--pd-text-primary);
+    margin: 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.pd-card-title i {
+    color: var(--pd-primary);
+}
+
+.pd-card-body {
+    padding: 24px;
+}
+
+.pd-card-footer {
+    padding: 16px 24px;
+    border-top: 1px solid var(--pd-border-color);
+    background: var(--pd-bg-secondary);
+}
+
+/* ========== 状态步骤条 ========== */
+.pd-stepper {
+    display: flex;
+    justify-content: space-between;
+    position: relative;
+    padding: 10px 0;
+}
+
+.pd-stepper-track {
+    position: absolute;
+    top: 28px;
+    left: 8%;
+    right: 8%;
+    height: 3px;
+    background: var(--pd-border-color);
+    border-radius: 2px;
+    z-index: 1;
+}
+
+.pd-stepper-progress {
+    position: absolute;
+    top: 28px;
+    left: 8%;
+    height: 3px;
+    background: linear-gradient(135deg, var(--pd-primary) 0%, var(--pd-primary-light) 100%);
+    border-radius: 2px;
+    z-index: 2;
+    transition: width 0.5s ease;
+}
+
+.pd-stepper-step {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    position: relative;
+    z-index: 3;
+    flex: 1;
+    cursor: pointer;
+}
+
+.pd-stepper-circle {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 13px;
+    font-weight: 600;
+    transition: all 0.3s;
+    background: var(--pd-bg-primary);
+    border: 3px solid var(--pd-border-color);
+    color: var(--pd-text-muted);
+}
+
+.pd-stepper-step.completed .pd-stepper-circle {
+    background: linear-gradient(135deg, var(--pd-primary) 0%, var(--pd-primary-light) 100%);
+    border-color: var(--pd-primary);
+    color: white;
+}
+
+.pd-stepper-step.active .pd-stepper-circle {
+    border-color: var(--pd-primary);
+    color: var(--pd-primary);
+    box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.15);
+}
+
+.pd-stepper-label {
+    margin-top: 8px;
+    font-size: 11px;
+    font-weight: 500;
+    text-align: center;
+    max-width: 60px;
+    color: var(--pd-text-muted);
+}
+
+.pd-stepper-step.completed .pd-stepper-label,
+.pd-stepper-step.active .pd-stepper-label {
+    color: var(--pd-text-primary);
+}
+
+/* ========== 信息网格 ========== */
+.pd-info-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 20px;
+}
+
+.pd-info-item {
+    padding: 16px;
+    background: var(--pd-bg-secondary);
+    border-radius: var(--pd-border-radius);
+}
+
+.pd-info-label {
+    font-size: 12px;
+    color: var(--pd-text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 6px;
+}
+
+.pd-info-value {
+    font-size: 15px;
+    color: var(--pd-text-primary);
+    font-weight: 500;
+}
+
+/* ========== 徽章样式 ========== */
+.pd-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 4px 10px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 500;
+}
+
+.pd-badge-primary {
+    background: rgba(99, 102, 241, 0.1);
+    color: var(--pd-primary);
+}
+
+.pd-badge-success {
+    background: rgba(16, 185, 129, 0.1);
+    color: var(--pd-success);
+}
+
+.pd-badge-warning {
+    background: rgba(245, 158, 11, 0.1);
+    color: var(--pd-warning);
+}
+
+.pd-badge-danger {
+    background: rgba(239, 68, 68, 0.1);
+    color: var(--pd-danger);
+}
+
+.pd-badge-info {
+    background: rgba(59, 130, 246, 0.1);
+    color: var(--pd-info);
+}
+
+/* ========== 按钮样式 ========== */
+.pd-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 10px 20px;
+    border-radius: 10px;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s;
+    border: none;
+}
+
+.pd-btn-primary {
+    background: linear-gradient(135deg, var(--pd-primary) 0%, var(--pd-primary-dark) 100%);
+    color: white;
+}
+
+.pd-btn-primary:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
+}
+
+.pd-btn-secondary {
+    background: var(--pd-bg-secondary);
+    color: var(--pd-text-secondary);
+    border: 1px solid var(--pd-border-color);
+}
+
+.pd-btn-secondary:hover {
+    background: var(--pd-bg-tertiary);
+}
+
+.pd-btn-sm {
+    padding: 6px 12px;
+    font-size: 13px;
+}
+
+.pd-btn-lg {
+    padding: 14px 28px;
+    font-size: 16px;
+}
+
+/* ========== 表格样式 ========== */
+.pd-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.pd-table th {
+    padding: 12px 16px;
+    text-align: left;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--pd-text-secondary);
+    background: var(--pd-bg-secondary);
+    border-bottom: 1px solid var(--pd-border-color);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.pd-table td {
+    padding: 14px 16px;
+    font-size: 14px;
+    color: var(--pd-text-primary);
+    border-bottom: 1px solid var(--pd-border-color);
+}
+
+.pd-table tr:hover td {
+    background: var(--pd-bg-secondary);
+}
+
+.pd-table tr:last-child td {
+    border-bottom: none;
+}
+
+/* ========== 空状态 ========== */
+.pd-empty {
+    text-align: center;
+    padding: 60px 20px;
+    color: var(--pd-text-muted);
+}
+
+.pd-empty-icon {
+    font-size: 48px;
+    margin-bottom: 16px;
+    opacity: 0.5;
+}
+
+.pd-empty-text {
+    font-size: 15px;
+}
+
+/* ========== 响应式 ========== */
+@media (max-width: 768px) {
+    .project-detail-container {
+        padding: 16px;
+    }
+    
+    .project-detail-header {
+        flex-direction: column;
+    }
+    
+    .pd-card-body {
+        padding: 16px;
+    }
+    
+    .pd-stepper-label {
+        font-size: 10px;
+        max-width: 50px;
+    }
+    
+    .pd-stepper-circle {
+        width: 30px;
+        height: 30px;
+        font-size: 11px;
+    }
+    
+    .pd-info-grid {
+        grid-template-columns: 1fr;
+    }
+}

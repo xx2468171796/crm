@@ -1,0 +1,14 @@
+{
+    "name": "ankotti/crm",
+    "description": "ANKOTTI CRM 财务管理系统",
+    "type": "project",
+    "require": {
+        "php": ">=7.4",
+        "cboden/ratchet": "^0.4"
+    },
+    "autoload": {
+        "psr-4": {
+            "App\\": "core/"
+        }
+    }
+}

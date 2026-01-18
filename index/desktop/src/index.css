@@ -1,0 +1,69 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --primary: #13b6ec;
+    --background: #f6f8f8;
+    --surface: #ffffff;
+    --border: #e2e8f0;
+    --text-main: #0d181b;
+    --text-secondary: #4c869a;
+  }
+
+  .dark {
+    --background: #101d22;
+    --surface: #1a2c32;
+    --border: #2a3c42;
+    --text-main: #ffffff;
+    --text-secondary: #94aeb8;
+  }
+
+  body {
+    @apply bg-background-light text-text-main font-sans antialiased;
+  }
+
+  .dark body {
+    @apply bg-background-dark;
+  }
+}
+
+@layer utilities {
+  .scrollbar-thin {
+    scrollbar-width: thin;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-track {
+    @apply bg-transparent;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    @apply bg-border-light rounded-full;
+  }
+
+  /* 实时通知弹窗动画 */
+  @keyframes slide-down {
+    from {
+      opacity: 0;
+      transform: translateX(-50%) translateY(-20px);
+    }
+    to {
+      opacity: 1;
+      transform: translateX(-50%) translateY(0);
+    }
+  }
+  
+  .animate-slide-down {
+    animation: slide-down 0.3s ease-out;
+  }
+
+  .dark .scrollbar-thin::-webkit-scrollbar-thumb {
+    @apply bg-border-dark;
+  }
+}
