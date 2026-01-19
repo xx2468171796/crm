@@ -5,6 +5,7 @@ import { http } from '@/lib/http';
 import { readFileChunk, getFileMetadata, getMimeType } from '@/lib/tauri';
 import { toast } from './use-toast';
 import { applyAcceleration } from '@/lib/urlReplacer';
+import { useQueryClient } from '@tanstack/react-query';
 
 interface InitUploadResponse {
   upload_id: string;
@@ -31,6 +32,7 @@ export function useUploader() {
   const { maxConcurrentUploads, partSize: partSizeMB } = useSettingsStore();
   const activeUploads = useRef<Set<string>>(new Set());
   const abortControllers = useRef<Map<string, AbortController>>(new Map());
+  const queryClient = useQueryClient();
 
   const initUpload = useCallback(async (
     groupCode: string,
@@ -215,6 +217,10 @@ export function useUploader() {
       });
 
       toast({ title: '上传完成', description: task.filename, variant: 'success' });
+      
+      // 上传完成后刷新文件列表
+      queryClient.invalidateQueries({ queryKey: ['project-files'] });
+      queryClient.invalidateQueries({ queryKey: ['remote-files'] });
     } catch (error) {
       if ((error as Error).name === 'AbortError') {
         updateUploadTask(taskId, { status: 'paused' });
@@ -245,7 +251,7 @@ export function useUploader() {
         }
       }, 0);
     }
-  }, [partSizeMB, initUpload, getPartUrl, uploadPart, completeUpload, updateUploadTask, maxConcurrentUploads]);
+  }, [partSizeMB, initUpload, getPartUrl, uploadPart, completeUpload, updateUploadTask, maxConcurrentUploads, queryClient]);
 
   const pauseUpload = useCallback((taskId: string) => {
     const controller = abortControllers.current.get(taskId);

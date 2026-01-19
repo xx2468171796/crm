@@ -1022,6 +1022,40 @@ document.querySelectorAll('.inst-file-thumb').forEach(function(thumb) {
     });
 });
 
+// 动态刷新凭证缩略图
+function refreshInstallmentThumb(instId) {
+    const thumb = document.querySelector('.inst-file-thumb[data-installment-id="' + instId + '"]');
+    if (!thumb) return;
+    thumb.innerHTML = '<span class="thumb-loading">...</span>';
+    fetch(apiUrl('finance_installment_files.php?installment_id=' + instId))
+        .then(r => r.json())
+        .then(res => {
+            const files = (res.success && res.data) ? res.data : [];
+            if (files.length === 0) {
+                thumb.innerHTML = '<span style="font-size:9px;text-align:center;">点击<br>上传</span>';
+                thumb.style.color = '#999';
+                thumb.style.borderColor = '#ccc';
+                thumb.style.borderStyle = 'dashed';
+            } else {
+                const f = files[0];
+                const isImage = /^image\//i.test(f.file_type);
+                const url = '/api/customer_file_stream.php?id=' + f.file_id + '&mode=preview';
+                if (isImage) {
+                    thumb.innerHTML = '<img src="' + url + '" style="width:100%;height:100%;object-fit:cover;border-radius:3px;">';
+                } else {
+                    thumb.innerHTML = '<span style="font-size:16px;">📄</span>';
+                }
+                thumb.style.borderColor = '#28a745';
+                thumb.style.borderStyle = 'solid';
+            }
+            thumb.dataset.fileCount = files.length;
+            thumb.dataset.filesJson = JSON.stringify(files);
+        })
+        .catch(() => {
+            thumb.innerHTML = '<span style="font-size:9px;">加载失败</span>';
+        });
+}
+
 // 上传弹窗
 function showUploadModal(installmentId) {
     const existing = document.getElementById('uploadModal');
@@ -1086,7 +1120,7 @@ function showUploadModal(installmentId) {
         for (let i = 0; i < files.length; i++) fd.append('files[]', files[i]);
         fetch(apiUrl('finance_installment_file_upload.php'), { method: 'POST', body: fd })
             .then(r => r.json())
-            .then(res => { cleanup(); if (!res.success) { showAlertModal(res.message || '上传失败', 'error'); return; } showAlertModal('上传成功', 'success', () => location.reload()); })
+            .then(res => { cleanup(); if (!res.success) { showAlertModal(res.message || '上传失败', 'error'); return; } showAlertModal('上传成功', 'success'); refreshInstallmentThumb(installmentId); })
             .catch(() => { cleanup(); showAlertModal('上传失败', 'error'); });
     }
 }

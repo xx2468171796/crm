@@ -426,6 +426,11 @@ layout_header($pageTitle);
             </div>
         </div>
         <div class="header-actions">
+            <?php if (!empty($project['customer_id'])): ?>
+            <a href="index.php?page=customer_detail&id=<?= $project['customer_id'] ?>" class="btn btn-outline-light">
+                <i class="bi bi-arrow-left"></i> 返回客户
+            </a>
+            <?php endif; ?>
             <?php 
             // 手动完工按钮：设计中之后的阶段且未完工时显示
             $canManualComplete = empty($project['completed_at']) && 
