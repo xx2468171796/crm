@@ -32,7 +32,7 @@ jobs:
 
       - name: Build Tauri (portable)
         working-directory: desktop
-        run: npx tauri build --bundles none
+        run: npx tauri build
 
       - name: Prepare portable package
         shell: pwsh
