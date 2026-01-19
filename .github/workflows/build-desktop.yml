@@ -7,22 +7,8 @@ on:
   workflow_dispatch:
 
 jobs:
-  build:
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - platform: 'macos-latest'
-            args: '--target aarch64-apple-darwin'
-            name: 'macOS-ARM64'
-          - platform: 'macos-latest'
-            args: '--target x86_64-apple-darwin'
-            name: 'macOS-Intel'
-          - platform: 'windows-latest'
-            args: ''
-            name: 'Windows'
-
-    runs-on: ${{ matrix.platform }}
+  build-windows:
+    runs-on: windows-latest
     
     steps:
       - name: Checkout
@@ -35,37 +21,39 @@ jobs:
 
       - name: Install Rust stable
         uses: dtolnay/rust-action@stable
-        with:
-          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
-
-      - name: Install dependencies (macOS)
-        if: matrix.platform == 'macos-latest'
-        run: |
-          brew install create-dmg
 
       - name: Install frontend dependencies
         working-directory: desktop
         run: npm ci
 
-      - name: Build Tauri app
-        uses: tauri-apps/tauri-action@v0
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          projectPath: desktop
-          args: ${{ matrix.args }}
-          tagName: ${{ github.ref_name }}
-          releaseName: 'Tech Resource Sync ${{ github.ref_name }}'
-          releaseBody: '桌面应用自动构建'
-          releaseDraft: true
-          prerelease: false
+      - name: Build frontend
+        working-directory: desktop
+        run: npm run build
 
-      - name: Upload artifacts
+      - name: Build Tauri (portable)
+        working-directory: desktop
+        run: npx tauri build --bundles none
+
+      - name: Prepare portable package
+        shell: pwsh
+        run: |
+          $version = (Get-Content desktop/package.json | ConvertFrom-Json).version
+          $exePath = "desktop/src-tauri/target/release/tech-resource-sync.exe"
+          $outDir = "release"
+          New-Item -ItemType Directory -Force -Path $outDir
+          Copy-Item $exePath "$outDir/TechResourceSync-$version-portable.exe"
+
+      - name: Upload portable exe
         uses: actions/upload-artifact@v4
         with:
-          name: desktop-${{ matrix.name }}
-          path: |
-            desktop/src-tauri/target/release/bundle/**/*.dmg
-            desktop/src-tauri/target/release/bundle/**/*.exe
-            desktop/src-tauri/target/release/bundle/**/*.msi
-            desktop/src-tauri/target/*/release/bundle/**/*.dmg
+          name: TechResourceSync-Windows-Portable
+          path: release/*.exe
+
+      - name: Create Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v1
+        with:
+          files: release/*.exe
+          draft: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
