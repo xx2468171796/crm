@@ -2191,6 +2191,35 @@ export default function ProjectDetailPage() {
                             树状
                           </button>
                         </div>
+                        {/* 全选/取消全选按钮 */}
+                        {categoryFiles.filter((f: any) => canManageFile(f) && Number(f.id) > 0).length > 0 && (
+                          <button
+                            type="button"
+                            className="px-2 py-1 text-xs bg-gray-100 text-gray-600 rounded hover:bg-gray-200"
+                            onClick={() => {
+                              const manageableFiles = categoryFiles.filter((f: any) => canManageFile(f) && Number(f.id) > 0);
+                              const allSelected = manageableFiles.every((f: any) => selectedFileIds.has(Number(f.id)));
+                              if (allSelected) {
+                                // 取消全选
+                                setSelectedFileIds(prev => {
+                                  const next = new Set(prev);
+                                  manageableFiles.forEach((f: any) => next.delete(Number(f.id)));
+                                  return next;
+                                });
+                              } else {
+                                // 全选
+                                setSelectedFileIds(prev => {
+                                  const next = new Set(prev);
+                                  manageableFiles.forEach((f: any) => next.add(Number(f.id)));
+                                  return next;
+                                });
+                              }
+                            }}
+                            title={categoryFiles.filter((f: any) => canManageFile(f) && Number(f.id) > 0).every((f: any) => selectedFileIds.has(Number(f.id))) ? '取消全选' : '全选'}
+                          >
+                            {categoryFiles.filter((f: any) => canManageFile(f) && Number(f.id) > 0).every((f: any) => selectedFileIds.has(Number(f.id))) ? '取消全选' : '全选'}
+                          </button>
+                        )}
                         {deletableSelected.length > 0 && (
                           <button
                             type="button"
