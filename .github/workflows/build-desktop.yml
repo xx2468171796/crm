@@ -50,10 +50,10 @@ jobs:
         shell: pwsh
         run: |
           $version = (Get-Content desktop/package.json | ConvertFrom-Json).version
-          $exePath = "desktop/src-tauri/target/release/项目管理工具.exe"
+          $exePath = "desktop/src-tauri/target/release/tech-resource-sync.exe"
           $outDir = "release"
           New-Item -ItemType Directory -Force -Path $outDir
-          Copy-Item $exePath "$outDir/项目管理工具-$version-portable.exe"
+          Copy-Item $exePath "$outDir/TechResourceSync-$version-portable.exe"
 
       - name: Upload portable exe
         uses: actions/upload-artifact@v4
