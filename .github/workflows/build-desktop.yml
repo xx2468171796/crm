@@ -22,6 +22,18 @@ jobs:
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: desktop/src-tauri
+
+      - name: Cache npm
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-npm-${{ hashFiles('desktop/package-lock.json') }}
+          restore-keys: ${{ runner.os }}-npm-
+
       - name: Install frontend dependencies
         working-directory: desktop
         run: npm ci
