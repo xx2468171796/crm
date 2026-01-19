@@ -48,7 +48,7 @@ if (empty($uploadId) || empty($storageKey) || $partNumber <= 0) {
 
 try {
     $multipart = new MultipartUploadService();
-    $presignedUrl = $multipart->getPresignedUrl($storageKey, $uploadId, $partNumber, 3600);
+    $presignedUrl = $multipart->getPartPresignedUrl($storageKey, $uploadId, $partNumber, 3600);
     
     echo json_encode([
         'success' => true,

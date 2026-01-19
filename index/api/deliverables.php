@@ -206,6 +206,7 @@ function handlePost($pdo, $user) {
     $folderRoot = trim($_POST['folder_root'] ?? '');
     $folderPaths = $_POST['folder_paths'] ?? [];
     $filePaths = $_POST['file_paths'] ?? []; // webkitRelativePath
+    $fileHash = trim($_POST['file_hash'] ?? '');
     
     // [RC_DEBUG] 调试日志
     error_log("[RC_DEBUG] handlePost: projectId=$projectId, deliverableName=$deliverableName, fileCategory=$fileCategory, uploadMode=$uploadMode");
@@ -332,13 +333,13 @@ function handlePost($pdo, $user) {
     // 插入交付物
     $stmt = $pdo->prepare("
         INSERT INTO deliverables (
-            project_id, deliverable_name, deliverable_type, file_category, file_path, file_size,
+            project_id, deliverable_name, deliverable_type, file_category, file_path, file_size, file_hash,
             visibility_level, approval_status, submitted_by, submitted_at, create_time, update_time, parent_folder_id
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ");
     
     $stmt->execute([
-        $projectId, $deliverableName, $deliverableType, $fileCategory, $filePath, $fileSize,
+        $projectId, $deliverableName, $deliverableType, $fileCategory, $filePath, $fileSize, $fileHash ?: null,
         $visibilityLevel, $approvalStatus, $user['id'], $now, $now, $now, $parentFolderId ?: null
     ]);
     

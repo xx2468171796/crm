@@ -58,12 +58,16 @@ try {
     // 更新浏览次数
     $pdo->prepare("UPDATE deliverable_shares SET view_count = view_count + 1 WHERE id = ?")->execute([$share['id']]);
     
-    // 获取文件URL
+    // 获取文件URL（原始S3 URL 和 代理URL）
     $storageConfig = storage_config();
     $s3Config = $storageConfig['s3'] ?? [];
     $s3Endpoint = $s3Config['public_url'] 
         ?? rtrim($s3Config['endpoint'] ?? '', '/') . '/' . ($s3Config['bucket'] ?? '') . '/';
     $fileUrl = $s3Endpoint . $share['file_path'];
+    
+    // 代理URL（解决HTTP/HTTPS混合内容问题）
+    $proxyUrl = '/api/portal_share_proxy.php?s=' . urlencode($shareToken) . '&url=' . urlencode($fileUrl);
+    $downloadUrl = $proxyUrl . '&download=' . urlencode($share['deliverable_name']);
     
     // 判断文件类型
     $fileName = $share['deliverable_name'];
@@ -328,12 +332,12 @@ function showErrorPage($title, $message) {
             
             <div class="preview-area">
                 <?php if ($isImage): ?>
-                    <img src="<?= htmlspecialchars($fileUrl) ?>" alt="<?= htmlspecialchars($fileName) ?>" class="preview-image">
+                    <img src="<?= htmlspecialchars($proxyUrl) ?>" alt="<?= htmlspecialchars($fileName) ?>" class="preview-image" onerror="this.src='<?= htmlspecialchars($fileUrl) ?>'">
                 <?php elseif ($isPdf): ?>
-                    <iframe src="<?= htmlspecialchars($fileUrl) ?>" style="width:100%;height:500px;border:none;border-radius:8px;"></iframe>
+                    <iframe src="<?= htmlspecialchars($proxyUrl) ?>" style="width:100%;height:500px;border:none;border-radius:8px;"></iframe>
                 <?php elseif ($isVideo): ?>
                     <video controls style="max-width:100%;max-height:500px;border-radius:8px;">
-                        <source src="<?= htmlspecialchars($fileUrl) ?>" type="video/mp4">
+                        <source src="<?= htmlspecialchars($proxyUrl) ?>" type="video/mp4">
                         您的浏览器不支持视频播放
                     </video>
                 <?php else: ?>
@@ -346,12 +350,12 @@ function showErrorPage($title, $message) {
             </div>
             
             <div class="card-footer">
-                <a href="<?= htmlspecialchars($fileUrl) ?>" class="btn btn-primary" id="downloadBtn" download="<?= htmlspecialchars($fileName) ?>">
+                <a href="<?= htmlspecialchars($downloadUrl) ?>" class="btn btn-primary" id="downloadBtn">
                     <i class="bi bi-download"></i>
                     下载文件
                 </a>
                 <?php if ($canPreview): ?>
-                <a href="<?= htmlspecialchars($fileUrl) ?>" class="btn btn-outline" target="_blank">
+                <a href="<?= htmlspecialchars($proxyUrl) ?>" class="btn btn-outline" target="_blank">
                     <i class="bi bi-box-arrow-up-right"></i>
                     新窗口打开
                 </a>

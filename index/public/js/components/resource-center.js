@@ -265,8 +265,8 @@ const ResourceCenter = (function() {
                 
                 if (files.length > 0) {
                     if (folderRoot) {
-                        // 有文件夹结构，使用文件夹上传模式
-                        await uploadFolderFiles(files);
+                        // 有文件夹结构，使用文件夹上传模式（带进度）
+                        await uploadDraggedFolder(files, folderPaths, folderRoot);
                     } else {
                         // 普通文件上传
                         await uploadFiles(files);
@@ -603,11 +603,16 @@ const ResourceCenter = (function() {
         loadFiles();
     }
     
-    // 大文件阈值 (100MB以上使用分片上传)
-    const CHUNK_THRESHOLD = 100 * 1024 * 1024;
-    const CHUNK_SIZE = 50 * 1024 * 1024; // 50MB per chunk
+    // 统一文件传输实例（使用新的 FileTransfer SDK）
+    let fileTransfer = null;
+    function getFileTransfer() {
+        if (!fileTransfer && typeof FileTransfer !== 'undefined') {
+            fileTransfer = new FileTransfer({ apiBase: '/api/' });
+        }
+        return fileTransfer;
+    }
     
-    // 上传文件
+    // 上传文件（使用统一文件传输服务）
     async function uploadFiles(files) {
         console.log('[RC_DEBUG] uploadFiles called, files:', files.length, 'projectId:', config.projectId, 'category:', state.currentCategory);
         
@@ -617,41 +622,47 @@ const ResourceCenter = (function() {
             return;
         }
         
+        // 大文件阈值 10MB
+        const CHUNK_THRESHOLD = 10 * 1024 * 1024;
+        
         for (const file of files) {
-            // 大文件使用分片上传
-            if (file.size > CHUNK_THRESHOLD) {
-                console.log('[RC_DEBUG] 大文件分片上传:', file.name, 'size:', file.size);
-                await uploadLargeFile(file);
-                continue;
-            }
+            console.log('[RC_DEBUG] 上传文件:', file.name, 'size:', file.size);
             
-            const formData = new FormData();
-            formData.append('file', file);
-            formData.append('project_id', config.projectId);
-            formData.append('deliverable_name', file.name);
-            formData.append('file_category', state.currentCategory);
-            if (state.currentFolder) {
-                formData.append('parent_folder_id', state.currentFolder);
-            }
-            
-            console.log('[RC_DEBUG] 上传文件:', file.name, 'size:', file.size, 'to project:', config.projectId);
+            // 显示上传进度弹窗
+            showUploadProgressModal(file.name, file.size);
+            updateUploadProgress(0, '计算文件哈希...', '', '');
             
             try {
-                const response = await fetch(config.apiUrl, {
-                    method: 'POST',
-                    body: formData
-                });
-                const result = await response.json();
-                console.log('[RC_DEBUG] 上传响应:', result);
+                // 1. 计算文件哈希
+                const fileHash = await calculateFileHash(file);
+                console.log('[RC_DEBUG] 文件哈希:', fileHash);
                 
-                if (!result.success) {
-                    showAlertModal('上传失败: ' + result.message, 'error');
-                } else {
-                    console.log('[RC_DEBUG] 上传成功:', file.name);
+                // 2. 检查是否可以秒传
+                const checkResult = await checkFileHash(file, fileHash);
+                if (checkResult.instant) {
+                    // 秒传成功
+                    console.log('[RC_DEBUG] 秒传成功:', file.name);
+                    updateUploadProgress(100, formatFileSize(file.size), formatFileSize(file.size), '秒传');
+                    hideUploadProgressModal();
+                    showAlertModal(`秒传成功: ${file.name}`, 'success');
+                    continue;
                 }
+                
+                // 3. 正常上传
+                if (file.size > CHUNK_THRESHOLD) {
+                    // 大文件使用分片上传
+                    await uploadLargeFileWithProgress(file, fileHash);
+                } else {
+                    // 小文件使用传统方式
+                    await uploadFileLegacy(file, fileHash);
+                }
+                
+                hideUploadProgressModal();
+                
             } catch (error) {
                 console.error('[RC_DEBUG] Upload error:', error);
-                showAlertModal('上传失败', 'error');
+                hideUploadProgressModal();
+                showAlertModal('上传失败: ' + error.message, 'error');
             }
         }
         
@@ -664,104 +675,321 @@ const ResourceCenter = (function() {
         }
     }
     
-    // 大文件分片上传
-    async function uploadLargeFile(file) {
-        const apiBase = config.apiUrl.replace('deliverables.php', '');
+    // 在数据库中创建交付文件记录
+    async function createDeliverableRecord(file, storageKey, uploadResult) {
+        const response = await fetch(config.apiUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                action: 'create_from_upload',
+                project_id: config.projectId,
+                file_category: state.currentCategory,
+                parent_folder_id: state.currentFolder || 0,
+                filename: file.name,
+                filesize: file.size,
+                storage_key: storageKey,
+                mime_type: file.type || 'application/octet-stream'
+            })
+        });
+        return response.json();
+    }
+    
+    // 计算文件 SHA256 哈希
+    async function calculateFileHash(file) {
+        const chunkSize = 2 * 1024 * 1024; // 2MB chunks for reading
+        const chunks = Math.ceil(file.size / chunkSize);
         
-        try {
-            // 1. 初始化分片上传
-            showAlertModal(`正在上传大文件: ${file.name} (${formatFileSize(file.size)})...`, 'info');
-            
-            const initResponse = await fetch(`${apiBase}rc_upload_init.php`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    project_id: config.projectId,
-                    filename: file.name,
-                    filesize: file.size,
-                    file_category: state.currentCategory,
-                    parent_folder_id: state.currentFolder || 0,
-                    mime_type: file.type || 'application/octet-stream'
-                })
-            });
-            
-            const initResult = await initResponse.json();
-            if (!initResult.success) {
-                throw new Error(initResult.message || '初始化上传失败');
-            }
-            
-            const { upload_id, storage_key, part_size, total_parts } = initResult.data;
-            console.log('[RC_DEBUG] 分片上传初始化:', upload_id, 'total_parts:', total_parts);
-            
-            // 2. 上传各分片
-            const parts = [];
-            for (let partNumber = 1; partNumber <= total_parts; partNumber++) {
-                const start = (partNumber - 1) * part_size;
-                const end = Math.min(start + part_size, file.size);
-                const chunk = file.slice(start, end);
-                
-                // 获取预签名URL
-                const urlResponse = await fetch(`${apiBase}rc_upload_part_url.php`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        upload_id,
-                        storage_key,
-                        part_number: partNumber
-                    })
-                });
-                
-                const urlResult = await urlResponse.json();
-                if (!urlResult.success) {
-                    throw new Error(urlResult.message || '获取预签名URL失败');
-                }
-                
-                // 上传分片到S3
-                const uploadResponse = await fetch(urlResult.data.presigned_url, {
-                    method: 'PUT',
-                    body: chunk
-                });
-                
-                if (!uploadResponse.ok) {
-                    throw new Error(`分片 ${partNumber} 上传失败: HTTP ${uploadResponse.status}`);
-                }
-                
-                const etag = uploadResponse.headers.get('ETag')?.replace(/"/g, '') || '';
-                parts.push({ PartNumber: partNumber, ETag: etag });
-                
-                // 更新进度
-                const progress = Math.round((partNumber / total_parts) * 100);
-                console.log('[RC_DEBUG] 分片上传进度:', progress + '%');
-            }
-            
-            // 3. 完成上传
-            const completeResponse = await fetch(`${apiBase}rc_upload_complete.php`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    upload_id,
-                    storage_key,
-                    parts,
-                    project_id: config.projectId,
-                    file_category: state.currentCategory,
-                    parent_folder_id: state.currentFolder || 0,
-                    filename: file.name,
-                    filesize: file.size
-                })
-            });
-            
-            const completeResult = await completeResponse.json();
-            if (!completeResult.success) {
-                throw new Error(completeResult.message || '完成上传失败');
-            }
-            
-            console.log('[RC_DEBUG] 大文件上传成功:', file.name);
-            showAlertModal(`大文件上传成功: ${file.name}`, 'success');
-            
-        } catch (error) {
-            console.error('[RC_DEBUG] 大文件上传失败:', error);
-            showAlertModal(`大文件上传失败: ${error.message}`, 'error');
+        // 使用 SubtleCrypto API
+        const hashBuffer = await crypto.subtle.digest('SHA-256', await file.arrayBuffer());
+        const hashArray = Array.from(new Uint8Array(hashBuffer));
+        return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+    }
+    
+    // 检查文件哈希（秒传检查）
+    async function checkFileHash(file, fileHash) {
+        const apiBase = config.apiUrl.replace('deliverables.php', '');
+        const response = await fetch(`${apiBase}rc_upload_check_hash.php`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                file_hash: fileHash,
+                project_id: config.projectId,
+                file_category: state.currentCategory,
+                parent_folder_id: state.currentFolder || 0,
+                filename: file.name,
+                filesize: file.size
+            })
+        });
+        const result = await response.json();
+        if (result.success && result.data) {
+            return result.data;
         }
+        return { exists: false, instant: false };
+    }
+    
+    // 上传方式（使用 XMLHttpRequest 支持进度显示）
+    function uploadFileLegacy(file, fileHash) {
+        return new Promise((resolve, reject) => {
+            const formData = new FormData();
+            formData.append('file', file);
+            formData.append('project_id', config.projectId);
+            formData.append('deliverable_name', file.name);
+            formData.append('file_category', state.currentCategory);
+            if (state.currentFolder) {
+                formData.append('parent_folder_id', state.currentFolder);
+            }
+            if (fileHash) {
+                formData.append('file_hash', fileHash);
+            }
+            
+            const xhr = new XMLHttpRequest();
+            xhr.open('POST', config.apiUrl, true);
+            
+            let startTime = Date.now();
+            let lastLoaded = 0;
+            
+            xhr.upload.onprogress = function(e) {
+                if (e.lengthComputable) {
+                    const pct = Math.round((e.loaded / e.total) * 100);
+                    const elapsed = (Date.now() - startTime) / 1000;
+                    const speed = elapsed > 0 ? e.loaded / elapsed : 0;
+                    updateUploadProgress(
+                        pct,
+                        formatFileSize(e.loaded),
+                        formatFileSize(e.total),
+                        formatFileSize(speed) + '/s'
+                    );
+                }
+            };
+            
+            xhr.onload = function() {
+                try {
+                    const result = JSON.parse(xhr.responseText);
+                    if (result.success) {
+                        resolve(result);
+                    } else {
+                        reject(new Error(result.message || '上传失败'));
+                    }
+                } catch (e) {
+                    reject(new Error('服务器响应异常'));
+                }
+            };
+            
+            xhr.onerror = function() {
+                reject(new Error('网络错误'));
+            };
+            
+            xhr.send(formData);
+        });
+    }
+    
+    // 上传进度弹窗
+    function showUploadProgressModal(filename, filesize) {
+        let modal = document.getElementById('rcUploadProgressModal');
+        if (!modal) {
+            modal = document.createElement('div');
+            modal.id = 'rcUploadProgressModal';
+            modal.className = 'modal fade';
+            modal.innerHTML = `
+                <div class="modal-dialog modal-dialog-centered" style="max-width: 400px;">
+                    <div class="modal-content">
+                        <div class="modal-header py-2">
+                            <h6 class="modal-title">文件上传</h6>
+                        </div>
+                        <div class="modal-body">
+                            <div class="mb-2"><strong id="rcUploadFilename"></strong></div>
+                            <div class="progress mb-2" style="height: 20px;">
+                                <div id="rcUploadProgressBar" class="progress-bar progress-bar-striped progress-bar-animated" style="width: 0%">0%</div>
+                            </div>
+                            <div class="small text-muted">
+                                <span id="rcUploadTransferred">0 B</span> / <span id="rcUploadTotal">0 B</span>
+                                <span class="float-end" id="rcUploadSpeed"></span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(modal);
+        }
+        document.getElementById('rcUploadFilename').textContent = filename;
+        document.getElementById('rcUploadTotal').textContent = formatFileSize(filesize);
+        document.getElementById('rcUploadProgressBar').style.width = '0%';
+        document.getElementById('rcUploadProgressBar').textContent = '0%';
+        new bootstrap.Modal(modal).show();
+    }
+    
+    function updateUploadProgress(progress, transferred, total, speed) {
+        const bar = document.getElementById('rcUploadProgressBar');
+        if (bar) {
+            bar.style.width = progress + '%';
+            bar.textContent = progress + '%';
+        }
+        const transferredEl = document.getElementById('rcUploadTransferred');
+        if (transferredEl) transferredEl.textContent = transferred || '';
+        const speedEl = document.getElementById('rcUploadSpeed');
+        if (speedEl) speedEl.textContent = speed || '';
+    }
+    
+    function hideUploadProgressModal() {
+        const modal = document.getElementById('rcUploadProgressModal');
+        if (modal) {
+            const bsModal = bootstrap.Modal.getInstance(modal);
+            if (bsModal) bsModal.hide();
+        }
+    }
+    
+    // 大文件分片上传（带进度显示）
+    async function uploadLargeFileWithProgress(file, fileHash) {
+        const apiBase = config.apiUrl.replace('deliverables.php', '');
+        const startTime = Date.now();
+        
+        // 1. 初始化分片上传
+        const initResponse = await fetch(`${apiBase}rc_upload_init.php`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                project_id: config.projectId,
+                filename: file.name,
+                filesize: file.size,
+                file_category: state.currentCategory,
+                parent_folder_id: state.currentFolder || 0,
+                mime_type: file.type || 'application/octet-stream'
+            })
+        });
+        
+        const initResult = await initResponse.json();
+        if (!initResult.success) {
+            throw new Error(initResult.message || '初始化上传失败');
+        }
+        
+        const { upload_id, storage_key, part_size, total_parts, mode, presigned_urls } = initResult.data;
+        console.log('[RC_DEBUG] 分片上传初始化:', upload_id, 'total_parts:', total_parts, 'mode:', mode);
+        
+        // 2. 上传各分片
+        const parts = [];
+        let totalUploaded = 0;
+        const isDirect = mode === 'direct' && presigned_urls;
+        
+        for (let partNumber = 1; partNumber <= total_parts; partNumber++) {
+            const start = (partNumber - 1) * part_size;
+            const end = Math.min(start + part_size, file.size);
+            const chunk = file.slice(start, end);
+            const chunkSize = end - start;
+            
+            let etag = '';
+            if (isDirect && presigned_urls[partNumber]) {
+                // 直连模式：直接上传到 S3
+                etag = await uploadChunkDirect(presigned_urls[partNumber], chunk, (loaded) => {
+                    const currentTotal = totalUploaded + loaded;
+                    const pct = Math.round((currentTotal / file.size) * 100);
+                    const elapsed = (Date.now() - startTime) / 1000;
+                    const speed = elapsed > 0 ? currentTotal / elapsed : 0;
+                    updateUploadProgress(pct, formatFileSize(currentTotal), formatFileSize(file.size), formatFileSize(speed) + '/s');
+                });
+            } else {
+                // 代理模式：通过后端代理上传
+                const chunkResult = await uploadChunkWithProgress(apiBase, upload_id, storage_key, partNumber, chunk, (loaded) => {
+                    const currentTotal = totalUploaded + loaded;
+                    const pct = Math.round((currentTotal / file.size) * 100);
+                    const elapsed = (Date.now() - startTime) / 1000;
+                    const speed = elapsed > 0 ? currentTotal / elapsed : 0;
+                    updateUploadProgress(pct, formatFileSize(currentTotal), formatFileSize(file.size), formatFileSize(speed) + '/s');
+                });
+                etag = chunkResult.data?.etag || '';
+            }
+            
+            totalUploaded += chunkSize;
+            parts.push({ PartNumber: partNumber, ETag: etag });
+        }
+        
+        // 3. 完成上传
+        const completeResponse = await fetch(`${apiBase}rc_upload_complete.php`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                upload_id,
+                storage_key,
+                parts,
+                project_id: config.projectId,
+                file_category: state.currentCategory,
+                parent_folder_id: state.currentFolder || 0,
+                filename: file.name,
+                filesize: file.size,
+                file_hash: fileHash || ''
+            })
+        });
+        
+        const completeResult = await completeResponse.json();
+        if (!completeResult.success) {
+            throw new Error(completeResult.message || '完成上传失败');
+        }
+        
+        console.log('[RC_DEBUG] 大文件上传成功:', file.name);
+    }
+    
+    // 上传单个分片（带进度回调）
+    function uploadChunkWithProgress(apiBase, uploadId, storageKey, partNumber, chunk, onProgress) {
+        return new Promise((resolve, reject) => {
+            const xhr = new XMLHttpRequest();
+            const proxyUrl = `${apiBase}rc_upload_part_proxy.php?upload_id=${encodeURIComponent(uploadId)}&storage_key=${encodeURIComponent(storageKey)}&part_number=${partNumber}`;
+            
+            xhr.open('POST', proxyUrl, true);
+            
+            xhr.upload.onprogress = function(e) {
+                if (e.lengthComputable && onProgress) {
+                    onProgress(e.loaded);
+                }
+            };
+            
+            xhr.onload = function() {
+                try {
+                    const result = JSON.parse(xhr.responseText);
+                    if (result.success) {
+                        resolve(result);
+                    } else {
+                        reject(new Error(result.message || `分片 ${partNumber} 上传失败`));
+                    }
+                } catch (e) {
+                    reject(new Error('服务器响应异常'));
+                }
+            };
+            
+            xhr.onerror = function() {
+                reject(new Error('网络错误'));
+            };
+            
+            xhr.send(chunk);
+        });
+    }
+    
+    // 直连模式上传分片到 S3
+    function uploadChunkDirect(presignedUrl, chunk, onProgress) {
+        return new Promise((resolve, reject) => {
+            const xhr = new XMLHttpRequest();
+            xhr.open('PUT', presignedUrl, true);
+            
+            xhr.upload.onprogress = function(e) {
+                if (e.lengthComputable && onProgress) {
+                    onProgress(e.loaded);
+                }
+            };
+            
+            xhr.onload = function() {
+                if (xhr.status >= 200 && xhr.status < 300) {
+                    // 从响应头获取 ETag
+                    const etag = xhr.getResponseHeader('ETag') || '';
+                    resolve(etag.replace(/"/g, ''));
+                } else {
+                    reject(new Error(`S3 上传失败: HTTP ${xhr.status}`));
+                }
+            };
+            
+            xhr.onerror = function() {
+                reject(new Error('网络错误'));
+            };
+            
+            xhr.send(chunk);
+        });
     }
     
     // 打开上传对话框
@@ -852,7 +1080,9 @@ const ResourceCenter = (function() {
         }
         
         console.log('[RC_DEBUG] 使用统一API上传文件夹:', fileList.length, '个文件');
-        showAlertModal(`正在上传 ${fileList.length} 个文件...`, 'info');
+        
+        // 显示文件夹上传进度弹窗
+        showFolderUploadProgressModal(fileList.length);
         
         try {
             // 获取groupCode（从页面或API获取）
@@ -867,14 +1097,18 @@ const ResourceCenter = (function() {
                 // 进度回调
                 if (progress.type === 'file_start') {
                     console.log(`[RC_DEBUG] 开始上传 ${progress.current}/${progress.total}: ${progress.filename}`);
+                    updateFolderUploadProgress(progress.current, progress.total, progress.filename, '上传中...');
                 } else if (progress.type === 'file_complete') {
                     console.log(`[RC_DEBUG] 完成上传 ${progress.current}/${progress.total}: ${progress.filename}`);
+                    updateFolderUploadProgress(progress.current, progress.total, progress.filename, '完成');
                 }
             });
             
             // 统计结果
             const successCount = results.filter(r => r.success).length;
             const failCount = results.filter(r => !r.success).length;
+            
+            hideFolderUploadProgressModal();
             
             if (failCount === 0) {
                 showAlertModal(`上传成功: ${successCount} 个文件`, 'success');
@@ -892,7 +1126,130 @@ const ResourceCenter = (function() {
             
         } catch (error) {
             console.error('[RC_DEBUG] 文件夹上传失败:', error);
+            hideFolderUploadProgressModal();
             showAlertModal('上传失败: ' + error.message, 'error');
+        }
+    }
+    
+    // 显示文件夹上传进度弹窗
+    function showFolderUploadProgressModal(totalFiles) {
+        let modal = document.getElementById('rcFolderUploadProgressModal');
+        if (!modal) {
+            modal = document.createElement('div');
+            modal.id = 'rcFolderUploadProgressModal';
+            modal.className = 'modal fade';
+            modal.setAttribute('data-bs-backdrop', 'static');
+            modal.innerHTML = `
+                <div class="modal-dialog modal-dialog-centered">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h5 class="modal-title">文件夹上传</h5>
+                        </div>
+                        <div class="modal-body">
+                            <div class="mb-2">
+                                <span id="rcFolderCurrentFile">准备上传...</span>
+                            </div>
+                            <div class="progress mb-2" style="height: 20px;">
+                                <div id="rcFolderProgressBar" class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%">0%</div>
+                            </div>
+                            <div class="d-flex justify-content-between text-muted small">
+                                <span id="rcFolderProgressCount">0 / ${totalFiles}</span>
+                                <span id="rcFolderProgressStatus">准备中...</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(modal);
+        }
+        const bsModal = new bootstrap.Modal(modal);
+        bsModal.show();
+    }
+    
+    // 更新文件夹上传进度
+    function updateFolderUploadProgress(current, total, filename, status) {
+        const bar = document.getElementById('rcFolderProgressBar');
+        const countEl = document.getElementById('rcFolderProgressCount');
+        const statusEl = document.getElementById('rcFolderProgressStatus');
+        const fileEl = document.getElementById('rcFolderCurrentFile');
+        
+        const pct = Math.round((current / total) * 100);
+        if (bar) {
+            bar.style.width = pct + '%';
+            bar.textContent = pct + '%';
+        }
+        if (countEl) countEl.textContent = `${current} / ${total}`;
+        if (statusEl) statusEl.textContent = status || '';
+        if (fileEl) fileEl.textContent = filename || '';
+    }
+    
+    // 隐藏文件夹上传进度弹窗
+    function hideFolderUploadProgressModal() {
+        const modal = document.getElementById('rcFolderUploadProgressModal');
+        if (modal) {
+            const bsModal = bootstrap.Modal.getInstance(modal);
+            if (bsModal) bsModal.hide();
+        }
+    }
+    
+    // 拖拽文件夹上传（带进度显示）
+    async function uploadDraggedFolder(files, folderPaths, folderRoot) {
+        const totalFiles = files.length;
+        console.log('[RC_DEBUG] 拖拽文件夹上传:', totalFiles, '个文件');
+        
+        showFolderUploadProgressModal(totalFiles);
+        
+        let successCount = 0;
+        let failCount = 0;
+        
+        for (let i = 0; i < files.length; i++) {
+            const file = files[i];
+            const relativePath = folderPaths[i] || '';
+            
+            updateFolderUploadProgress(i + 1, totalFiles, file.name, '上传中...');
+            
+            try {
+                // 计算哈希
+                const fileHash = await calculateFileHash(file);
+                
+                // 检查秒传
+                const checkResult = await checkFileHash(file, fileHash);
+                if (checkResult.instant) {
+                    successCount++;
+                    updateFolderUploadProgress(i + 1, totalFiles, file.name, '秒传');
+                    continue;
+                }
+                
+                // 正常上传
+                const CHUNK_THRESHOLD = 10 * 1024 * 1024;
+                if (file.size > CHUNK_THRESHOLD) {
+                    await uploadLargeFileWithProgress(file, fileHash);
+                } else {
+                    await uploadFileLegacy(file, fileHash);
+                }
+                successCount++;
+                updateFolderUploadProgress(i + 1, totalFiles, file.name, '完成');
+            } catch (error) {
+                console.error('[RC_DEBUG] 文件上传失败:', file.name, error);
+                failCount++;
+                updateFolderUploadProgress(i + 1, totalFiles, file.name, '失败');
+            }
+        }
+        
+        hideFolderUploadProgressModal();
+        
+        if (failCount === 0) {
+            showAlertModal(`上传成功: ${successCount} 个文件`, 'success');
+        } else {
+            showAlertModal(`上传完成: ${successCount} 成功, ${failCount} 失败`, 'warning');
+        }
+        
+        // 刷新
+        loadTree(state.currentCategory);
+        loadFiles();
+        
+        if (config.onUploadSuccess) {
+            config.onUploadSuccess();
         }
     }
     

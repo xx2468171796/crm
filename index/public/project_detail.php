@@ -1586,7 +1586,7 @@ function renderProjectTimelineCard(summary, stages) {
     }
 }
 
-// 上传文件弹窗（支持文件分类）
+// 上传文件弹窗（支持文件分类，带进度显示）
 function openUploadModal(fileCategory = 'artwork_file') {
     const isArtwork = fileCategory === 'artwork_file';
     const isModel = fileCategory === 'model_file';
@@ -1605,6 +1605,13 @@ function openUploadModal(fileCategory = 'artwork_file') {
     html += '<input type="file" class="form-control" name="file" required></div>';
     html += '<div class="mb-3"><label class="form-label">描述</label>';
     html += '<textarea class="form-control" name="description" rows="2"></textarea></div>';
+    html += '<div id="uploadProgressContainer" class="mb-3" style="display:none;">';
+    html += '<label class="form-label">上传进度</label>';
+    html += '<div class="progress" style="height: 20px;">';
+    html += '<div id="uploadProgressBar" class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%">0%</div>';
+    html += '</div>';
+    html += '<div id="uploadProgressText" class="small text-muted mt-1"></div>';
+    html += '</div>';
     if (isArtwork) {
         html += '<div class="alert alert-warning small"><i class="bi bi-info-circle"></i> 作品文件需要审批后才能对客户可见</div>';
     } else if (isModel) {
@@ -1621,22 +1628,88 @@ function openUploadModal(fileCategory = 'artwork_file') {
             formData.append('auto_approve', '1');
         }
         
-        fetch(`${API_URL}/deliverables.php`, {
-            method: 'POST',
-            body: formData
-        })
-        .then(r => r.json())
-        .then(result => {
-            if (result.success) {
-                const msg = isArtwork ? '作品上传成功，等待审批' : '模型文件上传成功';
-                showAlertModal(msg, 'success');
-                loadDeliverables();
-                loadRecentDeliverables();
-            } else {
-                showAlertModal('上传失败: ' + result.message, 'error');
+        // 显示进度条
+        const progressContainer = document.getElementById('uploadProgressContainer');
+        const progressBar = document.getElementById('uploadProgressBar');
+        const progressText = document.getElementById('uploadProgressText');
+        progressContainer.style.display = 'block';
+        
+        // 禁用确认按钮
+        const confirmBtn = document.querySelector('.modal.show .btn-primary');
+        if (confirmBtn) {
+            confirmBtn.disabled = true;
+            confirmBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>上传中...';
+        }
+        
+        // 使用 XMLHttpRequest 以支持进度监听
+        const xhr = new XMLHttpRequest();
+        xhr.open('POST', `${API_URL}/deliverables.php`, true);
+        
+        xhr.upload.onprogress = function(e) {
+            if (e.lengthComputable) {
+                const pct = Math.round((e.loaded / e.total) * 100);
+                progressBar.style.width = pct + '%';
+                progressBar.textContent = pct + '%';
+                const loaded = formatBytes(e.loaded);
+                const total = formatBytes(e.total);
+                progressText.textContent = `${loaded} / ${total}`;
             }
-        });
+        };
+        
+        xhr.onload = function() {
+            try {
+                const result = JSON.parse(xhr.responseText);
+                if (result.success) {
+                    progressBar.classList.remove('progress-bar-animated', 'progress-bar-striped');
+                    progressBar.classList.add('bg-success');
+                    progressBar.textContent = '完成';
+                    const msg = isArtwork ? '作品上传成功，等待审批' : '模型文件上传成功';
+                    setTimeout(() => {
+                        bootstrap.Modal.getInstance(document.querySelector('.modal.show'))?.hide();
+                        showAlertModal(msg, 'success');
+                        loadDeliverables();
+                        loadRecentDeliverables();
+                    }, 500);
+                } else {
+                    progressBar.classList.remove('progress-bar-animated', 'progress-bar-striped');
+                    progressBar.classList.add('bg-danger');
+                    progressBar.textContent = '失败';
+                    showAlertModal('上传失败: ' + result.message, 'error');
+                    if (confirmBtn) {
+                        confirmBtn.disabled = false;
+                        confirmBtn.innerHTML = '确认';
+                    }
+                }
+            } catch (e) {
+                progressBar.classList.add('bg-danger');
+                showAlertModal('上传失败: 服务器响应异常', 'error');
+            }
+        };
+        
+        xhr.onerror = function() {
+            progressBar.classList.remove('progress-bar-animated', 'progress-bar-striped');
+            progressBar.classList.add('bg-danger');
+            progressBar.textContent = '失败';
+            showAlertModal('上传失败: 网络错误', 'error');
+            if (confirmBtn) {
+                confirmBtn.disabled = false;
+                confirmBtn.innerHTML = '确认';
+            }
+        };
+        
+        xhr.send(formData);
+        
+        return false; // 阻止默认关闭行为
     });
+}
+
+// 格式化文件大小
+function formatBytes(bytes) {
+    if (bytes === 0) return '0 B';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
 }
 
 // 阶段时间调整弹窗
@@ -1955,7 +2028,8 @@ function updateFormStatus(instanceId, newStatus) {
 </script>
 
 <script src="js/folder-upload.js?v=1.1"></script>
-<script src="js/components/resource-center.js?v=3.1"></script>
+<script src="js/file-transfer.js?v=1.0"></script>
+<script src="js/components/resource-center.js?v=3.8"></script>
 <script>
 // 初始化统一资源管理中心
 document.addEventListener('DOMContentLoaded', function() {

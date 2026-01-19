@@ -110,8 +110,33 @@ try {
     $result = $multipart->initiate($storageKey, $mimeType);
     
     // 计算分片信息
-    $partSize = 50 * 1024 * 1024; // 50MB per part
+    $partSize = 90 * 1024 * 1024; // 90MB per part
     $totalParts = ceil($filesize / $partSize);
+    
+    // 检测上传模式：网站HTTPS + S3 HTTPS = 直连，否则代理
+    $storageConfig = require __DIR__ . '/../config/storage.php';
+    $s3UseHttps = $storageConfig['s3']['use_https'] ?? false;
+    $siteIsHttps = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') || 
+                   (!empty($_SERVER['HTTP_X_FORWARDED_PROTO']) && $_SERVER['HTTP_X_FORWARDED_PROTO'] === 'https');
+    
+    // 强制模式或自动检测
+    $uploadMode = $storageConfig['upload']['mode'] ?? 'auto';
+    if ($uploadMode === 'direct') {
+        $useDirect = true;
+    } elseif ($uploadMode === 'proxy') {
+        $useDirect = false;
+    } else {
+        // auto: HTTPS站点 + HTTPS S3 = 直连
+        $useDirect = $s3UseHttps || !$siteIsHttps;
+    }
+    
+    // 如果直连模式，生成所有分片的预签名URL
+    $presignedUrls = [];
+    if ($useDirect) {
+        for ($i = 1; $i <= $totalParts; $i++) {
+            $presignedUrls[$i] = $multipart->getPartPresignedUrl($storageKey, $result['upload_id'], $i, 3600);
+        }
+    }
     
     echo json_encode([
         'success' => true,
@@ -123,6 +148,8 @@ try {
             'project_id' => $projectId,
             'file_category' => $fileCategory,
             'parent_folder_id' => $parentFolderId,
+            'mode' => $useDirect ? 'direct' : 'proxy',
+            'presigned_urls' => $presignedUrls,
         ]
     ], JSON_UNESCAPED_UNICODE);
     

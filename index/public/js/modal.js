@@ -224,13 +224,17 @@ function showConfirmModal(titleOrMessage, messageOrCallback, callbackOrCancel, c
     
     // 确定按钮
     document.getElementById('confirmBtn').onclick = function() {
+        if (onConfirm) {
+            const result = onConfirm();
+            // 如果回调返回 false，不关闭弹窗（用于异步操作如上传）
+            if (result === false) {
+                return;
+            }
+        }
         modal.hide();
         setTimeout(function() {
             if (modalElement && modalElement.parentNode) {
                 modalElement.remove();
-            }
-            if (onConfirm) {
-                onConfirm();
             }
         }, 300);
     };

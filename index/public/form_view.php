@@ -467,6 +467,13 @@ if ($instance['project_id']) {
         loadAttachments();
     });
     
+    function getProxyDownloadUrl(originalUrl, filename) {
+        if (!PORTAL_TOKEN) return originalUrl;
+        return '/api/portal_file_proxy.php?token=' + encodeURIComponent(PORTAL_TOKEN) 
+             + '&url=' + encodeURIComponent(originalUrl)
+             + '&download=' + encodeURIComponent(filename);
+    }
+    
     function loadAttachments() {
         fetch('/api/form_attachments.php?instance_id=' + INSTANCE_ID)
             .then(r => r.json())
@@ -476,7 +483,9 @@ if ($instance['project_id']) {
                     const list = document.getElementById('attachmentsList');
                     section.style.display = 'block';
                     
-                    list.innerHTML = data.data.map(att => `
+                    list.innerHTML = data.data.map(att => {
+                        const downloadUrl = getProxyDownloadUrl(att.download_url, att.filename);
+                        return `
                         <div class="attachment-item">
                             <div class="attachment-icon">
                                 <i class="bi ${getFileIcon(att.filename)}"></i>
@@ -485,11 +494,11 @@ if ($instance['project_id']) {
                                 <div class="attachment-name">${escapeHtml(att.filename)}</div>
                                 <div class="attachment-meta">${att.file_size_formatted} · ${att.create_time_formatted}</div>
                             </div>
-                            <a href="${att.download_url}" class="attachment-download" target="_blank" title="下载">
+                            <a href="${downloadUrl}" class="attachment-download" title="下载">
                                 <i class="bi bi-download"></i>
                             </a>
                         </div>
-                    `).join('');
+                    `}).join('');
                 }
             })
             .catch(err => console.error('加载附件失败:', err));

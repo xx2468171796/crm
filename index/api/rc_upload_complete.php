@@ -49,6 +49,7 @@ $fileCategory = trim($input['file_category'] ?? 'artwork_file');
 $parentFolderId = intval($input['parent_folder_id'] ?? 0);
 $filename = trim($input['filename'] ?? '');
 $filesize = intval($input['filesize'] ?? 0);
+$fileHash = trim($input['file_hash'] ?? '');
 
 if (empty($uploadId) || empty($storageKey) || empty($parts)) {
     http_response_code(400);
@@ -74,9 +75,9 @@ try {
     $now = time();
     $stmt = $pdo->prepare("
         INSERT INTO deliverables (
-            project_id, deliverable_name, deliverable_type, file_category, file_path, file_size,
+            project_id, deliverable_name, deliverable_type, file_category, file_path, file_size, file_hash,
             visibility_level, approval_status, submitted_by, submitted_at, create_time, update_time, parent_folder_id
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ");
     
     $stmt->execute([
@@ -86,6 +87,7 @@ try {
         $fileCategory,
         $storageKey,
         $filesize,
+        $fileHash ?: null,
         'client',
         $approvalStatus,
         $user['id'],

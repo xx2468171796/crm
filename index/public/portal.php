@@ -1140,18 +1140,29 @@ if (empty($token)) {
         document.body.style.overflow = 'hidden';
     }
     
+    function getProxyUrl(fileUrl, filename = null) {
+        let url = `${API_URL}/portal_file_proxy.php?token=${TOKEN}&url=${encodeURIComponent(fileUrl)}`;
+        if (filename) {
+            url += `&download=${encodeURIComponent(filename)}`;
+        }
+        return url;
+    }
+    
     function renderPreviewContent(filePath, filename, fileType) {
         const content = document.getElementById('previewContent');
         
         if (fileType === 'image') {
-            content.innerHTML = `<img id="previewImg" src="${filePath}" alt="${filename}" style="max-width: 90vw; max-height: 80vh; transform: scale(${currentZoom}); transition: transform 0.2s; cursor: zoom-in;" ondblclick="toggleZoom()">`;
+            const proxyUrl = getProxyUrl(filePath);
+            content.innerHTML = `<img id="previewImg" src="${proxyUrl}" alt="${filename}" style="max-width: 90vw; max-height: 80vh; transform: scale(${currentZoom}); transition: transform 0.2s; cursor: zoom-in;" ondblclick="toggleZoom()" onerror="this.src='${filePath}'">`;
         } else if (fileType === 'video') {
-            content.innerHTML = `<video src="${filePath}" controls style="max-width: 90vw; max-height: 80vh;"></video>`;
+            const proxyUrl = getProxyUrl(filePath);
+            content.innerHTML = `<video src="${proxyUrl}" controls style="max-width: 90vw; max-height: 80vh;" onerror="this.src='${filePath}'"></video>`;
         } else if (fileType === 'audio') {
+            const proxyUrl = getProxyUrl(filePath);
             content.innerHTML = `
                 <div style="padding: 40px; text-align: center; background: rgba(255,255,255,0.1); border-radius: 16px;">
                     <i class="bi bi-music-note-beamed" style="font-size: 64px; color: #22d3ee; margin-bottom: 20px; display: block;"></i>
-                    <audio src="${filePath}" controls style="width: 100%; max-width: 400px;"></audio>
+                    <audio src="${proxyUrl}" controls style="width: 100%; max-width: 400px;" onerror="this.src='${filePath}'"></audio>
                 </div>
             `;
         }
@@ -1245,12 +1256,14 @@ if (empty($token)) {
         const icon = getFileIcon(d.deliverable_name, d.file_category);
         const previewable = canPreview(d.deliverable_name);
         const isImage = fileType === 'image';
+        const thumbUrl = getProxyUrl(fileUrl);
+        const downloadUrl = getProxyUrl(fileUrl, d.deliverable_name);
         
         return `
             <div style="display: flex; align-items: center; gap: 12px; padding: 12px; border-radius: 8px; background: var(--portal-bg); margin-bottom: 8px;">
                 ${isImage ? `
                     <div style="width: 60px; height: 60px; border-radius: 8px; overflow: hidden; flex-shrink: 0; cursor: pointer;" onclick="openPreview('${fileUrl}', '${d.deliverable_name}', '${fileType}')">
-                        <img src="${fileUrl}" alt="${d.deliverable_name}" style="width: 100%; height: 100%; object-fit: cover;" onerror="this.parentElement.innerHTML='<div style=\\'width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:rgba(99,102,241,0.1);color:var(--portal-primary);\\'><i class=\\'bi ${icon}\\' style=\\'font-size:24px;\\'></i></div>'">
+                        <img src="${thumbUrl}" alt="${d.deliverable_name}" style="width: 100%; height: 100%; object-fit: cover;" onerror="this.src='${fileUrl}'; this.onerror=function(){this.parentElement.innerHTML='<div style=\\'width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:rgba(99,102,241,0.1);color:var(--portal-primary);\\'><i class=\\'bi ${icon}\\' style=\\'font-size:24px;\\'></i></div>'}">
                     </div>
                 ` : `
                     <div style="width: 48px; height: 48px; background: ${d.file_category === 'model_file' ? 'rgba(245, 158, 11, 0.1)' : 'rgba(99, 102, 241, 0.1)'}; border-radius: 8px; display: flex; align-items: center; justify-content: center; color: ${d.file_category === 'model_file' ? '#f59e0b' : 'var(--portal-primary)'}; font-size: 20px; flex-shrink: 0;">
@@ -1272,7 +1285,7 @@ if (empty($token)) {
                     <button class="portal-btn portal-btn-outline portal-btn-sm share-btn" data-id="${d.id}" data-name="${d.deliverable_name.replace(/"/g, '&quot;')}" title="生成分享链接">
                         <i class="bi bi-share"></i>
                     </button>
-                    <a href="${fileUrl}" class="portal-btn portal-btn-primary portal-btn-sm" target="_blank" title="下载">
+                    <a href="${downloadUrl}" class="portal-btn portal-btn-primary portal-btn-sm" title="下载">
                         <i class="bi bi-download"></i>
                     </a>
                 </div>

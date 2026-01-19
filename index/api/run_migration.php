@@ -28,7 +28,21 @@ try {
     
     $pdo->exec($sql);
     
-    echo json_encode(['success' => true, 'message' => 'file_approvals 表创建成功']);
+    // 添加 file_hash 字段到 deliverables 表
+    try {
+        $pdo->exec("ALTER TABLE deliverables ADD COLUMN file_hash VARCHAR(64) NULL COMMENT 'SHA256 文件哈希，用于去重'");
+    } catch (Exception $e) {
+        // 字段可能已存在，忽略错误
+    }
+    
+    // 创建 file_hash 索引
+    try {
+        $pdo->exec("CREATE INDEX idx_deliverables_file_hash ON deliverables(file_hash)");
+    } catch (Exception $e) {
+        // 索引可能已存在，忽略错误
+    }
+    
+    echo json_encode(['success' => true, 'message' => '迁移完成']);
 } catch (Exception $e) {
     echo json_encode(['success' => false, 'error' => $e->getMessage()]);
 }

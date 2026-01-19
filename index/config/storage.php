@@ -78,7 +78,7 @@ return [
         // S3_USE_PATH_STYLE - 1=路径样式(MinIO), 0=虚拟主机样式(AWS/阿里云)
         // ============================================
         
-        'endpoint'       => ($__s3Endpoint = getenv('S3_ENDPOINT') ?: 'http://frp.xmwl.top:48771'),
+        'endpoint'       => ($__s3Endpoint = getenv('S3_ENDPOINT') ?: 'https://s3.xmwl.top'),
         'region'         => getenv('S3_REGION') ?: 'cn-default',
         'bucket'         => getenv('S3_BUCKET') ?: 'crm20260116',
         'access_key'     => getenv('S3_ACCESS_KEY') ?: 'L9G8IjSqWbftIWkkDkyu',
@@ -97,6 +97,30 @@ return [
         // 格式: http(s)://域名:端口/bucket
         // 如不设置，将自动拼接 endpoint + bucket
         'public_url'     => getenv('S3_PUBLIC_URL') ?: null,
+    ],
+
+    // ============================================
+    // 统一文件传输配置
+    // ============================================
+    'upload' => [
+        // 上传模式: auto=自动检测, proxy=强制代理, direct=强制直连
+        // auto: 协议一致时直连，协议不一致时代理
+        'mode' => getenv('UPLOAD_MODE') ?: 'auto',
+        
+        // 分片阈值（字节），超过此大小使用分片上传
+        'chunk_threshold' => 10 * 1024 * 1024, // 10MB
+        
+        // 分片大小（字节）
+        'chunk_size' => 10 * 1024 * 1024, // 10MB
+        
+        // 进度文件存储路径
+        'progress_dir' => sys_get_temp_dir() . '/file_transfer_progress',
+        
+        // 进度文件过期时间（秒）
+        'progress_ttl' => 86400, // 24小时
+        
+        // 最大并发上传数
+        'max_concurrent' => 3,
     ],
 ];
 
