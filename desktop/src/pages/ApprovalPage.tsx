@@ -226,6 +226,30 @@ export default function ApprovalPage() {
     }
   };
 
+  // 批量删除
+  const handleBatchDelete = async () => {
+    if (selectedIds.size === 0) return;
+    if (!confirm(`确定要删除选中的 ${selectedIds.size} 个文件吗？此操作不可恢复！`)) return;
+    try {
+      const response = await fetch(`${serverUrl}/api/desktop_file_manage.php`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'batch_delete', ids: Array.from(selectedIds) }),
+      });
+      const data = await response.json();
+      if (data.success) {
+        toast({ title: '成功', description: `已删除 ${data.data?.deleted_count ?? selectedIds.size} 个文件` });
+        setSelectedIds(new Set());
+        loadFiles();
+      } else {
+        toast({ title: '错误', description: data.error || '删除失败', variant: 'destructive' });
+      }
+    } catch (error) {
+      console.error('批量删除失败:', error);
+      toast({ title: '错误', description: '删除失败', variant: 'destructive' });
+    }
+  };
+
   const handleResetFilters = () => {
     setFilters({
       status: 'pending',
@@ -307,21 +331,32 @@ export default function ApprovalPage() {
               高级筛选
             </button>
             
-            {isManager && activeTab === 'pending' && selectedIds.size > 0 && (
+            {selectedIds.size > 0 && (
               <>
+                {isManager && activeTab === 'pending' && (
+                  <>
+                    <button
+                      onClick={handleBatchApprove}
+                      className="flex items-center gap-1 px-3 py-1.5 bg-green-500 hover:bg-green-600 text-white text-sm rounded"
+                    >
+                      <Check size={16} />
+                      批量通过 ({selectedIds.size})
+                    </button>
+                    <button
+                      onClick={() => { setRejectTarget('batch'); setShowRejectModal(true); }}
+                      className="flex items-center gap-1 px-3 py-1.5 bg-red-500 hover:bg-red-600 text-white text-sm rounded"
+                    >
+                      <X size={16} />
+                      批量驳回
+                    </button>
+                  </>
+                )}
                 <button
-                  onClick={handleBatchApprove}
-                  className="flex items-center gap-1 px-3 py-1.5 bg-green-500 hover:bg-green-600 text-white text-sm rounded"
-                >
-                  <Check size={16} />
-                  批量通过 ({selectedIds.size})
-                </button>
-                <button
-                  onClick={() => { setRejectTarget('batch'); setShowRejectModal(true); }}
-                  className="flex items-center gap-1 px-3 py-1.5 bg-red-500 hover:bg-red-600 text-white text-sm rounded"
+                  onClick={handleBatchDelete}
+                  className="flex items-center gap-1 px-3 py-1.5 bg-gray-500 hover:bg-gray-600 text-white text-sm rounded"
                 >
                   <X size={16} />
-                  批量驳回
+                  批量删除 ({selectedIds.size})
                 </button>
               </>
             )}
@@ -406,29 +441,21 @@ export default function ApprovalPage() {
                   selectedIds.has(file.id) ? 'ring-2 ring-blue-500' : ''
                 }`}
               >
-                {/* 选择框 */}
-                {isManager && activeTab === 'pending' && file.approval_status === 0 && (
-                  <div className="flex justify-between items-center mb-2">
-                    <input
-                      type="checkbox"
-                      checked={selectedIds.has(file.id)}
-                      onChange={() => {
-                        const newSet = new Set(selectedIds);
-                        if (newSet.has(file.id)) newSet.delete(file.id);
-                        else newSet.add(file.id);
-                        setSelectedIds(newSet);
-                      }}
-                      className="w-4 h-4 rounded"
-                    />
-                    {getStatusBadge(file.approval_status)}
-                  </div>
-                )}
-                
-                {activeTab === 'my_files' && (
-                  <div className="flex justify-end mb-2">
-                    {getStatusBadge(file.approval_status)}
-                  </div>
-                )}
+                {/* 选择框和状态 */}
+                <div className="flex justify-between items-center mb-2">
+                  <input
+                    type="checkbox"
+                    checked={selectedIds.has(file.id)}
+                    onChange={() => {
+                      const newSet = new Set(selectedIds);
+                      if (newSet.has(file.id)) newSet.delete(file.id);
+                      else newSet.add(file.id);
+                      setSelectedIds(newSet);
+                    }}
+                    className="w-4 h-4 rounded"
+                  />
+                  {getStatusBadge(file.approval_status)}
+                </div>
 
                 {/* 缩略图 */}
                 <div className="aspect-square bg-gray-100 rounded-lg mb-2 flex items-center justify-center overflow-hidden">
