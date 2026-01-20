@@ -27,15 +27,25 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Install Rust stable
-        shell: powershell
+      - name: Check Rust installation
+        shell: cmd
         run: |
-          if (!(Get-Command rustc -ErrorAction SilentlyContinue)) {
-            Invoke-WebRequest -Uri https://win.rustup.rs/x86_64 -OutFile rustup-init.exe
-            .\rustup-init.exe -y --default-toolchain stable
-            Remove-Item rustup-init.exe
-          }
-          $env:Path = "$env:USERPROFILE\.cargo\bin;$env:Path"
+          where rustc || echo Rust not found, will install
+          rustc --version || echo No rustc
+
+      - name: Install Rust if needed
+        shell: cmd
+        run: |
+          where rustc >nul 2>&1 || (
+            curl -sSf -o rustup-init.exe https://win.rustup.rs/x86_64
+            rustup-init.exe -y --default-toolchain stable
+            del rustup-init.exe
+          )
+
+      - name: Verify Rust
+        shell: cmd
+        run: |
+          set PATH=%USERPROFILE%\.cargo\bin;%PATH%
           rustc --version
           cargo --version
 
@@ -52,20 +62,11 @@ jobs:
         run: npx tauri build
 
       - name: Prepare and copy portable exe
-        shell: powershell
+        shell: cmd
         run: |
-          $version = (Get-Content desktop/package.json | ConvertFrom-Json).version
-          $exePath = "desktop/src-tauri/target/release/tech-resource-sync.exe"
-          $outDir = "${{ github.event.inputs.output_dir || 'D:\aiDDDDDDM\WWW\CRM\output' }}"
-          
-          # 确保输出目录存在
-          New-Item -ItemType Directory -Force -Path $outDir
-          
-          # 复制 exe 到输出目录
-          $outputFile = Join-Path $outDir "TechResourceSync-$version-portable.exe"
-          Copy-Item $exePath $outputFile -Force
-          
-          Write-Host "✅ 构建完成！输出文件: $outputFile"
+          if not exist "${{ github.event.inputs.output_dir || 'D:\aiDDDDDDM\WWW\CRM\output' }}" mkdir "${{ github.event.inputs.output_dir || 'D:\aiDDDDDDM\WWW\CRM\output' }}"
+          copy /Y "desktop\src-tauri\target\release\tech-resource-sync.exe" "${{ github.event.inputs.output_dir || 'D:\aiDDDDDDM\WWW\CRM\output' }}\TechResourceSync-portable.exe"
+          echo Build complete! Output: ${{ github.event.inputs.output_dir || 'D:\aiDDDDDDM\WWW\CRM\output' }}\TechResourceSync-portable.exe
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
