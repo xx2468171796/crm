@@ -221,26 +221,50 @@ export default function ProjectKanbanPage() {
 
   // 加载客户列表
   const loadCustomers = useCallback(async () => {
-    if (!serverUrl || !token) return;
+    if (!serverUrl || !token) {
+      console.log('[客户视图] 缺少 serverUrl 或 token:', { serverUrl, hasToken: !!token });
+      return;
+    }
+    console.log('[客户视图] Token前10字符:', token.substring(0, 10) + '...');
     setCustomersLoading(true);
     try {
       const params = new URLSearchParams();
       if (customerSearch) params.append('search', customerSearch);
-      params.append('limit', '100');
+      params.append('limit', '500'); // 增加限制以显示更多客户
       
-      const response = await fetch(`${serverUrl}/api/desktop_projects.php?action=customers&${params}`, {
+      const url = `${serverUrl}/api/desktop_projects.php?action=customers&${params}`;
+      console.log('[客户视图] 请求 URL:', url);
+      console.log('[客户视图] 请求头 Authorization:', `Bearer ${token.substring(0, 10)}...`);
+      
+      const response = await fetch(url, {
         headers: { 'Authorization': `Bearer ${token}` },
       });
       const data = await response.json();
+      console.log('[客户视图] API 响应:', data, 'status:', response.status);
+      
+      // 处理 401 错误 - Token 过期
+      if (response.status === 401) {
+        console.error('[客户视图] Token 已过期，需要重新登录');
+        toast({ title: 'Token 已过期', description: '请重新登录', variant: 'destructive' });
+        useAuthStore.getState().logout();
+        navigate('/login');
+        return;
+      }
+      
       if (data.success) {
         setCustomers(data.data.items || []);
+        console.log('[客户视图] 加载客户数量:', (data.data.items || []).length);
+      } else {
+        console.error('[客户视图] API 返回错误:', data.error);
+        toast({ title: '加载失败', description: data.error?.message || '获取客户列表失败', variant: 'destructive' });
       }
     } catch (error) {
-      console.error('加载客户列表失败:', error);
+      console.error('[客户视图] 加载客户列表失败:', error);
+      toast({ title: '加载失败', description: '网络错误，请检查服务器连接', variant: 'destructive' });
     } finally {
       setCustomersLoading(false);
     }
-  }, [serverUrl, token, customerSearch]);
+  }, [serverUrl, token, customerSearch, toast]);
 
   // 加载技术人员选项
   const loadTechUsers = useCallback(async () => {
@@ -345,7 +369,7 @@ export default function ProjectKanbanPage() {
       loadCustomers();
     }, 300);
     return () => clearTimeout(timer);
-  }, [customerSearch]);
+  }, [customerSearch, viewMode, loadCustomers]);
 
   // 搜索防抖
   useEffect(() => {

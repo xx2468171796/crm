@@ -35,10 +35,13 @@ function desktop_get_token(): ?string
 function desktop_verify_token(string $token): ?array
 {
     if (empty($token)) {
+        error_log('[DESKTOP_AUTH] Token 为空');
         return null;
     }
     
     try {
+        error_log('[DESKTOP_AUTH] 验证 Token: ' . substr($token, 0, 10) . '...');
+        
         // 查询 token
         $tokenRow = Db::queryOne(
             'SELECT user_id, expire_at FROM desktop_tokens WHERE token = ? LIMIT 1',
@@ -46,12 +49,16 @@ function desktop_verify_token(string $token): ?array
         );
         
         if (!$tokenRow) {
+            error_log('[DESKTOP_AUTH] Token 不存在于数据库');
             return null;
         }
+        
+        error_log('[DESKTOP_AUTH] Token 找到, user_id=' . $tokenRow['user_id'] . ', expire_at=' . $tokenRow['expire_at'] . ', now=' . time());
         
         // 检查是否过期
         if ($tokenRow['expire_at'] < time()) {
             // 删除过期 token
+            error_log('[DESKTOP_AUTH] Token 已过期，删除');
             Db::execute('DELETE FROM desktop_tokens WHERE token = ?', [$token]);
             return null;
         }

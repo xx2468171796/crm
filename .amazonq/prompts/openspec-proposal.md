@@ -1,7 +1,12 @@
 ---
 description: Scaffold a new OpenSpec change and validate strictly.
-auto_execution_mode: 3
 ---
+
+The user has requested the following change proposal. Use the openspec instructions to create their change proposal.
+
+<UserRequest>
+  $ARGUMENTS
+</UserRequest>
 <!-- OPENSPEC:START -->
 **Guardrails**
 - Favor straightforward, minimal implementations first and add complexity only when it is requested or clearly required.

@@ -6,8 +6,10 @@ CRM（客户关系管理）系统，用于管理客户信息、销售流程、�
 ## Tech Stack
 - **后端**: PHP 7.4+（原生 PHP，无框架）
 - **数据库**: MySQL 8.0（通过 PDO 连接）
-- **前端**: HTML5, Bootstrap 5, JavaScript（原生）
+- **Web前端**: HTML5, Bootstrap 5, JavaScript（原生）
+- **桌面端**: Tauri 2.x (Rust) + React + TypeScript + TailwindCSS
 - **图标**: Bootstrap Icons, Lucide Icons
+- **存储**: S3 兼容对象存储（分片上传）
 - **部署**: 1Panel 面板管理
 
 ## Project Conventions
@@ -20,10 +22,17 @@ CRM（客户关系管理）系统，用于管理客户信息、销售流程、�
 - 前端使用 Bootstrap 5 响应式布局
 
 ### Architecture Patterns
-- **MVC-like 结构**:
+- **PHP 后端 MVC-like 结构**:
   - `index/public/` - 前端页面（视图+控制器）
-  - `index/api/` - API 接口
+  - `index/api/` - API 接口（248个文件）
   - `index/core/` - 核心功能（db.php, auth.php, rbac.php, layout.php）
+  - `index/services/` - 业务服务层
+- **桌面端架构**:
+  - `desktop/src/pages/` - React 页面组件（19个）
+  - `desktop/src/components/` - 可复用组件（27个）
+  - `desktop/src/stores/` - Zustand 状态管理
+  - `desktop/src/services/` - API 调用封装
+  - `desktop/src-tauri/` - Rust 后端（系统集成、文件操作）
 - **RBAC 权限系统**: 
   - `RoleCode` 定义角色常量
   - `PermissionCode` 定义权限常量
@@ -40,12 +49,18 @@ CRM（客户关系管理）系统，用于管理客户信息、销售流程、�
 - 重要变更前备份相关文件
 
 ## Domain Context
-- **客户管理**: 客户信息、联系人、跟进记录
-- **合同财务**: 合同创建、分期付款、收款记录
+- **客户管理**: 客户信息、联系人、跟进记录、客户看板
+- **项目管理**: 项目阶段、交付物、阶段模板、进度追踪
+- **任务系统**: 团队任务、每日任务、浮动任务窗口
+- **文件管理**: S3上传下载、文件审批、版本控制、回收站
+- **合同财务**: 合同创建、分期付款、收款记录、提成计算
+- **表单系统**: 动态表单模板、需求收集、表单审批
+- **OKR管理**: 目标设定、关键结果、周期管理
 - **权限角色**:
   - `super_admin` / `admin` - 系统管理员
   - `sales` - 销售人员
   - `finance` - 财务人员
+  - `tech` - 技术人员
   - `dept_leader` / `dept_admin` - 部门管理
 - **字段管理**: 动态字段（维度）、选项管理、客户筛选字段
 
