@@ -57,6 +57,15 @@ try {
         case 'assign_tech':
             handleAssignTech($user, $isManager);
             break;
+        case 'customers':
+            handleCustomers($user, $isManager);
+            break;
+        case 'create_project':
+            handleCreateProject($user, $isManager);
+            break;
+        case 'tech_users':
+            handleTechUsers($user, $isManager);
+            break;
         default:
             http_response_code(400);
             echo json_encode(['success' => false, 'error' => 'Unknown action'], JSON_UNESCAPED_UNICODE);
@@ -607,5 +616,211 @@ function createProjectAssignNotification($userId, $projectId, $projectCode, $pro
         $projectId,
         $now
     ]);
+}
+
+/**
+ * 获取客户列表（含项目统计）
+ */
+function handleCustomers($user, $isManager) {
+    $search = $_GET['search'] ?? '';
+    $page = max(1, (int)($_GET['page'] ?? 1));
+    $limit = min(100, max(10, (int)($_GET['limit'] ?? 50)));
+    $offset = ($page - 1) * $limit;
+    
+    $conditions = ["c.deleted_at IS NULL"];
+    $params = [];
+    
+    if ($search) {
+        $conditions[] = "(c.name LIKE ? OR c.group_code LIKE ? OR c.customer_group LIKE ?)";
+        $searchTerm = "%{$search}%";
+        $params[] = $searchTerm;
+        $params[] = $searchTerm;
+        $params[] = $searchTerm;
+    }
+    
+    $whereClause = implode(' AND ', $conditions);
+    
+    // 总数
+    $countSql = "SELECT COUNT(*) as total FROM customers c WHERE {$whereClause}";
+    $countResult = Db::queryOne($countSql, $params);
+    $total = (int)($countResult['total'] ?? 0);
+    
+    // 客户列表（含项目统计）
+    $sql = "
+        SELECT 
+            c.id,
+            c.name,
+            c.group_code,
+            c.customer_group,
+            c.alias,
+            c.mobile,
+            c.create_time,
+            (SELECT COUNT(*) FROM projects p WHERE p.customer_id = c.id AND p.deleted_at IS NULL) as project_count,
+            (SELECT MAX(p.update_time) FROM projects p WHERE p.customer_id = c.id AND p.deleted_at IS NULL) as last_project_time
+        FROM customers c
+        WHERE {$whereClause}
+        ORDER BY last_project_time DESC, c.create_time DESC
+        LIMIT {$limit} OFFSET {$offset}
+    ";
+    
+    $customers = Db::query($sql, $params);
+    
+    $result = [];
+    foreach ($customers as $c) {
+        $result[] = [
+            'id' => (int)$c['id'],
+            'name' => $c['name'],
+            'group_code' => $c['group_code'],
+            'group_name' => $c['customer_group'] ?: $c['alias'],
+            'phone' => $c['mobile'],
+            'project_count' => (int)$c['project_count'],
+            'create_time' => $c['create_time'] ? date('Y-m-d', $c['create_time']) : null,
+            'last_activity' => $c['last_project_time'] ? date('Y-m-d H:i', $c['last_project_time']) : null,
+        ];
+    }
+    
+    echo json_encode([
+        'success' => true,
+        'data' => [
+            'items' => $result,
+            'total' => $total,
+            'page' => $page,
+            'limit' => $limit,
+        ]
+    ], JSON_UNESCAPED_UNICODE);
+}
+
+/**
+ * 创建项目
+ */
+function handleCreateProject($user, $isManager) {
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+        http_response_code(405);
+        echo json_encode(['success' => false, 'error' => 'Method not allowed'], JSON_UNESCAPED_UNICODE);
+        return;
+    }
+    
+    if (!$isManager) {
+        http_response_code(403);
+        echo json_encode(['success' => false, 'error' => '无权限创建项目'], JSON_UNESCAPED_UNICODE);
+        return;
+    }
+    
+    $input = json_decode(file_get_contents('php://input'), true);
+    $customerId = (int)($input['customer_id'] ?? 0);
+    $projectName = trim($input['project_name'] ?? '');
+    $techUserIds = $input['tech_user_ids'] ?? [];
+    
+    if ($customerId <= 0) {
+        http_response_code(400);
+        echo json_encode(['success' => false, 'error' => '缺少客户ID'], JSON_UNESCAPED_UNICODE);
+        return;
+    }
+    
+    if (empty($projectName)) {
+        http_response_code(400);
+        echo json_encode(['success' => false, 'error' => '项目名称不能为空'], JSON_UNESCAPED_UNICODE);
+        return;
+    }
+    
+    // 检查客户是否存在
+    $customer = Db::queryOne("SELECT id, name, group_code FROM customers WHERE id = ? AND deleted_at IS NULL", [$customerId]);
+    if (!$customer) {
+        http_response_code(404);
+        echo json_encode(['success' => false, 'error' => '客户不存在'], JSON_UNESCAPED_UNICODE);
+        return;
+    }
+    
+    $now = time();
+    
+    // 生成项目编号
+    $datePrefix = date('Ymd');
+    $lastProject = Db::queryOne(
+        "SELECT project_code FROM projects WHERE project_code LIKE ? ORDER BY id DESC LIMIT 1",
+        ["P{$datePrefix}%"]
+    );
+    if ($lastProject && preg_match('/P\d{8}(\d{3})/', $lastProject['project_code'], $m)) {
+        $seq = (int)$m[1] + 1;
+    } else {
+        $seq = 1;
+    }
+    $projectCode = "P{$datePrefix}" . str_pad($seq, 3, '0', STR_PAD_LEFT);
+    
+    try {
+        Db::beginTransaction();
+        
+        // 创建项目
+        Db::execute(
+            "INSERT INTO projects (project_code, project_name, customer_id, current_status, create_time, update_time, created_by) VALUES (?, ?, ?, '待沟通', ?, ?, ?)",
+            [$projectCode, $projectName, $customerId, $now, $now, $user['id']]
+        );
+        $projectId = Db::lastInsertId();
+        
+        // 分配技术人员
+        if (is_array($techUserIds) && !empty($techUserIds)) {
+            foreach ($techUserIds as $techUserId) {
+                Db::execute(
+                    "INSERT INTO project_tech_assignments (project_id, tech_user_id, assigned_by, assigned_at) VALUES (?, ?, ?, ?)",
+                    [$projectId, (int)$techUserId, $user['id'], $now]
+                );
+            }
+        }
+        
+        // 记录状态日志
+        Db::execute(
+            "INSERT INTO project_status_log (project_id, from_status, to_status, changed_by, changed_at, remark) VALUES (?, '', '待沟通', ?, ?, '项目创建')",
+            [$projectId, $user['id'], $now]
+        );
+        
+        Db::commit();
+        
+        // 发送分配通知
+        if (!empty($techUserIds)) {
+            $assignerName = $user['realname'] ?? $user['username'];
+            foreach ($techUserIds as $techUserId) {
+                createProjectAssignNotification((int)$techUserId, $projectId, $projectCode, $projectName, $assignerName);
+            }
+        }
+        
+        echo json_encode([
+            'success' => true,
+            'message' => '项目创建成功',
+            'data' => [
+                'id' => (int)$projectId,
+                'project_code' => $projectCode,
+                'project_name' => $projectName,
+                'customer_id' => $customerId,
+                'customer_name' => $customer['name'],
+            ]
+        ], JSON_UNESCAPED_UNICODE);
+        
+    } catch (Exception $e) {
+        Db::rollBack();
+        error_log('[create_project] 创建项目失败: ' . $e->getMessage());
+        http_response_code(500);
+        echo json_encode(['success' => false, 'error' => '创建项目失败'], JSON_UNESCAPED_UNICODE);
+    }
+}
+
+/**
+ * 获取技术人员列表
+ */
+function handleTechUsers($user, $isManager) {
+    $techUsers = Db::query(
+        "SELECT id, username, realname FROM users WHERE role IN ('tech', 'tech_manager') AND status = 1 ORDER BY realname, username"
+    );
+    
+    $result = [];
+    foreach ($techUsers as $u) {
+        $result[] = [
+            'id' => (int)$u['id'],
+            'name' => $u['realname'] ?: $u['username'],
+        ];
+    }
+    
+    echo json_encode([
+        'success' => true,
+        'data' => $result
+    ], JSON_UNESCAPED_UNICODE);
 }
 

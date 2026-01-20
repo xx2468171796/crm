@@ -50,7 +50,24 @@ interface FilterUser {
   name: string;
 }
 
-type ViewMode = 'kanban' | 'table' | 'person';
+type ViewMode = 'kanban' | 'table' | 'person' | 'customer';
+
+interface Customer {
+  id: number;
+  name: string;
+  group_code: string;
+  group_name: string | null;
+  phone: string | null;
+  project_count: number;
+  create_time: string | null;
+  last_activity: string | null;
+  projects?: Project[];
+}
+
+interface TechUserOption {
+  id: number;
+  name: string;
+}
 
 export default function ProjectKanbanPage() {
   const navigate = useNavigate();
@@ -95,6 +112,21 @@ export default function ProjectKanbanPage() {
   // 删除确认弹窗
   const [deleteConfirm, setDeleteConfirm] = useState<Project | null>(null);
   const [deleting, setDeleting] = useState(false);
+  
+  // 客户视图相关
+  const [customers, setCustomers] = useState<Customer[]>([]);
+  const [customersLoading, setCustomersLoading] = useState(false);
+  const [customerSearch, setCustomerSearch] = useState('');
+  const [expandedCustomers, setExpandedCustomers] = useState<Record<number, boolean>>({});
+  const [customerProjects, setCustomerProjects] = useState<Record<number, Project[]>>({});
+  
+  // 新建项目弹窗
+  const [showCreateProject, setShowCreateProject] = useState(false);
+  const [createProjectCustomer, setCreateProjectCustomer] = useState<Customer | null>(null);
+  const [newProjectName, setNewProjectName] = useState('');
+  const [selectedTechUsers, setSelectedTechUsers] = useState<number[]>([]);
+  const [techUserOptions, setTechUserOptions] = useState<TechUserOption[]>([]);
+  const [creatingProject, setCreatingProject] = useState(false);
   
   const isManager = canManageProjects();
 
@@ -186,6 +218,134 @@ export default function ProjectKanbanPage() {
   useEffect(() => {
     loadFilters();
   }, [loadFilters]);
+
+  // 加载客户列表
+  const loadCustomers = useCallback(async () => {
+    if (!serverUrl || !token) return;
+    setCustomersLoading(true);
+    try {
+      const params = new URLSearchParams();
+      if (customerSearch) params.append('search', customerSearch);
+      params.append('limit', '100');
+      
+      const response = await fetch(`${serverUrl}/api/desktop_projects.php?action=customers&${params}`, {
+        headers: { 'Authorization': `Bearer ${token}` },
+      });
+      const data = await response.json();
+      if (data.success) {
+        setCustomers(data.data.items || []);
+      }
+    } catch (error) {
+      console.error('加载客户列表失败:', error);
+    } finally {
+      setCustomersLoading(false);
+    }
+  }, [serverUrl, token, customerSearch]);
+
+  // 加载技术人员选项
+  const loadTechUsers = useCallback(async () => {
+    if (!serverUrl || !token) return;
+    try {
+      const response = await fetch(`${serverUrl}/api/desktop_projects.php?action=tech_users`, {
+        headers: { 'Authorization': `Bearer ${token}` },
+      });
+      const data = await response.json();
+      if (data.success) {
+        setTechUserOptions(data.data || []);
+      }
+    } catch (error) {
+      console.error('加载技术人员失败:', error);
+    }
+  }, [serverUrl, token]);
+
+  // 加载客户的项目列表
+  const loadCustomerProjects = async (customerId: number) => {
+    if (!serverUrl || !token) return;
+    try {
+      const response = await fetch(`${serverUrl}/api/desktop_customers.php?id=${customerId}`, {
+        headers: { 'Authorization': `Bearer ${token}` },
+      });
+      const data = await response.json();
+      if (data.success && data.data.projects) {
+        setCustomerProjects(prev => ({ ...prev, [customerId]: data.data.projects }));
+      }
+    } catch (error) {
+      console.error('加载客户项目失败:', error);
+    }
+  };
+
+  // 展开/收起客户
+  const toggleCustomer = async (customer: Customer) => {
+    const isExpanded = expandedCustomers[customer.id];
+    setExpandedCustomers(prev => ({ ...prev, [customer.id]: !isExpanded }));
+    if (!isExpanded && !customerProjects[customer.id]) {
+      await loadCustomerProjects(customer.id);
+    }
+  };
+
+  // 打开新建项目弹窗
+  const openCreateProjectModal = (customer: Customer) => {
+    setCreateProjectCustomer(customer);
+    setNewProjectName('');
+    setSelectedTechUsers([]);
+    setShowCreateProject(true);
+    loadTechUsers();
+  };
+
+  // 创建项目
+  const createProject = async () => {
+    if (!serverUrl || !token || !createProjectCustomer || !newProjectName.trim()) return;
+    setCreatingProject(true);
+    try {
+      const response = await fetch(`${serverUrl}/api/desktop_projects.php?action=create_project`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          customer_id: createProjectCustomer.id,
+          project_name: newProjectName.trim(),
+          tech_user_ids: selectedTechUsers,
+        }),
+      });
+      const data = await response.json();
+      if (data.success) {
+        toast({ title: '项目创建成功', description: `${data.data.project_code} - ${data.data.project_name}` });
+        setShowCreateProject(false);
+        // 刷新客户项目列表
+        await loadCustomerProjects(createProjectCustomer.id);
+        // 更新客户项目数量
+        setCustomers(prev => prev.map(c => 
+          c.id === createProjectCustomer.id ? { ...c, project_count: c.project_count + 1 } : c
+        ));
+        loadKanban();
+      } else {
+        toast({ title: '创建失败', description: data.error || '未知错误', variant: 'destructive' });
+      }
+    } catch (error) {
+      console.error('创建项目失败:', error);
+      toast({ title: '创建失败', description: '网络错误', variant: 'destructive' });
+    } finally {
+      setCreatingProject(false);
+    }
+  };
+
+  // 切换到客户视图时加载客户
+  useEffect(() => {
+    if (viewMode === 'customer') {
+      loadCustomers();
+    }
+  }, [viewMode, loadCustomers]);
+
+  // 客户搜索防抖
+  useEffect(() => {
+    if (viewMode !== 'customer') return;
+    const timer = setTimeout(() => {
+      loadCustomers();
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [customerSearch]);
 
   // 搜索防抖
   useEffect(() => {
@@ -408,6 +568,15 @@ export default function ProjectKanbanPage() {
               <Users size={16} />
               人员
             </button>
+            <button
+              onClick={() => setViewMode('customer')}
+              className={`px-3 py-1.5 text-sm flex items-center gap-1.5 border-l ${
+                viewMode === 'customer' ? 'bg-blue-500 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'
+              }`}
+            >
+              <User size={16} />
+              客户
+            </button>
           </div>
         </div>
         
@@ -418,7 +587,134 @@ export default function ProjectKanbanPage() {
       </div>
 
       {/* 内容区 */}
-      {loading ? (
+      {viewMode === 'customer' ? (
+        /* 客户视图 */
+        <div className="flex-1 flex flex-col overflow-hidden">
+          {/* 客户搜索栏 */}
+          <div className="bg-white border-b px-6 py-3">
+            <div className="relative w-64">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <input
+                type="text"
+                placeholder="搜索客户名称/群号..."
+                value={customerSearch}
+                onChange={(e) => setCustomerSearch(e.target.value)}
+                className="pl-9 pr-3 py-1.5 w-full border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+          </div>
+          
+          {/* 客户列表 */}
+          <div className="flex-1 overflow-auto p-4 space-y-2">
+            {customersLoading ? (
+              <div className="flex items-center justify-center py-12 text-gray-400">加载中...</div>
+            ) : customers.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-12 text-gray-400">
+                <User size={48} className="mb-4 opacity-50" />
+                <p>暂无客户</p>
+              </div>
+            ) : (
+              customers.map((customer) => {
+                const isExpanded = expandedCustomers[customer.id];
+                const projects = customerProjects[customer.id] || [];
+                return (
+                  <div key={customer.id} className="bg-white rounded-lg border overflow-hidden">
+                    <div className="px-4 py-3 flex items-center justify-between hover:bg-gray-50">
+                      <button 
+                        className="flex items-center gap-3 flex-1 text-left"
+                        onClick={() => toggleCustomer(customer)}
+                      >
+                        <ChevronDown 
+                          className={`w-4 h-4 text-gray-500 transition-transform ${isExpanded ? '' : '-rotate-90'}`}
+                        />
+                        <div className="w-10 h-10 rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 text-white flex items-center justify-center font-semibold">
+                          {customer.name.charAt(0)}
+                        </div>
+                        <div className="flex-1">
+                          <div className="font-semibold text-gray-800">{customer.name}</div>
+                          <div className="text-xs text-gray-400 flex items-center gap-2">
+                            {customer.group_code && <span>{customer.group_code}</span>}
+                            {customer.group_name && <span>• {customer.group_name}</span>}
+                          </div>
+                        </div>
+                        <span className="px-2 py-0.5 bg-gray-100 text-gray-600 rounded text-xs font-semibold">
+                          {customer.project_count} 个项目
+                        </span>
+                      </button>
+                      {isManager && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            openCreateProjectModal(customer);
+                          }}
+                          className="ml-3 px-3 py-1.5 text-sm bg-blue-500 text-white rounded-lg hover:bg-blue-600 flex items-center gap-1"
+                        >
+                          <span>+</span> 新建项目
+                        </button>
+                      )}
+                    </div>
+                    {isExpanded && (
+                      <div className="border-t">
+                        {projects.length === 0 ? (
+                          <div className="px-4 py-6 text-center text-gray-400 text-sm">暂无项目</div>
+                        ) : (
+                          <table className="w-full">
+                            <thead className="bg-gray-50">
+                              <tr>
+                                <th className="px-4 py-2 text-left text-xs font-semibold text-gray-500 uppercase">项目</th>
+                                <th className="px-4 py-2 text-left text-xs font-semibold text-gray-500 uppercase">状态</th>
+                                <th className="px-4 py-2 text-left text-xs font-semibold text-gray-500 uppercase">更新时间</th>
+                                <th className="px-4 py-2 text-left text-xs font-semibold text-gray-500 uppercase">操作</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-100">
+                              {projects.map((project: any) => {
+                                const statusConfig = statuses.find(s => s.key === project.current_status);
+                                return (
+                                  <tr
+                                    key={project.id}
+                                    className="hover:bg-gray-50 cursor-pointer"
+                                    onClick={() => goToProject(project.id)}
+                                  >
+                                    <td className="px-4 py-3">
+                                      <div className="font-medium text-gray-800">{project.project_name}</div>
+                                      <div className="text-xs text-gray-400 font-mono">{project.project_code}</div>
+                                    </td>
+                                    <td className="px-4 py-3">
+                                      <span 
+                                        className="px-2 py-1 rounded text-xs font-medium text-white"
+                                        style={{ backgroundColor: statusConfig?.color || '#64748b' }}
+                                      >
+                                        {project.current_status || '待处理'}
+                                      </span>
+                                    </td>
+                                    <td className="px-4 py-3 text-sm text-gray-500">{project.update_time}</td>
+                                    <td className="px-4 py-3">
+                                      <button
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          goToProject(project.id);
+                                        }}
+                                        className="text-blue-500 hover:text-blue-700 text-sm"
+                                      >
+                                        查看
+                                      </button>
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </div>
+      ) : loading ? (
         <div className="flex-1 flex items-center justify-center text-gray-400">加载中...</div>
       ) : total === 0 ? (
         <div className="flex-1 flex flex-col items-center justify-center text-gray-400">
@@ -857,6 +1153,86 @@ export default function ProjectKanbanPage() {
                 className="px-4 py-2 text-sm bg-green-500 text-white rounded-lg hover:bg-green-600"
               >
                 保存
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 新建项目弹窗 */}
+      {showCreateProject && createProjectCustomer && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl p-6 w-[450px] shadow-2xl">
+            <h3 className="text-lg font-semibold text-gray-800 mb-2">新建项目</h3>
+            <p className="text-sm text-gray-500 mb-4">
+              客户: {createProjectCustomer.name}
+            </p>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">项目名称 <span className="text-red-500">*</span></label>
+                <input
+                  type="text"
+                  value={newProjectName}
+                  onChange={(e) => setNewProjectName(e.target.value)}
+                  placeholder="请输入项目名称"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  autoFocus
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">分配技术人员</label>
+                <div className="border rounded-lg p-3 max-h-40 overflow-auto space-y-2">
+                  {techUserOptions.length === 0 ? (
+                    <p className="text-sm text-gray-400">加载中...</p>
+                  ) : (
+                    techUserOptions.map((tech) => (
+                      <label key={tech.id} className="flex items-center gap-2 cursor-pointer hover:bg-gray-50 p-1 rounded">
+                        <input
+                          type="checkbox"
+                          checked={selectedTechUsers.includes(tech.id)}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setSelectedTechUsers(prev => [...prev, tech.id]);
+                            } else {
+                              setSelectedTechUsers(prev => prev.filter(id => id !== tech.id));
+                            }
+                          }}
+                          className="w-4 h-4 text-blue-500 rounded"
+                        />
+                        <span className="text-sm text-gray-700">{tech.name}</span>
+                      </label>
+                    ))
+                  )}
+                </div>
+                {selectedTechUsers.length > 0 && (
+                  <p className="text-xs text-gray-500 mt-1">已选择 {selectedTechUsers.length} 人</p>
+                )}
+              </div>
+            </div>
+            <div className="flex justify-end gap-3 mt-6">
+              <button
+                onClick={() => {
+                  setShowCreateProject(false);
+                  setCreateProjectCustomer(null);
+                }}
+                disabled={creatingProject}
+                className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800 disabled:opacity-50"
+              >
+                取消
+              </button>
+              <button
+                onClick={createProject}
+                disabled={creatingProject || !newProjectName.trim()}
+                className="px-4 py-2 text-sm bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50 flex items-center gap-2"
+              >
+                {creatingProject ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                    创建中...
+                  </>
+                ) : (
+                  '创建项目'
+                )}
               </button>
             </div>
           </div>
