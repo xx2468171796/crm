@@ -325,8 +325,10 @@
         fetch(url)
             .then(response => response.json())
             .then(data => {
-                if (data.success && data.data && data.data.files) {
-                    renderFileList(data.data.files, container, customerId, isReadonly);
+                // API返回的是items而不是files
+                const files = data.data?.items || data.data?.files || [];
+                if (data.success && files.length > 0) {
+                    renderFileList(files, container, customerId, isReadonly);
                 } else {
                     // 清空列表
                     const existingList = container.querySelector('.attachment-file-items');
