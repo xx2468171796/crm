@@ -624,7 +624,7 @@ function createProjectAssignNotification($userId, $projectId, $projectCode, $pro
 function handleCustomers($user, $isManager) {
     $search = $_GET['search'] ?? '';
     $page = max(1, (int)($_GET['page'] ?? 1));
-    $limit = min(100, max(10, (int)($_GET['limit'] ?? 50)));
+    $limit = min(1000, max(10, (int)($_GET['limit'] ?? 50)));
     $offset = ($page - 1) * $limit;
     
     $conditions = ["c.deleted_at IS NULL"];
