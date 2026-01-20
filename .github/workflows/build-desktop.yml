@@ -5,18 +5,13 @@ on:
     tags:
       - 'v*'
   workflow_dispatch:
-    inputs:
-      output_dir:
-        description: '输出目录路径'
-        required: false
-        default: 'D:\aiDDDDDDM\WWW\CRM\output'
 
 permissions:
   contents: write
 
 jobs:
   build-windows:
-    runs-on: [self-hosted, Windows, X64]
+    runs-on: windows-latest
     
     steps:
       - name: Checkout
@@ -27,27 +22,20 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Check Rust installation
-        shell: cmd
-        run: |
-          where rustc || echo Rust not found, will install
-          rustc --version || echo No rustc
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
 
-      - name: Install Rust if needed
-        shell: cmd
-        run: |
-          where rustc >nul 2>&1 || (
-            curl -sSf -o rustup-init.exe https://win.rustup.rs/x86_64
-            rustup-init.exe -y --default-toolchain stable
-            del rustup-init.exe
-          )
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: desktop/src-tauri
 
-      - name: Verify Rust
-        shell: cmd
-        run: |
-          set PATH=%USERPROFILE%\.cargo\bin;%PATH%
-          rustc --version
-          cargo --version
+      - name: Cache npm
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-npm-${{ hashFiles('desktop/package-lock.json') }}
+          restore-keys: ${{ runner.os }}-npm-
 
       - name: Install frontend dependencies
         working-directory: desktop
@@ -61,24 +49,26 @@ jobs:
         working-directory: desktop
         run: npx tauri build
 
-      - name: Prepare and copy portable exe
-        shell: cmd
+      - name: Prepare portable exe
+        shell: pwsh
         run: |
-          if not exist "${{ github.event.inputs.output_dir || 'D:\aiDDDDDDM\WWW\CRM\output' }}" mkdir "${{ github.event.inputs.output_dir || 'D:\aiDDDDDDM\WWW\CRM\output' }}"
-          copy /Y "desktop\src-tauri\target\release\tech-resource-sync.exe" "${{ github.event.inputs.output_dir || 'D:\aiDDDDDDM\WWW\CRM\output' }}\TechResourceSync-portable.exe"
-          echo Build complete! Output: ${{ github.event.inputs.output_dir || 'D:\aiDDDDDDM\WWW\CRM\output' }}\TechResourceSync-portable.exe
+          $version = (Get-Content desktop/package.json | ConvertFrom-Json).version
+          $exePath = "desktop/src-tauri/target/release/tech-resource-sync.exe"
+          $outDir = "release"
+          New-Item -ItemType Directory -Force -Path $outDir
+          Copy-Item $exePath "$outDir/TechResourceSync-$version-portable.exe"
 
-      - name: Upload artifact
+      - name: Upload portable exe
         uses: actions/upload-artifact@v4
         with:
           name: TechResourceSync-Windows-Portable
-          path: ${{ github.event.inputs.output_dir || 'D:\aiDDDDDDM\WWW\CRM\output' }}/*.exe
+          path: release/*.exe
 
       - name: Create Release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v1
         with:
-          files: ${{ github.event.inputs.output_dir || 'D:\aiDDDDDDM\WWW\CRM\output' }}/*.exe
+          files: release/*.exe
           draft: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
