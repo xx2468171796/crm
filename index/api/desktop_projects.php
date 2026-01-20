@@ -768,7 +768,7 @@ function handleCreateProject($user, $isManager) {
         
         // 记录状态日志
         Db::execute(
-            "INSERT INTO project_status_log (project_id, from_status, to_status, changed_by, changed_at, remark) VALUES (?, '', '待沟通', ?, ?, '项目创建')",
+            "INSERT INTO project_status_log (project_id, from_status, to_status, changed_by, changed_at) VALUES (?, '', '待沟通', ?, ?)",
             [$projectId, $user['id'], $now]
         );
         
