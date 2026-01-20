@@ -507,9 +507,9 @@ export default function ProjectKanbanPage() {
   return (
     <div className="flex-1 flex flex-col h-full bg-gray-50">
       {/* 筛选栏 */}
-      <div className="bg-white border-b px-6 py-3">
-        <div className="flex items-center justify-between gap-4">
-          <div className="flex items-center gap-4">
+      <div className="bg-white border-b px-4 py-3">
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="flex flex-wrap items-center gap-2 flex-1 min-w-0">
             <h1 className="text-lg font-semibold text-gray-800">项目看板</h1>
             
             {/* 搜索框 */}
@@ -582,43 +582,47 @@ export default function ProjectKanbanPage() {
             </button>
           </div>
           
-          {/* 视图切换 */}
-          <div className="flex border rounded overflow-hidden">
+          {/* 视图切换 - 响应式 */}
+          <div className="flex border rounded overflow-hidden flex-shrink-0">
             <button
               onClick={() => setViewMode('kanban')}
-              className={`px-3 py-1.5 text-sm flex items-center gap-1.5 ${
+              title="看板视图"
+              className={`px-2 sm:px-3 py-1.5 text-sm flex items-center gap-1 ${
                 viewMode === 'kanban' ? 'bg-blue-500 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'
               }`}
             >
               <LayoutGrid size={16} />
-              看板
+              <span className="hidden sm:inline">看板</span>
             </button>
             <button
               onClick={() => setViewMode('table')}
-              className={`px-3 py-1.5 text-sm flex items-center gap-1.5 border-l ${
+              title="表格视图"
+              className={`px-2 sm:px-3 py-1.5 text-sm flex items-center gap-1 border-l ${
                 viewMode === 'table' ? 'bg-blue-500 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'
               }`}
             >
               <List size={16} />
-              表格
+              <span className="hidden sm:inline">表格</span>
             </button>
             <button
               onClick={() => setViewMode('person')}
-              className={`px-3 py-1.5 text-sm flex items-center gap-1.5 border-l ${
+              title="人员视图"
+              className={`px-2 sm:px-3 py-1.5 text-sm flex items-center gap-1 border-l ${
                 viewMode === 'person' ? 'bg-blue-500 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'
               }`}
             >
               <Users size={16} />
-              人员
+              <span className="hidden sm:inline">人员</span>
             </button>
             <button
               onClick={() => setViewMode('customer')}
-              className={`px-3 py-1.5 text-sm flex items-center gap-1.5 border-l ${
+              title="客户视图"
+              className={`px-2 sm:px-3 py-1.5 text-sm flex items-center gap-1 border-l ${
                 viewMode === 'customer' ? 'bg-blue-500 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'
               }`}
             >
               <User size={16} />
-              客户
+              <span className="hidden sm:inline">客户</span>
             </button>
           </div>
         </div>
@@ -690,9 +694,10 @@ export default function ProjectKanbanPage() {
                             e.stopPropagation();
                             openCreateProjectModal(customer);
                           }}
-                          className="ml-3 px-3 py-1.5 text-sm bg-blue-500 text-white rounded-lg hover:bg-blue-600 flex items-center gap-1"
+                          title="新建项目"
+                          className="ml-2 px-2 sm:px-3 py-1.5 text-sm bg-blue-500 text-white rounded-lg hover:bg-blue-600 flex items-center gap-1 flex-shrink-0"
                         >
-                          <span>+</span> 新建项目
+                          <span>+</span><span className="hidden sm:inline">新建项目</span>
                         </button>
                       )}
                     </div>
