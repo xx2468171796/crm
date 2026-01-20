@@ -5,13 +5,18 @@ on:
     tags:
       - 'v*'
   workflow_dispatch:
+    inputs:
+      output_dir:
+        description: '输出目录路径'
+        required: false
+        default: 'D:\aiDDDDDDM\WWW\CRM\output'
 
 permissions:
   contents: write
 
 jobs:
   build-windows:
-    runs-on: windows-latest
+    runs-on: [self-hosted, Windows, X64]
     
     steps:
       - name: Checkout
@@ -25,18 +30,6 @@ jobs:
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Cache Rust
-        uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: desktop/src-tauri
-
-      - name: Cache npm
-        uses: actions/cache@v4
-        with:
-          path: ~/.npm
-          key: ${{ runner.os }}-npm-${{ hashFiles('desktop/package-lock.json') }}
-          restore-keys: ${{ runner.os }}-npm-
-
       - name: Install frontend dependencies
         working-directory: desktop
         run: npm ci
@@ -49,26 +42,33 @@ jobs:
         working-directory: desktop
         run: npx tauri build
 
-      - name: Prepare portable exe
+      - name: Prepare and copy portable exe
         shell: pwsh
         run: |
           $version = (Get-Content desktop/package.json | ConvertFrom-Json).version
           $exePath = "desktop/src-tauri/target/release/tech-resource-sync.exe"
-          $outDir = "release"
+          $outDir = "${{ github.event.inputs.output_dir || 'D:\aiDDDDDDM\WWW\CRM\output' }}"
+          
+          # 确保输出目录存在
           New-Item -ItemType Directory -Force -Path $outDir
-          Copy-Item $exePath "$outDir/TechResourceSync-$version-portable.exe"
+          
+          # 复制 exe 到输出目录
+          $outputFile = Join-Path $outDir "TechResourceSync-$version-portable.exe"
+          Copy-Item $exePath $outputFile -Force
+          
+          Write-Host "✅ 构建完成！输出文件: $outputFile"
 
-      - name: Upload portable exe
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: TechResourceSync-Windows-Portable
-          path: release/*.exe
+          path: ${{ github.event.inputs.output_dir || 'D:\aiDDDDDDM\WWW\CRM\output' }}/*.exe
 
       - name: Create Release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v1
         with:
-          files: release/*.exe
+          files: ${{ github.event.inputs.output_dir || 'D:\aiDDDDDDM\WWW\CRM\output' }}/*.exe
           draft: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
