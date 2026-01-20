@@ -255,15 +255,20 @@ export default function ProjectKanbanPage() {
         const items = data.data.items || [];
         const total = data.data.total || 0;
         
+        let newLength: number;
         if (append) {
-          setCustomers(prev => [...prev, ...items]);
+          setCustomers(prev => {
+            newLength = prev.length + items.length;
+            return [...prev, ...items];
+          });
         } else {
           setCustomers(items);
+          newLength = items.length;
         }
         
         setCustomerTotal(total);
         setCustomerPage(page);
-        setHasMoreCustomers(customers.length + items.length < total);
+        setHasMoreCustomers((append ? customers.length + items.length : items.length) < total);
       } else {
         toast({ title: '加载失败', description: data.error?.message || '获取客户列表失败', variant: 'destructive' });
       }
