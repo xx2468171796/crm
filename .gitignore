@@ -3,7 +3,7 @@
 # ===========================
 node_modules/
 vendor/
-
+.windsurfrules
 # ===========================
 # 构建产物
 # ===========================
@@ -77,3 +77,4 @@ output/
 *.tmp
 *.temp
 *.bak
+.windsurfrules
