@@ -349,6 +349,10 @@ function handlePost($pdo, $user) {
     
     $deliverableId = $pdo->lastInsertId();
     
+    // 调试日志：记录插入的数据
+    error_log(sprintf('[RC_DEBUG] INSERT: id=%d, project_id=%d, name=%s, category=%s, parent_folder_id=%s, approval_status=%s',
+        $deliverableId, $projectId, $deliverableName, $fileCategory, $parentFolderId ?: 'NULL', $approvalStatus));
+    
     // 写入时间线
     $timelineStmt = $pdo->prepare("
         INSERT INTO timeline_events (entity_type, entity_id, event_type, operator_user_id, event_data_json, create_time)
