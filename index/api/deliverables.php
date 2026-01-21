@@ -155,10 +155,6 @@ function handleGet($pdo, $user) {
     $stmt->execute($params);
     $deliverables = $stmt->fetchAll(PDO::FETCH_ASSOC);
     
-    // 调试日志
-    error_log(sprintf('[RC_DEBUG] handleGet: project_id=%d, file_category=%s, parent_folder_id=%s, found=%d', 
-        $projectId, $fileCategory, $parentFolderId ?? 'null', count($deliverables)));
-    
     // 如果需要按层级分组
     if ($groupBy === 'hierarchy') {
         $grouped = [];
@@ -351,10 +347,6 @@ function handlePost($pdo, $user) {
     ]);
     
     $deliverableId = $pdo->lastInsertId();
-    
-    // 调试日志：记录插入的数据
-    error_log(sprintf('[RC_DEBUG] INSERT: id=%d, project_id=%d, name=%s, category=%s, parent_folder_id=%s, approval_status=%s',
-        $deliverableId, $projectId, $deliverableName, $fileCategory, $parentFolderId ?: 'NULL', $approvalStatus));
     
     // 写入时间线
     $timelineStmt = $pdo->prepare("

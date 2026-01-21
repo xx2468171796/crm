@@ -23,7 +23,6 @@ const ResourceCenter = (function() {
     
     // 初始化
     function init(options) {
-        console.log('[RC_DEBUG] init called, projectId:', options.projectId, 'v2');
         config = { ...config, ...options };
         config.container = document.querySelector(options.container);
         
@@ -38,7 +37,6 @@ const ResourceCenter = (function() {
         loadTree('artwork_file');
         loadTree('model_file');
         // 初始化时加载当前分类的文件列表
-        console.log('[RC_DEBUG] calling loadFiles, currentCategory:', state.currentCategory);
         loadFiles();
     }
     
@@ -396,16 +394,11 @@ const ResourceCenter = (function() {
             // 添加时间戳防止缓存
             url += `&_t=${Date.now()}`;
             
-            console.log('[RC_DEBUG] loadFiles URL:', url);
             const response = await fetch(url);
             const result = await response.json();
             
-            console.log('[RC_DEBUG] loadFiles response:', result.success, 'count:', (result.data || []).length, 'data:', result.data);
-            
             if (result.success) {
                 renderFileList(result.data || []);
-            } else {
-                console.error('[RC_DEBUG] loadFiles failed:', result.message);
             }
         } catch (error) {
             console.error('[RC_DEBUG] Load files error:', error);
