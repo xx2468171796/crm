@@ -1433,7 +1433,9 @@
 
         const formData = new FormData();
         formData.append('customer_id', state.customerId);
-        formData.append('category', CATEGORY_MAP[type] || 'client_material');
+        const uploadCategory = CATEGORY_MAP[type] || 'client_material';
+        console.log(`[CustomerFiles] 上传文件 - type: ${type}, category: ${uploadCategory}, customerId: ${state.customerId}`);
+        formData.append('category', uploadCategory);
         files.forEach((file) => formData.append('files[]', file));
         folderInfo.folderPaths.forEach((path) => formData.append('folder_paths[]', path));
         formData.append('folder_root', folderInfo.folderRoot || '');
