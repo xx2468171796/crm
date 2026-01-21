@@ -40,7 +40,8 @@ try {
             ragg.last_received_date,
             ragg.last_receipt_time,
             coll.realname AS collector_name,
-            c.currency AS contract_currency
+            c.currency AS contract_currency,
+            c.sign_date AS contract_sign_date
         FROM finance_installments i
         LEFT JOIN finance_contracts c ON c.id = i.contract_id
         LEFT JOIN users coll ON coll.id = i.collector_user_id

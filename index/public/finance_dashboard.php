@@ -1213,7 +1213,7 @@ finance_sidebar_start('finance_dashboard');
                                     <div><?= htmlspecialchars($row['contract_no'] ?? '') ?></div>
                                     <div class="small text-muted"><?= htmlspecialchars($row['contract_title'] ?? '') ?></div>
                                     <?php if ($viewMode === 'contract'): ?>
-                                        <div class="small text-muted">创建：<?= !empty($row['contract_create_time']) ? date('Y-m-d H:i', (int)$row['contract_create_time']) : '-' ?></div>
+                                        <div class="small text-muted">签约：<?= !empty($row['contract_sign_date']) ? htmlspecialchars($row['contract_sign_date']) : '-' ?></div>
                                     <?php endif; ?>
                                 </td>
                                 <td><?= htmlspecialchars($row['signer_name'] ?? '') ?></td>
