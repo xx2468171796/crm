@@ -303,8 +303,10 @@ try {
         }
 
         // 列表接口
+        $category = $_GET['category'] ?? null;
+        error_log(sprintf('[CustomerFiles API] GET请求 - customer_id: %d, category: %s, folder_path: %s', $customerId, $category ?? 'null', $_GET['folder_path'] ?? 'null'));
         $filters = [
-            'category' => $_GET['category'] ?? null,
+            'category' => $category,
             'uploader_id' => $_GET['uploader_id'] ?? null,
             'start_at' => $_GET['start_at'] ?? null,
             'end_at' => $_GET['end_at'] ?? null,
@@ -477,8 +479,11 @@ try {
             $folderPaths = ($folderPaths === null || $folderPaths === '') ? [] : [$folderPaths];
         }
 
+        $uploadCategory = $_POST['category'] ?? 'client_material';
+        error_log(sprintf('[CustomerFiles API] POST上传 - customer_id: %d, category: %s, folder_root: %s', $customerId, $uploadCategory, $_POST['folder_root'] ?? ''));
+        
         $payload = [
-            'category' => $_POST['category'] ?? 'client_material',
+            'category' => $uploadCategory,
             'notes' => $_POST['notes'] ?? '',
             'folder_paths' => $folderPaths,
             'folder_root' => $_POST['folder_root'] ?? '',
