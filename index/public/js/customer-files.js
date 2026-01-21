@@ -563,7 +563,7 @@
             folder_path: view.folderPath ?? '',
         });
 
-        console.log(`[CustomerFiles] 开始加载 ${type} 文件，参数:`, params.toString());
+        console.log(`[CustomerFiles] 开始加载 ${type} 文件，参数:`, params.toString(), 'includeChildren:', view.includeChildren, 'folderPath:', view.folderPath);
         fetch(`/api/customer_files.php?${params.toString()}`, { credentials: 'include' })
             .then((res) => {
                 if (!res.ok) {
