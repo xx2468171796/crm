@@ -208,6 +208,10 @@
         formData.append('customer_id', customerId);
         formData.append('category', 'client_material');
         formData.append('upload_source', uploadSource);
+        
+        // 根据 uploadSource 设置文件夹路径，与查询时保持一致
+        const folderPath = uploadSource === 'first_contact' ? '首通附件' : '异议附件';
+        formData.append('folder_root', folderPath);
 
         // API 期望 files 作为文件数组
         files.forEach((file) => {
