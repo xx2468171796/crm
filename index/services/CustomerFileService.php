@@ -1160,6 +1160,14 @@ class CustomerFileService
             ];
         }
 
+        // 对于根目录（空字符串），需要同时匹配 NULL 和空字符串
+        if ($folderPath === '') {
+            return [
+                'sql' => sprintf('(%s IS NULL OR %s = \'\')', $column, $column),
+                'params' => [],
+            ];
+        }
+
         return [
             'sql' => sprintf('%s = :%s', $column, $pathKey),
             'params' => [
