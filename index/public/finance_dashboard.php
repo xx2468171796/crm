@@ -320,6 +320,7 @@ if ($viewMode === 'staff_summary') {
         c.title AS contract_title,
         c.sales_user_id,
         c.create_time AS contract_create_time,
+        c.sign_date AS contract_sign_date,
         c.status AS contract_status,
         c.manual_status AS contract_manual_status,
         c.net_amount,
