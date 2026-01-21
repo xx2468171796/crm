@@ -285,6 +285,32 @@ function showErrorPage($title, $message) {
             margin-top: 24px;
         }
         
+        /* 悬浮下载按钮 */
+        .floating-download {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            z-index: 1000;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 14px 24px;
+            background: #0891b2;
+            color: white;
+            border-radius: 50px;
+            font-size: 15px;
+            font-weight: 600;
+            text-decoration: none;
+            box-shadow: 0 4px 20px rgba(8,145,178,0.4);
+            transition: all 0.2s;
+        }
+        .floating-download:hover {
+            background: #0e7490;
+            transform: translateY(-2px);
+            box-shadow: 0 6px 24px rgba(8,145,178,0.5);
+        }
+        .floating-download i { font-size: 18px; }
+        
         @media (max-width: 600px) {
             body { padding: 20px 16px; }
             .card-header { padding: 24px 20px 20px; }
@@ -366,11 +392,19 @@ function showErrorPage($title, $message) {
         <p class="powered-by">Powered by 客户门户系统</p>
     </div>
     
+    <!-- 悬浮下载按钮 -->
+    <a href="<?= htmlspecialchars($downloadUrl) ?>" class="floating-download" id="floatingDownloadBtn">
+        <i class="bi bi-download"></i>
+        下载
+    </a>
+    
     <script>
-        document.getElementById('downloadBtn').addEventListener('click', function() {
-            // 记录下载次数
+        // 记录下载次数
+        function recordDownload() {
             fetch('/api/portal_share_download.php?s=<?= urlencode($shareToken) ?>', { method: 'POST' });
-        });
+        }
+        document.getElementById('downloadBtn').addEventListener('click', recordDownload);
+        document.getElementById('floatingDownloadBtn').addEventListener('click', recordDownload);
     </script>
 </body>
 </html>
