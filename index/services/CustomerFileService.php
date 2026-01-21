@@ -1146,6 +1146,7 @@ class CustomerFileService
         $pathKey = $paramPrefix . '_folder_path';
         $likeKey = $paramPrefix . '_folder_like';
 
+        // 根目录且包含子目录：返回所有文件（不添加 folder_path 条件）
         if ($folderPath === '' && $includeChildren) {
             return null;
         }
@@ -1160,7 +1161,7 @@ class CustomerFileService
             ];
         }
 
-        // 对于根目录（空字符串），需要同时匹配 NULL 和空字符串
+        // 对于根目录（空字符串）且不包含子目录，需要同时匹配 NULL 和空字符串
         if ($folderPath === '') {
             return [
                 'sql' => sprintf('(%s IS NULL OR %s = \'\')', $column, $column),
