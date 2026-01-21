@@ -23,6 +23,7 @@ const ResourceCenter = (function() {
     
     // 初始化
     function init(options) {
+        console.log('[RC_DEBUG] init called, projectId:', options.projectId, 'v2');
         config = { ...config, ...options };
         config.container = document.querySelector(options.container);
         
@@ -37,6 +38,7 @@ const ResourceCenter = (function() {
         loadTree('artwork_file');
         loadTree('model_file');
         // 初始化时加载当前分类的文件列表
+        console.log('[RC_DEBUG] calling loadFiles, currentCategory:', state.currentCategory);
         loadFiles();
     }
     
