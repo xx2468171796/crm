@@ -1055,7 +1055,7 @@ function renderInstallmentsTable(contractId, rows) {
         return '<tr data-installment-id="' + esc(r.id) + '">' 
             + '<td>' + esc('第' + String(r.installment_no || '') + '期') + '</td>'
             + '<td>' + esc(r.due_date || '') + '</td>'
-            + '<td class="small text-muted">' + esc(r.contract_sign_date || '-') + '</td>'
+            + '<td class="small text-muted">' + (r.contract_sign_date ? esc(r.contract_sign_date.replace('T', ' ').substring(0, 16)) : '-') + '</td>'
             + '<td class="small text-muted">' + (r.last_receipt_time ? esc(localDateTimeYmdHiByUnixTs(r.last_receipt_time)) : '-') + '</td>'
             + '<td class="small text-muted">' + esc(getPaymentMethodLabel(r.last_receipt_method || r.payment_method)) + '</td>'
             + '<td class="small text-muted">' + esc(r.collector_name || '-') + '</td>'

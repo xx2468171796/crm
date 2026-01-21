@@ -1213,7 +1213,7 @@ finance_sidebar_start('finance_dashboard');
                                     <div><?= htmlspecialchars($row['contract_no'] ?? '') ?></div>
                                     <div class="small text-muted"><?= htmlspecialchars($row['contract_title'] ?? '') ?></div>
                                     <?php if ($viewMode === 'contract'): ?>
-                                        <div class="small text-muted">签约：<?= !empty($row['contract_sign_date']) ? htmlspecialchars($row['contract_sign_date']) : '-' ?></div>
+                                        <div class="small text-muted">签约：<?= !empty($row['contract_sign_date']) ? htmlspecialchars(substr($row['contract_sign_date'], 0, 16)) : '-' ?></div>
                                     <?php endif; ?>
                                 </td>
                                 <td><?= htmlspecialchars($row['signer_name'] ?? '') ?></td>
