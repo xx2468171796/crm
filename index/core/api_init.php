@@ -68,3 +68,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 
 // 3. JSON 响应头
 header('Content-Type: application/json; charset=utf-8');
+
+// 4. 禁用缓存（防止反向代理缓存API响应）
+header('Cache-Control: no-cache, no-store, must-revalidate');
+header('Pragma: no-cache');
+header('Expires: 0');
