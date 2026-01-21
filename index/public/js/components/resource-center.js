@@ -36,6 +36,8 @@ const ResourceCenter = (function() {
         loadTree('customer_file');
         loadTree('artwork_file');
         loadTree('model_file');
+        // 初始化时加载当前分类的文件列表
+        loadFiles();
     }
     
     // 渲染主布局
