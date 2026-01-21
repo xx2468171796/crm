@@ -152,6 +152,10 @@ function handleGet($pdo, $user) {
     $stmt->execute($params);
     $deliverables = $stmt->fetchAll(PDO::FETCH_ASSOC);
     
+    // 调试日志
+    error_log(sprintf('[RC_DEBUG] handleGet: project_id=%d, file_category=%s, parent_folder_id=%s, found=%d', 
+        $projectId, $fileCategory, $parentFolderId ?? 'null', count($deliverables)));
+    
     // 如果需要按层级分组
     if ($groupBy === 'hierarchy') {
         $grouped = [];
