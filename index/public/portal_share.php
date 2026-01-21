@@ -69,13 +69,13 @@ try {
     $proxyUrl = '/api/portal_share_proxy.php?s=' . urlencode($shareToken) . '&url=' . urlencode($fileUrl);
     $downloadUrl = $proxyUrl . '&download=' . urlencode($share['deliverable_name']);
     
-    // 判断文件类型
+    // 判断文件类型 - 只保留图片预览，关闭PDF和视频预览
     $fileName = $share['deliverable_name'];
     $ext = strtolower(pathinfo($fileName, PATHINFO_EXTENSION));
     $isImage = in_array($ext, ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp']);
-    $isPdf = $ext === 'pdf';
-    $isVideo = in_array($ext, ['mp4', 'webm', 'mov', 'avi']);
-    $canPreview = $isImage || $isPdf || $isVideo;
+    $isPdf = false; // 关闭PDF预览
+    $isVideo = false; // 关闭视频预览
+    $canPreview = $isImage;
     
     // 格式化文件大小
     $fileSize = (int)$share['file_size'];

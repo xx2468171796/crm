@@ -28,10 +28,11 @@ type PreviewFileType = 'image' | 'video' | 'audio' | 'pdf' | 'unknown';
 
 function getFileType(filename: string): PreviewFileType {
   const ext = filename.split('.').pop()?.toLowerCase() || '';
+  // 只保留图片预览，关闭PDF和视频预览
   if (['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'svg'].includes(ext)) return 'image';
-  if (['mp4', 'webm', 'ogg', 'mov', 'avi'].includes(ext)) return 'video';
-  if (['mp3', 'wav', 'ogg', 'aac', 'flac', 'm4a'].includes(ext)) return 'audio';
-  if (ext === 'pdf') return 'pdf';
+  // if (['mp4', 'webm', 'ogg', 'mov', 'avi'].includes(ext)) return 'video';
+  // if (['mp3', 'wav', 'ogg', 'aac', 'flac', 'm4a'].includes(ext)) return 'audio';
+  // if (ext === 'pdf') return 'pdf';
   return 'unknown';
 }
 
