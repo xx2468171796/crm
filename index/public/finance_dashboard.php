@@ -499,22 +499,23 @@ if ($status !== '') {
     }
 }
 
+// 按合同签约时间筛选
 if ($dueStart !== '') {
     if ($viewMode === 'installment') {
-        $sql .= ' AND i.due_date >= :due_start';
+        $sql .= ' AND c.sign_date >= :due_start';
         $params['due_start'] = $dueStart;
     } elseif ($viewMode === 'contract') {
-        $sql .= ' AND i.due_date >= :due_start';
+        $sql .= ' AND c.sign_date >= :due_start';
         $params['due_start'] = $dueStart;
     }
 }
 
 if ($dueEnd !== '') {
     if ($viewMode === 'installment') {
-        $sql .= ' AND i.due_date <= :due_end';
+        $sql .= ' AND c.sign_date <= :due_end';
         $params['due_end'] = $dueEnd;
     } elseif ($viewMode === 'contract') {
-        $sql .= ' AND i.due_date <= :due_end';
+        $sql .= ' AND c.sign_date <= :due_end';
         $params['due_end'] = $dueEnd;
     }
 }
@@ -558,12 +559,13 @@ if ($viewMode === 'contract' || $viewMode === 'installment') {
         $sumSql .= ' AND cu.activity_tag = :activity_tag';
         $sumParams['activity_tag'] = $activityTag;
     }
+    // 按合同签约时间筛选
     if ($dueStart !== '') {
-        $sumSql .= ' AND i.due_date >= :due_start';
+        $sumSql .= ' AND c.sign_date >= :due_start';
         $sumParams['due_start'] = $dueStart;
     }
     if ($dueEnd !== '') {
-        $sumSql .= ' AND i.due_date <= :due_end';
+        $sumSql .= ' AND c.sign_date <= :due_end';
         $sumParams['due_end'] = $dueEnd;
     }
     if ($status !== '') {
@@ -850,14 +852,15 @@ finance_sidebar_start('finance_dashboard');
                         <option value="" selected>（汇总不按状态筛）</option>
                     <?php endif; ?>
                 </select>
+                <span class="text-muted small">签约时间:</span>
                 <select class="form-select form-select-sm" name="period" id="dashboardPeriodSelect" style="width:auto;">
                     <option value="" <?= ($period === '' && $dueStart === '' && $dueEnd === '') ? 'selected' : '' ?>>所有时间</option>
                     <option value="this_month" <?= $period === 'this_month' ? 'selected' : '' ?>>本月</option>
                     <option value="last_month" <?= $period === 'last_month' ? 'selected' : '' ?>>上月</option>
                     <option value="custom" <?= ($period === 'custom' || ($period === '' && ($dueStart !== '' || $dueEnd !== ''))) ? 'selected' : '' ?>>自定义</option>
                 </select>
-                <input type="date" class="form-control form-control-sm" name="due_start" value="<?= htmlspecialchars($dueStart) ?>" style="width:130px;" placeholder="开始日期">
-                <input type="date" class="form-control form-control-sm" name="due_end" value="<?= htmlspecialchars($dueEnd) ?>" style="width:130px;" placeholder="结束日期">
+                <input type="date" class="form-control form-control-sm" name="due_start" value="<?= htmlspecialchars($dueStart) ?>" style="width:130px;" placeholder="签约开始" title="合同签约开始日期">
+                <input type="date" class="form-control form-control-sm" name="due_end" value="<?= htmlspecialchars($dueEnd) ?>" style="width:130px;" placeholder="签约结束" title="合同签约结束日期">
                 <select class="form-select form-select-sm" name="per_page" style="width:auto;" onchange="this.form.submit()">
                     <option value="20" <?= $perPage == 20 ? 'selected' : '' ?>>20条</option>
                     <option value="50" <?= $perPage == 50 ? 'selected' : '' ?>>50条</option>
