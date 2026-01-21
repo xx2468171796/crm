@@ -11,6 +11,9 @@ ini_set('display_startup_errors', 0);
 ini_set('html_errors', 0);
 
 header('Content-Type: application/json; charset=utf-8');
+header('Cache-Control: no-cache, no-store, must-revalidate');
+header('Pragma: no-cache');
+header('Expires: 0');
 
 require_once __DIR__ . '/../core/db.php';
 require_once __DIR__ . '/../core/auth.php';
