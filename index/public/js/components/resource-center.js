@@ -393,6 +393,9 @@ const ResourceCenter = (function() {
             const response = await fetch(url);
             const result = await response.json();
             
+            console.log('[RC_DEBUG] loadFiles URL:', url);
+            console.log('[RC_DEBUG] loadFiles response:', result.success, 'count:', (result.data || []).length);
+            
             if (result.success) {
                 renderFileList(result.data || []);
             }
