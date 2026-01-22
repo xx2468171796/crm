@@ -1021,21 +1021,31 @@ finance_sidebar_start('finance_dashboard');
         return useFloating ? r.floating : r.fixed;
     }
     
+    // 将金额从原始货币转换到目标货币
+    function convertToTarget(amount, fromCode, toCode, useFloating) {
+        if (fromCode === toCode) return amount;
+        // 先转换到CNY，再转换到目标货币
+        const fromRate = getRate(fromCode, useFloating);
+        const toRate = getRate(toCode, useFloating);
+        // 汇率是相对于CNY的，所以 amount / fromRate = CNY金额，CNY金额 * toRate = 目标货币金额
+        return (amount / fromRate) * toRate;
+    }
+    
     function updateAmountDisplay() {
         const mode = document.getElementById('dashAmountMode')?.value || 'fixed';
         let due = 0, paid = 0, unpaid = 0, currency = '';
+        const useFloating = (mode === 'floating');
         
         if (mode === 'original') {
-            // 原始金额：按各货币分别显示或汇总（这里先简单汇总显示）
+            // 原始金额模式：统一转换为TWD
             Object.keys(sumByCurrency).forEach(code => {
-                due += sumByCurrency[code].sum_due;
-                paid += sumByCurrency[code].sum_paid;
-                unpaid += sumByCurrency[code].sum_unpaid;
+                due += convertToTarget(sumByCurrency[code].sum_due, code, 'TWD', false);
+                paid += convertToTarget(sumByCurrency[code].sum_paid, code, 'TWD', false);
+                unpaid += convertToTarget(sumByCurrency[code].sum_unpaid, code, 'TWD', false);
             });
-            currency = '(混合货币)';
+            currency = 'TWD';
         } else {
             // 转换到CNY
-            const useFloating = (mode === 'floating');
             Object.keys(sumByCurrency).forEach(code => {
                 const rate = getRate(code, useFloating);
                 due += sumByCurrency[code].sum_due / rate;
@@ -1066,12 +1076,19 @@ finance_sidebar_start('finance_dashboard');
             const convertedEl = cell.querySelector('.amount-converted');
             
             if (mode === 'original') {
-                // 原始模式：隐藏折算金额
-                if (convertedEl) convertedEl.style.display = 'none';
+                // 原始模式：非TWD货币显示转换后的TWD金额
+                if (currency === 'TWD') {
+                    if (convertedEl) convertedEl.style.display = 'none';
+                } else {
+                    const converted = convertToTarget(amount, currency, 'TWD', false);
+                    if (convertedEl) {
+                        convertedEl.textContent = '≈ ' + fmt(converted) + ' TWD';
+                        convertedEl.style.display = 'block';
+                    }
+                }
             } else {
                 // 折算模式：只有非CNY货币才显示折算金额
                 if (currency === 'CNY') {
-                    // CNY不需要折算
                     if (convertedEl) convertedEl.style.display = 'none';
                 } else {
                     const rate = getRate(currency, useFloating);
