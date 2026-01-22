@@ -185,6 +185,9 @@ $routes = [
     
     // S3加速节点配置
     'admin_s3_acceleration' => __DIR__ . '/admin_s3_acceleration.php',
+    
+    // 个人网盘管理
+    'admin_personal_drives' => __DIR__ . '/admin_personal_drives.php',
 ];
 
 if (!isset($routes[$page])) {

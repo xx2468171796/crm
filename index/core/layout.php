@@ -401,6 +401,7 @@ function layout_header(string $title = 'ANKOTTI 客户跟进系统', bool $showN
                         <li><a class="dropdown-item" href="index.php?page=admin_evaluation_config">⭐ 评价模板配置</a></li>
                         <li><a class="dropdown-item" href="index.php?page=admin_share_regions">🌐 分享节点配置</a></li>
                         <li><a class="dropdown-item" href="index.php?page=admin_s3_acceleration">🚀 S3加速节点</a></li>
+                        <li><a class="dropdown-item" href="index.php?page=admin_personal_drives">💾 网盘管理</a></li>
                         <li><hr class="dropdown-divider"></li>
                         <li><h6 class="dropdown-header">表单配置</h6></li>
                         <li><a class="dropdown-item" href="index.php?page=admin_form_templates">📝 需求表单管理</a></li>
