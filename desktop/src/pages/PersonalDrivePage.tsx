@@ -3,7 +3,7 @@ import { useAuthStore } from '@/stores/auth';
 import { useSettingsStore } from '@/stores/settings';
 import { useToast } from '@/hooks/use-toast';
 import {
-  HardDrive, Upload, Download, Trash2, Share2, Folder, File, RefreshCw,
+  HardDrive, Upload, Trash2, Share2, Folder, RefreshCw,
   ChevronRight, Copy, Lock, Clock, Check, X, ArrowLeft
 } from 'lucide-react';
 
@@ -46,7 +46,8 @@ export default function PersonalDrivePage() {
   const [folders, setFolders] = useState<string[]>([]);
   const [currentPath, setCurrentPath] = useState('/');
   const [storage, setStorage] = useState<StorageInfo | null>(null);
-  const [driveId, setDriveId] = useState<number | null>(null);
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const [_driveId, setDriveId] = useState<number | null>(null);
 
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<{ current: number; total: number; filename: string } | null>(null);
