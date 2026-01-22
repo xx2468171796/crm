@@ -1469,17 +1469,42 @@ function dashRefreshView() {
                 // 优先使用后端传递的完整分组统计，如果不存在则使用当前页计算的数据
                 const configEl = document.getElementById('dashboardConfig');
                 let finalSums = sums;
+                let byCurrencyData = {};
+                
+                // 计算按货币转换后的合计
+                const calcSumsFromByCurrency = (byCurrency) => {
+                    const mode = document.getElementById('dashAmountMode')?.value || 'fixed';
+                    const useFloating = (mode === 'floating');
+                    const targetCurrency = (mode === 'original') ? 'TWD' : 'CNY';
+                    let sumDue = 0, sumPaid = 0, sumUnpaid = 0;
+                    Object.keys(byCurrency || {}).forEach(code => {
+                        const data = byCurrency[code];
+                        const rate = getExchangeRate(code, useFloating);
+                        if (targetCurrency === 'TWD') {
+                            const twdRate = getExchangeRate('TWD', useFloating);
+                            sumDue += (data.sum_due / rate) * twdRate;
+                            sumPaid += (data.sum_paid / rate) * twdRate;
+                            sumUnpaid += (data.sum_unpaid / rate) * twdRate;
+                        } else {
+                            sumDue += data.sum_due / rate;
+                            sumPaid += data.sum_paid / rate;
+                            sumUnpaid += data.sum_unpaid / rate;
+                        }
+                    });
+                    return { sumDue, sumPaid, sumUnpaid };
+                };
+                
                 if (key === 'sales_user') {
                     const groupStatsJson = configEl?.getAttribute('data-group-stats');
                     if (groupStatsJson) {
                         try {
                             const groupStats = JSON.parse(groupStatsJson);
                             if (groupStats[val]) {
+                                byCurrencyData = groupStats[val].by_currency || {};
+                                const calcSums = calcSumsFromByCurrency(byCurrencyData);
                                 finalSums = {
                                     count: groupStats[val].count,
-                                    sumDue: groupStats[val].sum_due,
-                                    sumPaid: groupStats[val].sum_paid,
-                                    sumUnpaid: groupStats[val].sum_unpaid
+                                    ...calcSums
                                 };
                             }
                         } catch (e) {
@@ -1492,11 +1517,11 @@ function dashRefreshView() {
                         try {
                             const ownerGroupStats = JSON.parse(ownerGroupStatsJson);
                             if (ownerGroupStats[val]) {
+                                byCurrencyData = ownerGroupStats[val].by_currency || {};
+                                const calcSums = calcSumsFromByCurrency(byCurrencyData);
                                 finalSums = {
                                     count: ownerGroupStats[val].count,
-                                    sumDue: ownerGroupStats[val].sum_due,
-                                    sumPaid: ownerGroupStats[val].sum_paid,
-                                    sumUnpaid: ownerGroupStats[val].sum_unpaid
+                                    ...calcSums
                                 };
                             }
                         } catch (e) {
@@ -1508,6 +1533,7 @@ function dashRefreshView() {
                 const header = document.createElement('tr');
                 header.className = 'table-light dash-group-row';
                 header.setAttribute('data-group-header', groupId);
+                header.setAttribute('data-by-currency', JSON.stringify(byCurrencyData));
                 header.setAttribute('data-sum-due', finalSums.sumDue);
                 header.setAttribute('data-sum-paid', finalSums.sumPaid);
                 header.setAttribute('data-sum-unpaid', finalSums.sumUnpaid);
