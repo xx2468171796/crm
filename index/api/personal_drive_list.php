@@ -36,11 +36,11 @@ try {
         $drive = $stmt->fetch(PDO::FETCH_ASSOC);
     }
     
-    // 获取文件列表
+    // 获取文件列表（排除.folder占位文件）
     $stmt = $pdo->prepare("
         SELECT id, filename, original_filename, folder_path, storage_key, file_size, file_type, upload_source, create_time
         FROM drive_files 
-        WHERE drive_id = ? AND folder_path = ?
+        WHERE drive_id = ? AND folder_path = ? AND filename != '.folder'
         ORDER BY create_time DESC
     ");
     $stmt->execute([$drive['id'], $folderPath]);
