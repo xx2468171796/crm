@@ -1061,19 +1061,24 @@ finance_sidebar_start('finance_dashboard');
         
         document.querySelectorAll('.amount-cell').forEach(cell => {
             const amount = parseFloat(cell.getAttribute('data-amount') || 0);
-            const currency = cell.getAttribute('data-currency') || 'TWD';
+            const currency = (cell.getAttribute('data-currency') || 'TWD').toUpperCase();
             const convertedEl = cell.querySelector('.amount-converted');
             
             if (mode === 'original') {
                 // 原始模式：隐藏折算金额
                 if (convertedEl) convertedEl.style.display = 'none';
             } else {
-                // 折算模式：显示折算后的CNY金额
-                const rate = getRate(currency, useFloating);
-                const converted = amount / rate;
-                if (convertedEl) {
-                    convertedEl.textContent = '≈ ' + fmt(converted) + ' CNY';
-                    convertedEl.style.display = 'block';
+                // 折算模式：只有非CNY货币才显示折算金额
+                if (currency === 'CNY') {
+                    // CNY不需要折算
+                    if (convertedEl) convertedEl.style.display = 'none';
+                } else {
+                    const rate = getRate(currency, useFloating);
+                    const converted = amount / rate;
+                    if (convertedEl) {
+                        convertedEl.textContent = '≈ ' + fmt(converted) + ' CNY';
+                        convertedEl.style.display = 'block';
+                    }
                 }
             }
         });
