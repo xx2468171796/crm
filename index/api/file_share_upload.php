@@ -167,42 +167,52 @@ try {
     }
     
     // 记录到deliverables表
+    $now = time();
     $stmt = $pdo->prepare("
         INSERT INTO deliverables 
-        (project_id, file_path, file_name, file_size, category, storage_key, upload_source, create_time)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        (project_id, deliverable_name, deliverable_type, file_category, file_path, file_size, 
+         visibility_level, approval_status, submitted_at, create_time, update_time)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ");
     $stmt->execute([
         $link['project_id'],
-        $basePath . '/' . $uniqueName,
         $storedName,
-        $file['size'],
-        '客户文件',
+        'share_upload',
+        'customer_file',
         $storageKey,
-        'share_link',
-        time()
+        $file['size'],
+        'client',
+        'approved',
+        $now,
+        $now,
+        $now
     ]);
     
     $deliverableId = $pdo->lastInsertId();
     
-    // 记录到file_share_uploads表
-    $stmt = $pdo->prepare("
-        INSERT INTO file_share_uploads 
-        (share_link_id, project_id, deliverable_id, original_filename, stored_filename, file_size, file_path, storage_key, uploader_ip, create_time)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    ");
-    $stmt->execute([
-        $link['id'],
-        $link['project_id'],
-        $deliverableId,
-        $originalName,
-        $storedName,
-        $file['size'],
-        $basePath . '/' . $uniqueName,
-        $storageKey,
-        $_SERVER['REMOTE_ADDR'] ?? '',
-        time()
-    ]);
+    // 记录到file_share_uploads表（如果表存在）
+    try {
+        $stmt = $pdo->prepare("
+            INSERT INTO file_share_uploads 
+            (share_link_id, project_id, deliverable_id, original_filename, stored_filename, file_size, file_path, storage_key, uploader_ip, create_time)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ");
+        $stmt->execute([
+            $link['id'],
+            $link['project_id'],
+            $deliverableId,
+            $originalName,
+            $storedName,
+            $file['size'],
+            $storageKey,
+            $storageKey,
+            $_SERVER['REMOTE_ADDR'] ?? '',
+            $now
+        ]);
+    } catch (PDOException $e) {
+        // 表不存在时忽略错误，不影响主流程
+        error_log('file_share_uploads insert failed: ' . $e->getMessage());
+    }
     
     // 更新访问次数
     $stmt = $pdo->prepare("UPDATE file_share_links SET visit_count = visit_count + 1 WHERE id = ?");
