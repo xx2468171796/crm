@@ -68,7 +68,7 @@ try {
     $stmt->execute([$user['id']]);
     $userInfo = $stmt->fetch(PDO::FETCH_ASSOC);
     $deptName = $userInfo['dept_name'] ?? '未分配部门';
-    $userName = $user['name'] ?? $user['username'];
+    $userName = $user['realname'] ?? $user['username'];
     
     // 生成存储路径: 部门/用户名/网盘文件/
     $config = require __DIR__ . '/../config/storage.php';
