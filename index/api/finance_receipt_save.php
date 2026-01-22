@@ -21,7 +21,7 @@ $prepayAmountStr = trim($_POST['prepay_amount'] ?? '');
 $method = trim($_POST['method'] ?? '');
 $note = trim($_POST['note'] ?? '');
 $collectorUserId = (int)($_POST['collector_user_id'] ?? 0);
-$currency = trim($_POST['currency'] ?? 'TWD');
+$currency = trim($_POST['currency'] ?? $_POST['receive_currency'] ?? 'TWD');
 
 // 验证货币代码
 $validCurrencies = ['CNY', 'TWD', 'USD', 'GBP', 'SGD', 'HKD'];
