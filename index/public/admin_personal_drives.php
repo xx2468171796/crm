@@ -81,7 +81,7 @@ if ($selectedDriveId > 0) {
     $selectedDriveFiles = $stmt->fetchAll(PDO::FETCH_ASSOC);
 }
 
-renderHeader('个人网盘管理');
+layout_header('个人网盘管理');
 ?>
 
 <style>
@@ -309,4 +309,4 @@ renderHeader('个人网盘管理');
     }
 </script>
 
-<?php renderFooter(); ?>
+<?php layout_footer(); ?>
