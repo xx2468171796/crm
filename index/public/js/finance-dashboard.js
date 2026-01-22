@@ -21,8 +21,7 @@ const DashboardConfig = {
 
 // ==================== 汇率配置 ====================
 let DashboardExchangeRate = {
-    fixedRate: 4.5,
-    floatingRate: 4.5,
+    rates: {},  // 按货币代码存储汇率 { TWD: {fixed: 4.5, floating: 4.5}, USD: {...} }
     loaded: false
 };
 
@@ -33,10 +32,16 @@ function loadDashboardExchangeRate() {
         .then(r => r.json())
         .then(res => {
             if (res.success && res.data) {
-                const twd = res.data.find(c => c.code === 'TWD');
-                if (twd) {
-                    DashboardExchangeRate.fixedRate = parseFloat(twd.fixed_rate) || 4.5;
-                    DashboardExchangeRate.floatingRate = parseFloat(twd.floating_rate) || DashboardExchangeRate.fixedRate;
+                res.data.forEach(c => {
+                    DashboardExchangeRate.rates[c.code] = {
+                        fixed: parseFloat(c.fixed_rate) || 1,
+                        floating: parseFloat(c.floating_rate) || parseFloat(c.fixed_rate) || 1,
+                        isBase: c.is_base
+                    };
+                });
+                // CNY是基准货币，汇率为1
+                if (!DashboardExchangeRate.rates['CNY']) {
+                    DashboardExchangeRate.rates['CNY'] = { fixed: 1, floating: 1, isBase: true };
                 }
             }
             DashboardExchangeRate.loaded = true;
@@ -44,20 +49,42 @@ function loadDashboardExchangeRate() {
         .catch(() => { DashboardExchangeRate.loaded = true; });
 }
 
-// 根据汇率模式格式化金额
-function formatAmountByRate(amountTWD) {
+// 获取货币汇率（转换到CNY）
+function getCurrencyRate(currencyCode, useFloating = false) {
+    const rates = DashboardExchangeRate.rates;
+    const code = (currencyCode || 'TWD').toUpperCase();
+    if (code === 'CNY') return 1;
+    const rate = rates[code];
+    if (!rate) return rates['TWD']?.fixed || 4.5;  // 默认用TWD汇率
+    return useFloating ? rate.floating : rate.fixed;
+}
+
+// 将金额从原始货币转换到CNY
+function convertToCNY(amount, currencyCode, useFloating = false) {
+    const rate = getCurrencyRate(currencyCode, useFloating);
+    return amount / rate;
+}
+
+// 根据汇率模式格式化金额（支持多货币）
+function formatAmountByRate(amount, currencyCode) {
     const mode = document.getElementById('dashAmountMode')?.value || 'fixed';
-    let amount = amountTWD;
+    let result = amount;
+    const code = (currencyCode || 'TWD').toUpperCase();
     
     if (mode === 'original') {
         // 原始金额不转换
     } else if (mode === 'fixed') {
-        amount = amountTWD / DashboardExchangeRate.fixedRate;
+        result = convertToCNY(amount, code, false);
     } else {
-        amount = amountTWD / DashboardExchangeRate.floatingRate;
+        result = convertToCNY(amount, code, true);
     }
     
-    return amount.toLocaleString('zh-CN', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+    return result.toLocaleString('zh-CN', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+}
+
+// 兼容旧调用（假设TWD）
+function formatAmountByRateTWD(amountTWD) {
+    return formatAmountByRate(amountTWD, 'TWD');
 }
 
 // 更新所有分组合计显示（汇率切换时调用）

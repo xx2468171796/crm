@@ -542,6 +542,7 @@ $totalPages = (int)ceil($total / $perPage);
 
 // 汇总统计
 $sumRow = ['contract_count' => 0, 'installment_count' => 0, 'sum_due' => 0, 'sum_paid' => 0, 'sum_unpaid' => 0];
+$sumByCurrency = [];  // 按货币分别统计
 if ($viewMode === 'contract' || $viewMode === 'installment') {
     $sumParams = [];
     $sumSql = 'SELECT 
@@ -610,6 +611,22 @@ if ($viewMode === 'contract' || $viewMode === 'installment') {
         $sumParams['focus_user_id'] = $focusUserId;
     }
     $sumRow = Db::queryOne($sumSql, $sumParams) ?: $sumRow;
+    
+    // 按货币分别统计（用于前端汇率转换）
+    $sumByCurrencySql = str_replace(
+        'SELECT',
+        'SELECT c.currency,',
+        $sumSql
+    ) . ' GROUP BY c.currency';
+    $currencyRows = Db::query($sumByCurrencySql, $sumParams);
+    foreach ($currencyRows as $cr) {
+        $code = $cr['currency'] ?: 'TWD';
+        $sumByCurrency[$code] = [
+            'sum_due' => (float)($cr['sum_due'] ?? 0),
+            'sum_paid' => (float)($cr['sum_paid'] ?? 0),
+            'sum_unpaid' => (float)($cr['sum_unpaid'] ?? 0),
+        ];
+    }
 }
 
 $sql .= ($viewMode === 'contract'
@@ -980,41 +997,51 @@ finance_sidebar_start('finance_dashboard');
 </div>
 <script>
 (function() {
-    const sumDueTWD = <?= (float)($sumRow['sum_due'] ?? 0) ?>;
-    const sumPaidTWD = <?= (float)($sumRow['sum_paid'] ?? 0) ?>;
-    const sumUnpaidTWD = <?= (float)($sumRow['sum_unpaid'] ?? 0) ?>;
-    let fixedRate = 4.5, floatingRate = 4.5;
+    // 按货币分别统计的金额
+    const sumByCurrency = <?= json_encode($sumByCurrency, JSON_UNESCAPED_UNICODE) ?>;
+    let rates = {};  // 各货币汇率
     
     fetch(API_URL + '/exchange_rate_list.php').then(r => r.json()).then(res => {
         if (res.success && res.data) {
-            const twd = res.data.find(c => c.code === 'TWD');
-            if (twd) {
-                fixedRate = parseFloat(twd.fixed_rate) || 4.5;
-                floatingRate = parseFloat(twd.floating_rate) || fixedRate;
-            }
+            res.data.forEach(c => {
+                rates[c.code] = {
+                    fixed: parseFloat(c.fixed_rate) || 1,
+                    floating: parseFloat(c.floating_rate) || parseFloat(c.fixed_rate) || 1
+                };
+            });
+            rates['CNY'] = { fixed: 1, floating: 1 };
             updateAmountDisplay();
         }
     }).catch(() => {});
     
+    function getRate(code, useFloating) {
+        if (code === 'CNY') return 1;
+        const r = rates[code] || rates['TWD'] || { fixed: 4.5, floating: 4.5 };
+        return useFloating ? r.floating : r.fixed;
+    }
+    
     function updateAmountDisplay() {
         const mode = document.getElementById('dashAmountMode')?.value || 'fixed';
-        let due, paid, unpaid, currency = '';
+        let due = 0, paid = 0, unpaid = 0, currency = '';
         
         if (mode === 'original') {
-            due = sumDueTWD;
-            paid = sumPaidTWD;
-            unpaid = sumUnpaidTWD;
-            currency = 'TWD';
-        } else if (mode === 'fixed') {
-            due = sumDueTWD / fixedRate;
-            paid = sumPaidTWD / fixedRate;
-            unpaid = sumUnpaidTWD / fixedRate;
-            currency = 'CNY (固定' + fixedRate.toFixed(2) + ')';
+            // 原始金额：按各货币分别显示或汇总（这里先简单汇总显示）
+            Object.keys(sumByCurrency).forEach(code => {
+                due += sumByCurrency[code].sum_due;
+                paid += sumByCurrency[code].sum_paid;
+                unpaid += sumByCurrency[code].sum_unpaid;
+            });
+            currency = '(混合货币)';
         } else {
-            due = sumDueTWD / floatingRate;
-            paid = sumPaidTWD / floatingRate;
-            unpaid = sumUnpaidTWD / floatingRate;
-            currency = 'CNY (浮动' + floatingRate.toFixed(2) + ')';
+            // 转换到CNY
+            const useFloating = (mode === 'floating');
+            Object.keys(sumByCurrency).forEach(code => {
+                const rate = getRate(code, useFloating);
+                due += sumByCurrency[code].sum_due / rate;
+                paid += sumByCurrency[code].sum_paid / rate;
+                unpaid += sumByCurrency[code].sum_unpaid / rate;
+            });
+            currency = 'CNY';
         }
         
         const fmt = (v) => v.toLocaleString('zh-CN', {minimumFractionDigits: 2, maximumFractionDigits: 2});
