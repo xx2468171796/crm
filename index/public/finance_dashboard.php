@@ -573,11 +573,11 @@ if ($dueEnd !== '') {
 if ($receiptStart !== '' || $receiptEnd !== '') {
     $receiptCondition = '1=1';
     if ($receiptStart !== '') {
-        $receiptCondition .= ' AND r.receipt_time >= :receipt_start';
+        $receiptCondition .= ' AND r.received_date >= :receipt_start';
         $params['receipt_start'] = $receiptStart . ' 00:00:00';
     }
     if ($receiptEnd !== '') {
-        $receiptCondition .= ' AND r.receipt_time <= :receipt_end';
+        $receiptCondition .= ' AND r.received_date <= :receipt_end';
         $params['receipt_end'] = $receiptEnd . ' 23:59:59';
     }
     $sql .= ' AND EXISTS (SELECT 1 FROM finance_receipts r WHERE r.contract_id = c.id AND ' . $receiptCondition . ')';
@@ -665,11 +665,11 @@ if ($viewMode === 'contract' || $viewMode === 'installment') {
     if ($receiptStart !== '' || $receiptEnd !== '') {
         $receiptCondition = '1=1';
         if ($receiptStart !== '') {
-            $receiptCondition .= ' AND r.receipt_time >= :receipt_start';
+            $receiptCondition .= ' AND r.received_date >= :receipt_start';
             $sumParams['receipt_start'] = $receiptStart . ' 00:00:00';
         }
         if ($receiptEnd !== '') {
-            $receiptCondition .= ' AND r.receipt_time <= :receipt_end';
+            $receiptCondition .= ' AND r.received_date <= :receipt_end';
             $sumParams['receipt_end'] = $receiptEnd . ' 23:59:59';
         }
         $sumSql .= ' AND EXISTS (SELECT 1 FROM finance_receipts r WHERE r.contract_id = c.id AND ' . $receiptCondition . ')';
@@ -775,11 +775,11 @@ if ($viewMode === 'contract') {
     if ($receiptStart !== '' || $receiptEnd !== '') {
         $receiptCondition = '1=1';
         if ($receiptStart !== '') {
-            $receiptCondition .= ' AND r.receipt_time >= :receipt_start';
+            $receiptCondition .= ' AND r.received_date >= :receipt_start';
             $groupStatsParams['receipt_start'] = $receiptStart . ' 00:00:00';
         }
         if ($receiptEnd !== '') {
-            $receiptCondition .= ' AND r.receipt_time <= :receipt_end';
+            $receiptCondition .= ' AND r.received_date <= :receipt_end';
             $groupStatsParams['receipt_end'] = $receiptEnd . ' 23:59:59';
         }
         $groupStatsSql .= ' AND EXISTS (SELECT 1 FROM finance_receipts r WHERE r.contract_id = c.id AND ' . $receiptCondition . ')';
@@ -866,11 +866,11 @@ if ($viewMode === 'contract') {
     if ($receiptStart !== '' || $receiptEnd !== '') {
         $receiptCondition = '1=1';
         if ($receiptStart !== '') {
-            $receiptCondition .= ' AND r.receipt_time >= :receipt_start';
+            $receiptCondition .= ' AND r.received_date >= :receipt_start';
             $ownerGroupStatsParams['receipt_start'] = $receiptStart . ' 00:00:00';
         }
         if ($receiptEnd !== '') {
-            $receiptCondition .= ' AND r.receipt_time <= :receipt_end';
+            $receiptCondition .= ' AND r.received_date <= :receipt_end';
             $ownerGroupStatsParams['receipt_end'] = $receiptEnd . ' 23:59:59';
         }
         $ownerGroupStatsSql .= ' AND EXISTS (SELECT 1 FROM finance_receipts r WHERE r.contract_id = c.id AND ' . $receiptCondition . ')';
