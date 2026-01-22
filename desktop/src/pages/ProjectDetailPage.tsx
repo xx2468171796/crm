@@ -1090,7 +1090,8 @@ export default function ProjectDetailPage() {
 
   const getGroupFolderName = () => {
     const groupCode = customer?.group_code || (project?.id ? `P${project.id}` : 'P0');
-    const groupName = (customer?.customer_group_name || '').replace(/[\/\\:*?"<>|]/g, '_');
+    // 与看板页保持一致：优先使用customer_group_name，备选customer.name
+    const groupName = (customer?.customer_group_name || customer?.name || '').replace(/[\/\\:*?"<>|]/g, '_');
     return groupName ? `${groupCode}_${groupName}` : groupCode;
   };
   

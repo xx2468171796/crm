@@ -102,6 +102,9 @@ class ProjectService {
                 [$projectId, $oldStatus, $newStatus, $operatorId, $now, $notes]
             );
             
+            // 同步更新阶段时间表状态（关键：确保门户端进度条正确显示）
+            $this->syncStageTimeStatus($projectId, $newStatus);
+            
             // 记录时间线
             $this->recordTimeline($projectId, '状态变更', $operatorId, [
                 'from_status' => $oldStatus,
@@ -386,6 +389,48 @@ class ProjectService {
             'is_completed' => $isCompleted,
             'date_range' => $firstStartDate && $lastEndDate ? "{$firstStartDate} ~ {$lastEndDate}" : null
         ];
+    }
+    
+    /**
+     * 同步更新阶段时间表状态
+     * 根据项目当前状态更新 project_stage_times 表中各阶段的 status 字段
+     * 
+     * @param int $projectId 项目ID
+     * @param string $currentStatus 当前项目状态
+     */
+    private function syncStageTimeStatus(int $projectId, string $currentStatus): void {
+        $currentOrder = self::STAGES[$currentStatus]['order'] ?? 0;
+        
+        // 获取所有阶段时间记录
+        $stages = Db::query("
+            SELECT id, stage_to, stage_order 
+            FROM project_stage_times 
+            WHERE project_id = ? 
+            ORDER BY stage_order ASC
+        ", [$projectId]);
+        
+        if (empty($stages)) {
+            return;
+        }
+        
+        foreach ($stages as $stage) {
+            $stageOrder = (int)$stage['stage_order'];
+            $newStageStatus = 'pending';
+            
+            if ($stageOrder < $currentOrder) {
+                // 已完成的阶段
+                $newStageStatus = 'completed';
+            } elseif ($stageOrder === $currentOrder) {
+                // 当前进行中的阶段
+                $newStageStatus = 'in_progress';
+            }
+            // 后续阶段保持 pending
+            
+            Db::execute(
+                "UPDATE project_stage_times SET status = ?, updated_at = NOW() WHERE id = ?",
+                [$newStageStatus, $stage['id']]
+            );
+        }
     }
     
     /**
