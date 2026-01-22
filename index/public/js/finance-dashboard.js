@@ -465,7 +465,7 @@ function applyDashboardFilters() {
     const dueEnd = form.querySelector('input[name="due_end"]')?.value || '';
     if (dueEnd) params.set('due_end', dueEnd);
     
-    const perPage = form.querySelector('select[name="per_page"]')?.value || '20';
+    const perPage = form.querySelector('input[name="per_page"]')?.value || form.querySelector('select[name="per_page"]')?.value || '9999999';
     params.set('per_page', perPage);
     
     const groupBy = form.querySelector('input[name="group_by"]')?.value || form.querySelector('select[name="group_by"]')?.value || 'sales';
@@ -2164,7 +2164,7 @@ const AjaxDashboard = {
         const filters = this.collectFilters();
         const groupBy = this.collectGroupBy();
         const page = options.page || 1;
-        const perPage = options.perPage || 999999;  // 一次性加载所有数据
+        const perPage = options.perPage || 9999999;  // 一次性加载所有数据
 
         const payload = {
             viewMode,
