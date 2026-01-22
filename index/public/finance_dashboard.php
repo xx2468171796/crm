@@ -923,38 +923,6 @@ $prepayMonthOut = (float)($prepayStats['month_out'] ?? 0);
 finance_sidebar_start('finance_dashboard');
 ?>
 
-<!-- 顶部工具栏 -->
-<div class="d-flex justify-content-end align-items-center flex-wrap gap-2 mb-2">
-    <div class="d-flex align-items-center gap-2">
-        <!-- 视图选择下拉（含操作菜单） -->
-        <div class="dropdown">
-            <button class="btn btn-outline-secondary btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown" data-bs-auto-close="outside">
-                <i class="bi bi-filter me-1"></i><span id="viewSelectLabel">视图</span>
-            </button>
-            <div class="dropdown-menu p-2" style="min-width:220px;">
-                <label class="form-label small text-muted mb-1">选择视图</label>
-                <select class="form-select form-select-sm mb-2" id="viewSelect">
-                    <option value="0">（不使用视图）</option>
-                </select>
-                <div class="d-grid gap-1">
-                    <button type="button" class="btn btn-outline-primary btn-sm" id="btnSaveView">
-                        <i class="bi bi-save me-1"></i>保存当前筛选
-                    </button>
-                    <button type="button" class="btn btn-outline-secondary btn-sm" id="btnSetDefaultView">
-                        <i class="bi bi-star me-1"></i>设为默认
-                    </button>
-                    <button type="button" class="btn btn-outline-danger btn-sm" id="btnDeleteView">
-                        <i class="bi bi-trash me-1"></i>删除视图
-                    </button>
-                </div>
-            </div>
-        </div>
-        <a href="index.php?page=finance_prepay_report" class="btn btn-outline-primary btn-sm">
-            <i class="bi bi-file-earmark-bar-graph me-1"></i>报表
-        </a>
-    </div>
-</div>
-
 
 <!-- 筛选区域：常用筛选 + 折叠高级筛选 -->
 <div class="card mb-2">
