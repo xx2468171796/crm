@@ -156,10 +156,11 @@ try {
     // 上传到S3
     $s3 = new S3StorageProvider($storageConfig, []);
     $uploadResult = $s3->putObject($storageKey, $file['tmp_name'], [
-        'ContentType' => $file['type'] ?? 'application/octet-stream'
+        'mime_type' => $file['type'] ?? 'application/octet-stream'
     ]);
     
-    if (!$uploadResult || empty($uploadResult['success'])) {
+    // S3StorageProvider返回包含disk, storage_key, bytes的数组
+    if (!$uploadResult || empty($uploadResult['storage_key'])) {
         http_response_code(500);
         echo json_encode(['error' => '文件上传到存储失败']);
         exit;
