@@ -1435,17 +1435,17 @@ finance_sidebar_start('finance_dashboard');
                                         <div class="amount-converted text-info small" style="display:none;"></div>
                                     </td>
                                     <td class="amount-cell" data-amount="<?= (float)($row['total_paid'] ?? 0) ?>" data-currency="<?= htmlspecialchars($contractCurrency) ?>">
-                                        <span class="amount-original"><?= number_format((float)($row['total_paid'] ?? 0), 2) ?></span>
+                                        <span class="amount-original fw-semibold text-success"><?= number_format((float)($row['total_paid'] ?? 0), 2) ?></span>
                                         <small class="text-muted"><?= htmlspecialchars($contractCurrency) ?></small>
-                                        <div class="amount-converted text-info small" style="display:none;"></div>
+                                        <div class="amount-converted text-success small" style="display:none;"></div>
                                     </td>
                                     <td class="amount-cell" data-amount="<?= (float)($row['total_unpaid'] ?? 0) ?>" data-currency="<?= htmlspecialchars($contractCurrency) ?>">
-                                        <span class="amount-original"><?= number_format((float)($row['total_unpaid'] ?? 0), 2) ?></span>
+                                        <span class="amount-original fw-semibold text-danger"><?= number_format((float)($row['total_unpaid'] ?? 0), 2) ?></span>
                                         <small class="text-muted"><?= htmlspecialchars($contractCurrency) ?></small>
                                         <div class="amount-converted text-danger small" style="display:none;"></div>
                                     </td>
                                     <td>
-                                        <span class="badge bg-<?= $badge ?>"><?= htmlspecialchars($statusLabel) ?></span>
+                                        <span class="badge rounded-pill bg-<?= $badge ?>"><?= htmlspecialchars($statusLabel) ?></span>
                                         <div class="small text-muted">最近收款：<?= !empty($row['last_received_date']) ? htmlspecialchars((string)$row['last_received_date']) : '-' ?></div>
                                     </td>
                                     <td>
