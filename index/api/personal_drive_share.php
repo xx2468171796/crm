@@ -4,9 +4,13 @@
  * POST /api/personal_drive_share.php
  */
 
-header('Content-Type: application/json');
+require_once __DIR__ . '/../core/api_init.php';
+
+// CORS
+header('Content-Type: application/json; charset=utf-8');
+
 require_once __DIR__ . '/../core/db.php';
-require_once __DIR__ . '/../core/auth.php';
+require_once __DIR__ . '/../core/desktop_auth.php';
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     http_response_code(405);
@@ -14,12 +18,7 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     exit;
 }
 
-$user = current_user();
-if (!$user) {
-    http_response_code(401);
-    echo json_encode(['error' => 'Unauthorized']);
-    exit;
-}
+$user = desktop_auth_require();
 
 $input = json_decode(file_get_contents('php://input'), true);
 $folderPath = trim($input['folder_path'] ?? '/');

@@ -4,16 +4,15 @@
  * GET /api/personal_drive_list.php?folder_path=/
  */
 
-header('Content-Type: application/json');
-require_once __DIR__ . '/../core/db.php';
-require_once __DIR__ . '/../core/auth.php';
+require_once __DIR__ . '/../core/api_init.php';
 
-$user = current_user();
-if (!$user) {
-    http_response_code(401);
-    echo json_encode(['error' => 'Unauthorized']);
-    exit;
-}
+// CORS
+header('Content-Type: application/json; charset=utf-8');
+
+require_once __DIR__ . '/../core/db.php';
+require_once __DIR__ . '/../core/desktop_auth.php';
+
+$user = desktop_auth_require();
 
 $folderPath = trim($_GET['folder_path'] ?? '/');
 if (empty($folderPath)) $folderPath = '/';

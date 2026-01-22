@@ -4,9 +4,13 @@
  * POST /api/personal_drive_delete.php
  */
 
-header('Content-Type: application/json');
+require_once __DIR__ . '/../core/api_init.php';
+
+// CORS
+header('Content-Type: application/json; charset=utf-8');
+
 require_once __DIR__ . '/../core/db.php';
-require_once __DIR__ . '/../core/auth.php';
+require_once __DIR__ . '/../core/desktop_auth.php';
 require_once __DIR__ . '/../core/storage/storage_provider.php';
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
@@ -15,12 +19,7 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     exit;
 }
 
-$user = current_user();
-if (!$user) {
-    http_response_code(401);
-    echo json_encode(['error' => 'Unauthorized']);
-    exit;
-}
+$user = desktop_auth_require();
 
 $input = json_decode(file_get_contents('php://input'), true);
 $fileId = intval($input['file_id'] ?? 0);
