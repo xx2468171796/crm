@@ -1476,8 +1476,8 @@ finance_sidebar_start('finance_dashboard');
                                         <?php endif; ?>
                                     </td>
                                     <td class="text-nowrap">
-                                        <a href="index.php?page=finance_contract_detail&id=<?= (int)($row['contract_id'] ?? 0) ?>" class="btn btn-sm btn-outline-primary py-0 px-1" title="合同详情"><i class="bi bi-eye"></i></a>
-                                        <button type="button" class="btn btn-sm btn-outline-danger py-0 px-1 btnContractDelete" data-contract-id="<?= (int)($row['contract_id'] ?? 0) ?>" data-create-time="<?= (int)($row['contract_create_time'] ?? 0) ?>" data-sales-user-id="<?= (int)($row['sales_user_id'] ?? 0) ?>" title="删除"><i class="bi bi-trash"></i></button>
+                                        <a href="index.php?page=finance_contract_detail&id=<?= (int)($row['contract_id'] ?? 0) ?>" class="btn btn-sm btn-outline-primary">合同详情</a>
+                                        <button type="button" class="btn btn-sm btn-outline-danger btnContractDelete" data-contract-id="<?= (int)($row['contract_id'] ?? 0) ?>" data-create-time="<?= (int)($row['contract_create_time'] ?? 0) ?>" data-sales-user-id="<?= (int)($row['sales_user_id'] ?? 0) ?>">删除</button>
                                     </td>
                                 <?php else: ?>
                                     <?php
