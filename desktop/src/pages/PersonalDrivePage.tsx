@@ -278,7 +278,7 @@ export default function PersonalDrivePage() {
   };
 
   // 打开文件夹分享弹窗
-  const openFolderShareModal = (folderPath?: string) => {
+  const openFolderShareModal = () => {
     setShareFileId(null);
     setSharePassword('');
     setShareMaxVisits('');

@@ -674,12 +674,22 @@ $token = trim($_GET['token'] ?? '');
                 }
             }
             
-            uploadBtn.disabled = false;
-            uploadBtn.innerHTML = '<i class="bi bi-upload"></i> 重新上傳';
-            
-            if (successCount > 0) {
-                showToast(`成功上傳 ${successCount} 個檔案` + (failCount > 0 ? `，${failCount} 個失敗` : ''), 'success');
+            if (successCount > 0 && failCount === 0) {
+                // 全部成功，显示提示后刷新页面
+                showToast(`成功上傳 ${successCount} 個檔案`, 'success');
+                setTimeout(() => {
+                    window.location.reload();
+                }, 1500);
+            } else if (successCount > 0 && failCount > 0) {
+                // 部分成功，显示提示后刷新页面
+                showToast(`成功上傳 ${successCount} 個檔案，${failCount} 個失敗`, 'warning');
+                setTimeout(() => {
+                    window.location.reload();
+                }, 2000);
             } else if (failCount > 0) {
+                // 全部失败，允许重试
+                uploadBtn.disabled = false;
+                uploadBtn.innerHTML = '<i class="bi bi-upload"></i> 重新上傳';
                 showToast(`上傳失敗: ${failCount} 個檔案`, 'error');
             }
         }
