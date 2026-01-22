@@ -157,6 +157,12 @@ function getCustomerProjects($pdo, $customerId) {
 }
 
 function calculateProjectProgress($pdo, $projectId) {
+    // 获取项目当前状态
+    $projectStmt = $pdo->prepare("SELECT current_status FROM projects WHERE id = ?");
+    $projectStmt->execute([$projectId]);
+    $project = $projectStmt->fetch(PDO::FETCH_ASSOC);
+    $currentStatus = $project['current_status'] ?? null;
+    
     // 获取阶段时间数据（与桌面端计算逻辑一致）
     $stmt = $pdo->prepare("
         SELECT planned_days, planned_start_date, status
@@ -167,8 +173,9 @@ function calculateProjectProgress($pdo, $projectId) {
     $stmt->execute([$projectId]);
     $stages = $stmt->fetchAll(PDO::FETCH_ASSOC);
     
+    // 无阶段时间数据时，基于当前阶段索引计算进度
     if (empty($stages)) {
-        return 0;
+        return calculateProgressByStatus($currentStatus);
     }
     
     $totalDays = 0;
@@ -189,9 +196,20 @@ function calculateProjectProgress($pdo, $projectId) {
         }
     }
     
+    // 无计划天数时，基于当前阶段索引计算进度
     if ($totalDays <= 0) {
-        return 0;
+        return calculateProgressByStatus($currentStatus);
     }
     
     return min(100, round($elapsedDays * 100 / $totalDays));
+}
+
+function calculateProgressByStatus($currentStatus) {
+    if (!$currentStatus) return 0;
+    $statuses = ['待沟通', '需求确认', '设计中', '设计核对', '设计完工', '设计评价'];
+    $currentIndex = array_search($currentStatus, $statuses);
+    if ($currentIndex !== false && $currentIndex > 0) {
+        return round($currentIndex / (count($statuses) - 1) * 100);
+    }
+    return 0;
 }
