@@ -61,30 +61,56 @@ $dueStart = trim($_GET['due_start'] ?? '');
 $dueEnd = trim($_GET['due_end'] ?? '');
 $receiptStart = trim($_GET['receipt_start'] ?? '');
 $receiptEnd = trim($_GET['receipt_end'] ?? '');
+$dateType = trim($_GET['date_type'] ?? 'sign'); // sign=签约时间, receipt=实收时间
 $viewMode = trim((string)($_GET['view_mode'] ?? 'contract'));
 if (!in_array($viewMode, ['installment', 'contract', 'staff_summary'], true)) {
     $viewMode = 'contract';
 }
 
+// 根据日期类型处理本月/上月快捷选项
 if ($period === 'this_month') {
     $y = (int)date('Y');
     $m = (int)date('n');
-    $dueStart = sprintf('%04d-%02d-01', $y, $m);
-    $dueEnd = date('Y-m-t');
+    $startDate = sprintf('%04d-%02d-01', $y, $m);
+    $endDate = date('Y-m-t');
+    if ($dateType === 'receipt') {
+        $receiptStart = $startDate;
+        $receiptEnd = $endDate;
+        $dueStart = '';
+        $dueEnd = '';
+    } else {
+        $dueStart = $startDate;
+        $dueEnd = $endDate;
+        $receiptStart = '';
+        $receiptEnd = '';
+    }
 } elseif ($period === 'last_month') {
     $ts = strtotime(date('Y-m-01') . ' -1 month');
     if ($ts !== false) {
         $y = (int)date('Y', $ts);
         $m = (int)date('n', $ts);
-        $dueStart = sprintf('%04d-%02d-01', $y, $m);
-        $dueEnd = date('Y-m-t', $ts);
+        $startDate = sprintf('%04d-%02d-01', $y, $m);
+        $endDate = date('Y-m-t', $ts);
+        if ($dateType === 'receipt') {
+            $receiptStart = $startDate;
+            $receiptEnd = $endDate;
+            $dueStart = '';
+            $dueEnd = '';
+        } else {
+            $dueStart = $startDate;
+            $dueEnd = $endDate;
+            $receiptStart = '';
+            $receiptEnd = '';
+        }
     }
-} elseif ($period === 'custom' || ($dueStart !== '' || $dueEnd !== '')) {
-    // 自定义时间或用户手动填写了日期：保留用户输入的 due_start 和 due_end
+} elseif ($period === 'custom' || ($dueStart !== '' || $dueEnd !== '' || $receiptStart !== '' || $receiptEnd !== '')) {
+    // 自定义时间或用户手动填写了日期：保留用户输入
 } elseif ($period === '') {
     // 所有时间且没有手动填写日期：清空日期筛选
     $dueStart = '';
     $dueEnd = '';
+    $receiptStart = '';
+    $receiptEnd = '';
 }
 
 $groupBy = trim((string)($_GET['group_by'] ?? 'sales'));
