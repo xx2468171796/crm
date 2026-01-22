@@ -982,11 +982,15 @@ finance_sidebar_start('finance_dashboard');
                 </select>
                 <input type="date" class="form-control form-control-sm" name="due_start" value="<?= htmlspecialchars($dueStart) ?>" style="width:130px;" placeholder="签约开始" title="合同签约开始日期">
                 <input type="date" class="form-control form-control-sm" name="due_end" value="<?= htmlspecialchars($dueEnd) ?>" style="width:130px;" placeholder="签约结束" title="合同签约结束日期">
-                <span class="text-muted mx-1">|</span>
-                <span class="text-muted small">实收:</span>
-                <input type="date" class="form-control form-control-sm" name="receipt_start" value="<?= htmlspecialchars($receiptStart) ?>" style="width:130px;" placeholder="实收开始" title="实收开始日期">
-                <input type="date" class="form-control form-control-sm" name="receipt_end" value="<?= htmlspecialchars($receiptEnd) ?>" style="width:130px;" placeholder="实收结束" title="实收结束日期">
                 <input type="hidden" name="per_page" value="9999999">
+            </div>
+            <!-- 第二行：实收日期筛选 -->
+            <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+                <span class="text-muted small fw-bold" style="color:#198754!important;">实收时间筛选:</span>
+                <input type="date" class="form-control form-control-sm" name="receipt_start" value="<?= htmlspecialchars($receiptStart) ?>" style="width:140px; border-color:#198754;" placeholder="实收开始" title="实收开始日期（筛选在此时间内有收款的合同）">
+                <span class="text-muted">至</span>
+                <input type="date" class="form-control form-control-sm" name="receipt_end" value="<?= htmlspecialchars($receiptEnd) ?>" style="width:140px; border-color:#198754;" placeholder="实收结束" title="实收结束日期（筛选在此时间内有收款的合同）">
+                <span class="text-muted small">（筛选指定时间内有收款的合同）</span>
                 <?php if (in_array(($user['role'] ?? ''), ['finance', 'admin', 'system_admin', 'super_admin'], true) && $viewMode !== 'staff_summary'): ?>
                 <div class="dropdown" data-bs-auto-close="outside">
                     <button class="btn btn-outline-secondary btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
