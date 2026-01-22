@@ -988,12 +988,7 @@ finance_sidebar_start('finance_dashboard');
                 <span class="text-muted small">实收:</span>
                 <input type="date" class="form-control form-control-sm" name="receipt_start" value="<?= htmlspecialchars($receiptStart) ?>" style="width:130px;" placeholder="实收开始" title="实收开始日期">
                 <input type="date" class="form-control form-control-sm" name="receipt_end" value="<?= htmlspecialchars($receiptEnd) ?>" style="width:130px;" placeholder="实收结束" title="实收结束日期">
-                <select class="form-select form-select-sm" name="per_page" style="width:auto;" onchange="this.form.submit()">
-                    <option value="20" <?= $perPage == 20 ? 'selected' : '' ?>>20条</option>
-                    <option value="50" <?= $perPage == 50 ? 'selected' : '' ?>>50条</option>
-                    <option value="100" <?= $perPage == 100 ? 'selected' : '' ?>>100条</option>
-                    <option value="9999999" <?= $perPage == 9999999 ? 'selected' : '' ?>>全部</option>
-                </select>
+                <input type="hidden" name="per_page" value="9999999">
                 <?php if (in_array(($user['role'] ?? ''), ['finance', 'admin', 'system_admin', 'super_admin'], true) && $viewMode !== 'staff_summary'): ?>
                 <div class="dropdown" data-bs-auto-close="outside">
                     <button class="btn btn-outline-secondary btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
@@ -1236,21 +1231,8 @@ finance_sidebar_start('finance_dashboard');
             <div class="d-flex justify-content-end mb-2">
                 <div class="d-flex align-items-center gap-2">
                     <div class="input-group input-group-sm" style="width:auto;">
-                        <span class="input-group-text">分组1</span>
+                        <span class="input-group-text">分组合计</span>
                         <select class="form-select" id="dashGroup1">
-                            <option value="">不分组</option>
-                            <option value="settlement_status">已结清/未结清</option>
-                            <option value="status">状态</option>
-                            <option value="create_month">创建月份</option>
-                            <option value="receipt_month">收款月份</option>
-                            <option value="sales_user">按签约人</option>
-                            <option value="owner_user">按归属人</option>
-                            <option value="payment_method">按收款方式</option>
-                        </select>
-                    </div>
-                    <div class="input-group input-group-sm" style="width:auto;">
-                        <span class="input-group-text">分组2</span>
-                        <select class="form-select" id="dashGroup2">
                             <option value="">不分组</option>
                             <option value="settlement_status">已结清/未结清</option>
                             <option value="status">状态</option>
@@ -1574,12 +1556,10 @@ document.addEventListener('DOMContentLoaded', function() {
         });
         
         // 绑定分组选择
-        ['dashGroup1', 'dashGroup2'].forEach(id => {
-            const el = document.getElementById(id);
-            if (el) {
-                el.addEventListener('change', () => AjaxDashboard.reload());
-            }
-        });
+        const groupEl = document.getElementById('dashGroup1');
+        if (groupEl) {
+            groupEl.addEventListener('change', () => AjaxDashboard.reload());
+        }
         
         // 绑定搜索按钮
         const searchBtn = document.querySelector('button[type="submit"]');

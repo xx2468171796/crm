@@ -1410,8 +1410,7 @@ function dashRefreshView() {
     tbody.querySelectorAll('tr.dash-group-row').forEach(r => r.remove());
 
     const g1 = (document.getElementById('dashGroup1')?.value || '').trim();
-    const g2 = (document.getElementById('dashGroup2')?.value || '').trim();
-    const groups = [g1, g2].filter(v => v);
+    const groups = g1 ? [g1] : [];
 
     const colCount = table.querySelectorAll('thead th').length || 1;
 
@@ -2071,7 +2070,6 @@ function initDashboard() {
 
     // 分组下拉
     document.getElementById('dashGroup1')?.addEventListener('change', dashRefreshView);
-    document.getElementById('dashGroup2')?.addEventListener('change', dashRefreshView);
     
     // 初始刷新视图
     if (DashboardConfig.viewMode !== 'staff_summary') {
@@ -2257,8 +2255,6 @@ const AjaxDashboard = {
         const groups = [];
         const group1 = document.getElementById('dashGroup1')?.value?.trim();
         if (group1) groups.push(group1);
-        const group2 = document.getElementById('dashGroup2')?.value?.trim();
-        if (group2) groups.push(group2);
         return groups;
     },
 
