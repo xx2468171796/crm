@@ -4,7 +4,9 @@
  * POST /api/file_share_create.php
  */
 
-header('Content-Type: application/json');
+require_once __DIR__ . '/../core/api_init.php';
+
+header('Content-Type: application/json; charset=utf-8');
 require_once __DIR__ . '/../core/db.php';
 require_once __DIR__ . '/../core/auth.php';
 
