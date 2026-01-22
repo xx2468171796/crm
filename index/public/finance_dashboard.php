@@ -62,6 +62,16 @@ $dueEnd = trim($_GET['due_end'] ?? '');
 $receiptStart = trim($_GET['receipt_start'] ?? '');
 $receiptEnd = trim($_GET['receipt_end'] ?? '');
 $dateType = trim($_GET['date_type'] ?? 'sign'); // sign=签约时间, receipt=实收时间
+
+// 调试信息
+$debugInfo = [
+    'dateType' => $dateType,
+    'period' => $period,
+    'dueStart' => $dueStart,
+    'dueEnd' => $dueEnd,
+    'receiptStart' => $receiptStart,
+    'receiptEnd' => $receiptEnd,
+];
 $viewMode = trim((string)($_GET['view_mode'] ?? 'contract'));
 if (!in_array($viewMode, ['installment', 'contract', 'staff_summary'], true)) {
     $viewMode = 'contract';
@@ -963,6 +973,8 @@ finance_sidebar_start('finance_dashboard');
         <a href="index.php?page=finance_prepay_report" class="btn btn-outline-primary btn-sm">
             <i class="bi bi-file-earmark-bar-graph me-1"></i>报表
         </a>
+        <!-- 调试信息 -->
+        <small class="text-muted ms-2" id="debugInfo">[调试: dateType=<?= htmlspecialchars($dateType) ?>, period=<?= htmlspecialchars($period) ?>, receiptStart=<?= htmlspecialchars($receiptStart) ?>, receiptEnd=<?= htmlspecialchars($receiptEnd) ?>]</small>
     </div>
 </div>
 
