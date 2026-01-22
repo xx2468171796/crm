@@ -2230,11 +2230,23 @@ const AjaxDashboard = {
         const status = document.getElementById('status')?.value?.trim();
         if (status) filters.status = status;
 
-        const dueStart = document.getElementById('dueStart')?.value?.trim();
+        const dateType = document.getElementById('dashDateType')?.value?.trim();
+        if (dateType) filters.date_type = dateType;
+
+        const dueStart = document.getElementById('dashDueStart')?.value?.trim();
         if (dueStart) filters.due_start = dueStart;
 
-        const dueEnd = document.getElementById('dueEnd')?.value?.trim();
+        const dueEnd = document.getElementById('dashDueEnd')?.value?.trim();
         if (dueEnd) filters.due_end = dueEnd;
+
+        const receiptStart = document.getElementById('dashReceiptStart')?.value?.trim();
+        if (receiptStart) filters.receipt_start = receiptStart;
+
+        const receiptEnd = document.getElementById('dashReceiptEnd')?.value?.trim();
+        if (receiptEnd) filters.receipt_end = receiptEnd;
+
+        const period = document.getElementById('dashboardPeriodSelect')?.value?.trim();
+        if (period) filters.period = period;
 
         const salesSelect = document.getElementById('salesUsers');
         if (salesSelect) {
