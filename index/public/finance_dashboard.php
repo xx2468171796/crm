@@ -923,19 +923,8 @@ $prepayMonthOut = (float)($prepayStats['month_out'] ?? 0);
 finance_sidebar_start('finance_dashboard');
 ?>
 
-<!-- 顶部信息栏：预收信息 + 视图选择 合并为单行 -->
-<div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2 p-2 bg-light rounded">
-    <div class="d-flex align-items-center gap-3 flex-wrap">
-        <span class="badge bg-primary-subtle text-primary px-2 py-1">
-            <i class="bi bi-wallet2 me-1"></i>预收余额 <strong>¥<?= number_format($prepayTotalBalance, 2) ?></strong>
-        </span>
-        <span class="text-success small">
-            <i class="bi bi-arrow-down-circle me-1"></i>本月入 ¥<?= number_format($prepayMonthIn, 2) ?>
-        </span>
-        <span class="text-danger small">
-            <i class="bi bi-arrow-up-circle me-1"></i>本月出 ¥<?= number_format($prepayMonthOut, 2) ?>
-        </span>
-    </div>
+<!-- 顶部工具栏 -->
+<div class="d-flex justify-content-end align-items-center flex-wrap gap-2 mb-2">
     <div class="d-flex align-items-center gap-2">
         <!-- 视图选择下拉（含操作菜单） -->
         <div class="dropdown">
@@ -965,6 +954,7 @@ finance_sidebar_start('finance_dashboard');
         </a>
     </div>
 </div>
+
 
 <!-- 筛选区域：常用筛选 + 折叠高级筛选 -->
 <div class="card mb-2">
