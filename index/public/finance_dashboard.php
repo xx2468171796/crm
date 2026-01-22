@@ -59,6 +59,8 @@ $status = trim($_GET['status'] ?? '');
 $period = trim((string)($_GET['period'] ?? ''));
 $dueStart = trim($_GET['due_start'] ?? '');
 $dueEnd = trim($_GET['due_end'] ?? '');
+$receiptStart = trim($_GET['receipt_start'] ?? '');
+$receiptEnd = trim($_GET['receipt_end'] ?? '');
 $viewMode = trim((string)($_GET['view_mode'] ?? 'contract'));
 if (!in_array($viewMode, ['installment', 'contract', 'staff_summary'], true)) {
     $viewMode = 'contract';
@@ -533,6 +535,20 @@ if ($dueEnd !== '') {
     }
 }
 
+// 按实收日期筛选（只显示在指定时间内有收款的合同）
+if ($receiptStart !== '' || $receiptEnd !== '') {
+    $receiptCondition = '1=1';
+    if ($receiptStart !== '') {
+        $receiptCondition .= ' AND r.receipt_time >= :receipt_start';
+        $params['receipt_start'] = $receiptStart . ' 00:00:00';
+    }
+    if ($receiptEnd !== '') {
+        $receiptCondition .= ' AND r.receipt_time <= :receipt_end';
+        $params['receipt_end'] = $receiptEnd . ' 23:59:59';
+    }
+    $sql .= ' AND EXISTS (SELECT 1 FROM finance_receipts r WHERE r.contract_id = c.id AND ' . $receiptCondition . ')';
+}
+
 if ($viewMode === 'contract') {
     $sql .= ' GROUP BY c.id';
 }
@@ -610,6 +626,19 @@ if ($viewMode === 'contract' || $viewMode === 'installment') {
             $sumSql .= ' AND cu.owner_user_id = :focus_user_id';
         }
         $sumParams['focus_user_id'] = $focusUserId;
+    }
+    // 按实收日期筛选
+    if ($receiptStart !== '' || $receiptEnd !== '') {
+        $receiptCondition = '1=1';
+        if ($receiptStart !== '') {
+            $receiptCondition .= ' AND r.receipt_time >= :receipt_start';
+            $sumParams['receipt_start'] = $receiptStart . ' 00:00:00';
+        }
+        if ($receiptEnd !== '') {
+            $receiptCondition .= ' AND r.receipt_time <= :receipt_end';
+            $sumParams['receipt_end'] = $receiptEnd . ' 23:59:59';
+        }
+        $sumSql .= ' AND EXISTS (SELECT 1 FROM finance_receipts r WHERE r.contract_id = c.id AND ' . $receiptCondition . ')';
     }
     $sumRow = Db::queryOne($sumSql, $sumParams) ?: $sumRow;
     
@@ -708,6 +737,19 @@ if ($viewMode === 'contract') {
         $groupStatsSql .= ' AND c.sign_date <= :due_end';
         $groupStatsParams['due_end'] = $dueEnd;
     }
+    // 按实收日期筛选
+    if ($receiptStart !== '' || $receiptEnd !== '') {
+        $receiptCondition = '1=1';
+        if ($receiptStart !== '') {
+            $receiptCondition .= ' AND r.receipt_time >= :receipt_start';
+            $groupStatsParams['receipt_start'] = $receiptStart . ' 00:00:00';
+        }
+        if ($receiptEnd !== '') {
+            $receiptCondition .= ' AND r.receipt_time <= :receipt_end';
+            $groupStatsParams['receipt_end'] = $receiptEnd . ' 23:59:59';
+        }
+        $groupStatsSql .= ' AND EXISTS (SELECT 1 FROM finance_receipts r WHERE r.contract_id = c.id AND ' . $receiptCondition . ')';
+    }
     $groupStatsSql .= ' GROUP BY u.id, u.realname, c.currency';
     $groupStatsRows = Db::query($groupStatsSql, $groupStatsParams);
     foreach ($groupStatsRows as $row) {
@@ -785,6 +827,19 @@ if ($viewMode === 'contract') {
     if ($dueEnd !== '') {
         $ownerGroupStatsSql .= ' AND c.sign_date <= :due_end';
         $ownerGroupStatsParams['due_end'] = $dueEnd;
+    }
+    // 按实收日期筛选
+    if ($receiptStart !== '' || $receiptEnd !== '') {
+        $receiptCondition = '1=1';
+        if ($receiptStart !== '') {
+            $receiptCondition .= ' AND r.receipt_time >= :receipt_start';
+            $ownerGroupStatsParams['receipt_start'] = $receiptStart . ' 00:00:00';
+        }
+        if ($receiptEnd !== '') {
+            $receiptCondition .= ' AND r.receipt_time <= :receipt_end';
+            $ownerGroupStatsParams['receipt_end'] = $receiptEnd . ' 23:59:59';
+        }
+        $ownerGroupStatsSql .= ' AND EXISTS (SELECT 1 FROM finance_receipts r WHERE r.contract_id = c.id AND ' . $receiptCondition . ')';
     }
     $ownerGroupStatsSql .= ' GROUP BY ou.id, ou.realname, c.currency';
     $ownerGroupStatsRows = Db::query($ownerGroupStatsSql, $ownerGroupStatsParams);
@@ -929,6 +984,10 @@ finance_sidebar_start('finance_dashboard');
                 </select>
                 <input type="date" class="form-control form-control-sm" name="due_start" value="<?= htmlspecialchars($dueStart) ?>" style="width:130px;" placeholder="签约开始" title="合同签约开始日期">
                 <input type="date" class="form-control form-control-sm" name="due_end" value="<?= htmlspecialchars($dueEnd) ?>" style="width:130px;" placeholder="签约结束" title="合同签约结束日期">
+                <span class="text-muted mx-1">|</span>
+                <span class="text-muted small">实收:</span>
+                <input type="date" class="form-control form-control-sm" name="receipt_start" value="<?= htmlspecialchars($receiptStart) ?>" style="width:130px;" placeholder="实收开始" title="实收开始日期">
+                <input type="date" class="form-control form-control-sm" name="receipt_end" value="<?= htmlspecialchars($receiptEnd) ?>" style="width:130px;" placeholder="实收结束" title="实收结束日期">
                 <select class="form-select form-select-sm" name="per_page" style="width:auto;" onchange="this.form.submit()">
                     <option value="20" <?= $perPage == 20 ? 'selected' : '' ?>>20条</option>
                     <option value="50" <?= $perPage == 50 ? 'selected' : '' ?>>50条</option>
