@@ -6,6 +6,24 @@
  */
 
 header('Content-Type: application/json');
+
+// 错误处理
+error_reporting(E_ALL);
+ini_set('display_errors', 0);
+ini_set('log_errors', 1);
+
+set_exception_handler(function($e) {
+    http_response_code(500);
+    echo json_encode(['error' => '服务器错误: ' . $e->getMessage(), 'file' => $e->getFile(), 'line' => $e->getLine()]);
+    exit;
+});
+
+set_error_handler(function($errno, $errstr, $errfile, $errline) {
+    http_response_code(500);
+    echo json_encode(['error' => "PHP错误: $errstr", 'file' => $errfile, 'line' => $errline]);
+    exit;
+});
+
 require_once __DIR__ . '/../core/db.php';
 require_once __DIR__ . '/../core/storage/storage_provider.php';
 
