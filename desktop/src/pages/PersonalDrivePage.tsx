@@ -195,15 +195,6 @@ export default function PersonalDrivePage() {
     }
   };
 
-
-  const openShareModal = () => {
-    setShowShareModal(true);
-    setGeneratedLink(null);
-    setSharePassword('');
-    setShareMaxVisits('');
-    setShareExpireDays('7');
-  };
-
   const generateShareLink = async () => {
     if (!serverUrl || !token) return;
 
