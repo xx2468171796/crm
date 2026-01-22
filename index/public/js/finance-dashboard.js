@@ -544,6 +544,9 @@ function buildUrlFromFilters(viewId, filters) {
 
 // ==================== 视图管理 ====================
 function loadViews() {
+    const select = document.getElementById('viewSelect');
+    if (!select) return; // 视图选择器不存在时直接返回
+    
     fetch(apiUrl('finance_saved_view_list.php?page_key=' + encodeURIComponent(DashboardConfig.pageKey)))
         .then(r => r.json())
         .then(res => {
@@ -551,7 +554,6 @@ function loadViews() {
                 showAlertModal(res.message || '加载视图失败', 'error');
                 return;
             }
-            const select = document.getElementById('viewSelect');
             const views = res.data || [];
             const options = ['<option value="0">（不使用视图）</option>']
                 .concat(views.map(v => {
@@ -569,7 +571,7 @@ function loadViews() {
             }
         })
         .catch(() => {
-            showAlertModal('加载视图失败，请查看控制台错误信息', 'error');
+            // 静默失败，不显示错误
         });
 }
 
@@ -1844,7 +1846,7 @@ function initDashboard() {
 
     // 删除视图
     document.getElementById('btnDeleteView')?.addEventListener('click', function() {
-        const vid = Number(document.getElementById('viewSelect').value || 0);
+        const vid = Number(document.getElementById('viewSelect')?.value || 0);
         if (!vid) {
             showAlertModal('请先选择要删除的视图', 'warning');
             return;
@@ -1871,7 +1873,7 @@ function initDashboard() {
 
     // 设为默认视图
     document.getElementById('btnSetDefaultView')?.addEventListener('click', function() {
-        const vid = Number(document.getElementById('viewSelect').value || 0);
+        const vid = Number(document.getElementById('viewSelect')?.value || 0);
         if (!vid) {
             showAlertModal('请先选择要设为默认的视图', 'warning');
             return;
