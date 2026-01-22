@@ -1000,8 +1000,8 @@ finance_sidebar_start('finance_dashboard');
                     <?php endif; ?>
                 </select>
                 <select class="form-select form-select-sm" name="date_type" id="dashDateType" style="width:auto;">
-                    <option value="sign" <?= ($receiptStart === '' && $receiptEnd === '') ? 'selected' : '' ?>>签约时间</option>
-                    <option value="receipt" <?= ($receiptStart !== '' || $receiptEnd !== '') ? 'selected' : '' ?>>实收时间</option>
+                    <option value="sign" <?= $dateType === 'sign' ? 'selected' : '' ?>>签约时间</option>
+                    <option value="receipt" <?= $dateType === 'receipt' ? 'selected' : '' ?>>实收时间</option>
                 </select>
                 <select class="form-select form-select-sm" name="period" id="dashboardPeriodSelect" style="width:auto;">
                     <option value="" <?= ($period === '' && $dueStart === '' && $dueEnd === '' && $receiptStart === '' && $receiptEnd === '') ? 'selected' : '' ?>>所有时间</option>
