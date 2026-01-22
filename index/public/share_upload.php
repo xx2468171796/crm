@@ -11,7 +11,7 @@ $token = trim($_GET['token'] ?? '');
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>文件上传</title>
+    <title>檔案上傳 - 安科帝設計空間</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link href="/css/portal-theme.css" rel="stylesheet">
@@ -43,6 +43,14 @@ $token = trim($_GET['token'] ?? '');
             padding: 32px;
             border-radius: var(--portal-radius-lg) var(--portal-radius-lg) 0 0;
             text-align: center;
+        }
+        
+        .brand-title {
+            font-size: 0.85rem;
+            font-weight: 500;
+            opacity: 0.85;
+            margin-bottom: 8px;
+            letter-spacing: 2px;
         }
         
         .card-header-gradient h1 {
@@ -336,8 +344,8 @@ $token = trim($_GET['token'] ?? '');
                     <div class="status-icon loading">
                         <i class="bi bi-arrow-repeat spin"></i>
                     </div>
-                    <div class="status-title">正在加载...</div>
-                    <div class="status-message">请稍候</div>
+                    <div class="status-title">正在載入...</div>
+                    <div class="status-message">請稍候</div>
                 </div>
             </div>
             
@@ -348,8 +356,8 @@ $token = trim($_GET['token'] ?? '');
                         <div class="status-icon error">
                             <i class="bi bi-exclamation-circle"></i>
                         </div>
-                        <div class="status-title" id="errorTitle">链接无效</div>
-                        <div class="status-message" id="errorMessage">此分享链接已失效</div>
+                        <div class="status-title" id="errorTitle">連結無效</div>
+                        <div class="status-message" id="errorMessage">此分享連結已失效</div>
                     </div>
                 </div>
             </div>
@@ -357,7 +365,8 @@ $token = trim($_GET['token'] ?? '');
             <!-- 主上传界面 -->
             <div id="mainPage" style="display: none;">
                 <div class="card-header-gradient">
-                    <h1><i class="bi bi-cloud-arrow-up"></i> 文件上传</h1>
+                    <div class="brand-title">安科帝設計空間</div>
+                    <h1><i class="bi bi-cloud-arrow-up"></i> 檔案上傳</h1>
                     <div class="project-name" id="projectName"></div>
                 </div>
                 
@@ -367,10 +376,10 @@ $token = trim($_GET['token'] ?? '');
                         <div class="password-icon">
                             <i class="bi bi-shield-lock"></i>
                         </div>
-                        <div class="password-title">此链接需要密码访问</div>
+                        <div class="password-title">此連結需要密碼訪問</div>
                         <div class="password-input-group">
-                            <input type="password" class="portal-input" id="passwordInput" placeholder="请输入访问密码">
-                            <button class="portal-btn portal-btn-primary" id="verifyPasswordBtn">验证</button>
+                            <input type="password" class="portal-input" id="passwordInput" placeholder="請輸入訪問密碼">
+                            <button class="portal-btn portal-btn-primary" id="verifyPasswordBtn">驗證</button>
                         </div>
                         <div id="passwordError" class="portal-form-error" style="display: none;"></div>
                     </div>
@@ -381,18 +390,18 @@ $token = trim($_GET['token'] ?? '');
                             <div class="portal-upload-icon">
                                 <i class="bi bi-cloud-arrow-up"></i>
                             </div>
-                            <div class="portal-upload-text">拖拽文件到此处上传</div>
-                            <div class="portal-upload-hint">或点击选择文件，支持批量上传</div>
+                            <div class="portal-upload-text">拖曳檔案到此處上傳</div>
+                            <div class="portal-upload-hint">或點擊選擇檔案，支援批量上傳</div>
                             <input type="file" id="fileInput" multiple style="display: none;">
                             <input type="file" id="folderInput" webkitdirectory style="display: none;">
                         </div>
                         
                         <div class="upload-actions">
                             <button class="portal-btn portal-btn-secondary" id="selectFilesBtn">
-                                <i class="bi bi-files"></i> 选择文件
+                                <i class="bi bi-files"></i> 選擇檔案
                             </button>
                             <button class="portal-btn portal-btn-ghost" id="selectFolderBtn">
-                                <i class="bi bi-folder"></i> 选择文件夹
+                                <i class="bi bi-folder"></i> 選擇資料夾
                             </button>
                         </div>
                         
@@ -400,7 +409,7 @@ $token = trim($_GET['token'] ?? '');
                         
                         <div class="upload-submit">
                             <button class="portal-btn portal-btn-primary portal-btn-block" id="uploadBtn" style="display: none;">
-                                <i class="bi bi-upload"></i> 开始上传 (<span id="fileCount">0</span> 个文件)
+                                <i class="bi bi-upload"></i> 開始上傳 (<span id="fileCount">0</span> 個檔案)
                             </button>
                         </div>
                         
@@ -438,21 +447,21 @@ $token = trim($_GET['token'] ?? '');
                 const data = await response.json();
                 
                 if (!data.valid) {
-                    let title = '链接无效';
-                    let message = data.message || '此分享链接已失效';
+                    let title = '連結無效';
+                    let message = data.message || '此分享連結已失效';
                     
                     switch (data.reason) {
                         case 'expired':
-                            title = '链接已过期';
-                            message = '此分享链接已超过有效期';
+                            title = '連結已過期';
+                            message = '此分享連結已超過有效期';
                             break;
                         case 'max_visits_reached':
-                            title = '访问次数已用完';
-                            message = '此链接已达到最大访问次数';
+                            title = '訪問次數已用完';
+                            message = '此連結已達到最大訪問次數';
                             break;
                         case 'disabled':
-                            title = '链接已禁用';
-                            message = '此分享链接已被管理员禁用';
+                            title = '連結已停用';
+                            message = '此分享連結已被管理員停用';
                             break;
                     }
                     
@@ -465,7 +474,7 @@ $token = trim($_GET['token'] ?? '');
                 
             } catch (error) {
                 console.error('加载链接信息失败:', error);
-                showError('加载失败', '无法加载链接信息，请稍后重试');
+                showError('載入失敗', '無法載入連結資訊，請稍後重試');
             }
         }
         
@@ -485,13 +494,13 @@ $token = trim($_GET['token'] ?? '');
             document.getElementById('mainPage').style.display = 'block';
             
             // 显示项目名
-            document.getElementById('projectName').textContent = linkInfo.project_name || '文件上传';
+            document.getElementById('projectName').textContent = linkInfo.project_name || '檔案上傳';
             
             // 显示过期时间
             if (linkInfo.expires_at) {
                 const expireDate = new Date(linkInfo.expires_at);
                 document.getElementById('expireInfo').innerHTML = 
-                    `<i class="bi bi-clock me-1"></i> 链接有效期至: ${expireDate.toLocaleDateString('zh-CN')} ${expireDate.toLocaleTimeString('zh-CN')}`;
+                    `<i class="bi bi-clock me-1"></i> 連結有效期至: ${expireDate.toLocaleDateString('zh-TW')} ${expireDate.toLocaleTimeString('zh-TW')}`;
             }
             
             // 根据是否需要密码显示不同界面
@@ -509,7 +518,7 @@ $token = trim($_GET['token'] ?? '');
         document.getElementById('verifyPasswordBtn')?.addEventListener('click', () => {
             const password = document.getElementById('passwordInput').value;
             if (!password) {
-                document.getElementById('passwordError').textContent = '请输入密码';
+                document.getElementById('passwordError').textContent = '請輸入密碼';
                 document.getElementById('passwordError').style.display = 'block';
                 return;
             }
@@ -584,7 +593,7 @@ $token = trim($_GET['token'] ?? '');
                 }
             }
             if (oversizedFiles.length > 0) {
-                showToast(`以下文件超过2GB限制: ${oversizedFiles.join(', ')}`, 'error');
+                showToast(`以下檔案超過2GB限制: ${oversizedFiles.join(', ')}`, 'error');
             }
             renderFileList();
         }
@@ -634,7 +643,7 @@ $token = trim($_GET['token'] ?? '');
         async function startUpload() {
             const uploadBtn = document.getElementById('uploadBtn');
             uploadBtn.disabled = true;
-            uploadBtn.innerHTML = '<i class="bi bi-arrow-repeat spin"></i> 上传中...';
+            uploadBtn.innerHTML = '<i class="bi bi-arrow-repeat spin"></i> 上傳中...';
             
             let successCount = 0;
             let failCount = 0;
@@ -666,12 +675,12 @@ $token = trim($_GET['token'] ?? '');
             }
             
             uploadBtn.disabled = false;
-            uploadBtn.innerHTML = '<i class="bi bi-upload"></i> 重新上传';
+            uploadBtn.innerHTML = '<i class="bi bi-upload"></i> 重新上傳';
             
             if (successCount > 0) {
-                showToast(`成功上传 ${successCount} 个文件` + (failCount > 0 ? `，${failCount} 个失败` : ''), 'success');
+                showToast(`成功上傳 ${successCount} 個檔案` + (failCount > 0 ? `，${failCount} 個失敗` : ''), 'success');
             } else if (failCount > 0) {
-                showToast(`上传失败: ${failCount} 个文件`, 'error');
+                showToast(`上傳失敗: ${failCount} 個檔案`, 'error');
             }
         }
         
