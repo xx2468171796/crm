@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
-import { useAuthStore } from '@/stores/authStore';
-import { useSettingsStore } from '@/stores/settingsStore';
+import { useAuthStore } from '@/stores/auth';
+import { useSettingsStore } from '@/stores/settings';
 import { useToast } from '@/hooks/use-toast';
 import {
   HardDrive, Upload, Download, Trash2, Share2, Folder, File, RefreshCw,
