@@ -37,8 +37,8 @@ try {
         exit;
     }
     
-    // 获取项目完工状态和起始日期
-    $projectStmt = $pdo->prepare("SELECT completed_at, timeline_start_date FROM projects WHERE id = ?");
+    // 获取项目完工状态、起始日期和当前状态
+    $projectStmt = $pdo->prepare("SELECT completed_at, timeline_start_date, current_status FROM projects WHERE id = ?");
     $projectStmt->execute([$projectId]);
     $project = $projectStmt->fetch(PDO::FETCH_ASSOC);
     $isCompleted = !empty($project['completed_at']);

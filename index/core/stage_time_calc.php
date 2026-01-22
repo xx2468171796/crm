@@ -45,11 +45,22 @@ function calculateRemainingDays($totalDays, $elapsedDays) {
  * @param int $elapsedDays 已进行天数
  * @param int $totalDays 总天数
  * @param bool $isCompleted 是否已完工
+ * @param string|null $currentStatus 当前状态（用于无阶段时间数据时的回退计算）
  * @return int 进度百分比（0-100）
  */
-function calculateOverallProgress($elapsedDays, $totalDays, $isCompleted) {
+function calculateOverallProgress($elapsedDays, $totalDays, $isCompleted, $currentStatus = null) {
     if ($isCompleted) return 100;
-    if ($totalDays <= 0) return 0;
+    if ($totalDays <= 0) {
+        // 没有阶段时间数据时，基于当前阶段索引计算进度
+        if ($currentStatus) {
+            $statuses = ['待沟通', '需求确认', '设计中', '设计核对', '设计完工', '设计评价'];
+            $currentIndex = array_search($currentStatus, $statuses);
+            if ($currentIndex !== false && $currentIndex > 0) {
+                return round($currentIndex / (count($statuses) - 1) * 100);
+            }
+        }
+        return 0;
+    }
     return min(100, round($elapsedDays * 100 / $totalDays));
 }
 
@@ -99,7 +110,8 @@ function calculateStageTimeSummary($project, $stages) {
     
     // 计算剩余天数和进度
     $remainingDays = calculateRemainingDays($totalDays, $elapsedDays);
-    $overallProgress = calculateOverallProgress($elapsedDays, $totalDays, $isCompleted);
+    $currentStatus = $project['current_status'] ?? null;
+    $overallProgress = calculateOverallProgress($elapsedDays, $totalDays, $isCompleted, $currentStatus);
     
     return [
         'total_days' => $totalDays,
