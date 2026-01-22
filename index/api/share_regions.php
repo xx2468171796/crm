@@ -9,13 +9,25 @@ require_once __DIR__ . '/../core/rbac.php';
 
 header('Content-Type: application/json; charset=utf-8');
 
-auth_require();
+// 支持桌面端token认证和web session认证
+$user = null;
+$authHeader = $_SERVER['HTTP_AUTHORIZATION'] ?? '';
+if (preg_match('/Bearer\s+(.+)/', $authHeader, $matches)) {
+    require_once __DIR__ . '/../core/desktop_auth.php';
+    $user = desktop_verify_token($matches[1]);
+}
+if (!$user) {
+    $user = current_user();
+}
+if (!$user) {
+    echo json_encode(['success' => false, 'message' => '请先登录', 'code' => 'UNAUTHORIZED'], JSON_UNESCAPED_UNICODE);
+    exit;
+}
 
 $action = $_GET['action'] ?? 'list';
 
 // 列表接口所有人可访问，其他操作仅管理员
-$user = current_user();
-if ($action !== 'list' && (!$user || !isAdmin($user))) {
+if ($action !== 'list' && !isAdmin($user)) {
     echo json_encode(['success' => false, 'message' => '无权限'], JSON_UNESCAPED_UNICODE);
     exit;
 }
