@@ -117,7 +117,7 @@ try {
             $protocol = $region['protocol'] ?? 'https';
             $domain = $region['domain'];
             $port = $region['port'] ? ":{$region['port']}" : '';
-            $shareUrl = "{$protocol}://{$domain}{$port}/public/share_upload.php?token={$token}";
+            $shareUrl = "{$protocol}://{$domain}{$port}/share_upload.php?token={$token}";
         }
     }
     
@@ -132,12 +132,12 @@ try {
             $protocol = $defaultRegion['protocol'] ?? 'https';
             $domain = $defaultRegion['domain'];
             $port = $defaultRegion['port'] ? ":{$defaultRegion['port']}" : '';
-            $shareUrl = "{$protocol}://{$domain}{$port}/public/share_upload.php?token={$token}";
+            $shareUrl = "{$protocol}://{$domain}{$port}/share_upload.php?token={$token}";
         } else {
             // 使用当前域名
             $protocol = isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? 'https' : 'http';
             $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
-            $shareUrl = "{$protocol}://{$host}/public/share_upload.php?token={$token}";
+            $shareUrl = "{$protocol}://{$host}/share_upload.php?token={$token}";
         }
     }
     
