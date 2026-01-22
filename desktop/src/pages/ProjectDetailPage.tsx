@@ -2455,7 +2455,64 @@ export default function ProjectDetailPage() {
                         </div>
                         <div className="flex items-center gap-2">
                           {file.approval_status === 'pending' && (
-                            <span className="px-2 py-0.5 bg-yellow-100 text-yellow-700 rounded text-xs">待审核</span>
+                            <>
+                              <span className="px-2 py-0.5 bg-yellow-100 text-yellow-700 rounded text-xs">待审核</span>
+                              {isManager && (
+                                <>
+                                  <button
+                                    type="button"
+                                    onClick={async () => {
+                                      try {
+                                        const res = await fetch(`${serverUrl}/api/desktop_approval.php?action=approve`, {
+                                          method: 'POST',
+                                          headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+                                          body: JSON.stringify({ file_id: file.id }),
+                                        });
+                                        const data = await res.json();
+                                        if (data.success) {
+                                          toast({ title: '审批通过', description: file.filename });
+                                          loadProject('files');
+                                        } else {
+                                          toast({ title: '审批失败', description: data.error || '未知错误', variant: 'destructive' });
+                                        }
+                                      } catch (err: any) {
+                                        toast({ title: '审批失败', description: err.message, variant: 'destructive' });
+                                      }
+                                    }}
+                                    className="px-2 py-0.5 bg-green-500 hover:bg-green-600 text-white rounded text-xs"
+                                    title="通过"
+                                  >
+                                    通过
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={async () => {
+                                      const reason = prompt('请输入驳回原因（可选）：');
+                                      try {
+                                        const res = await fetch(`${serverUrl}/api/desktop_approval.php?action=reject`, {
+                                          method: 'POST',
+                                          headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+                                          body: JSON.stringify({ file_id: file.id, reason: reason || '' }),
+                                        });
+                                        const data = await res.json();
+                                        if (data.success) {
+                                          toast({ title: '已驳回', description: file.filename });
+                                          loadProject('files');
+                                        } else {
+                                          toast({ title: '驳回失败', description: data.error || '未知错误', variant: 'destructive' });
+                                        }
+                                      } catch (err: any) {
+                                        toast({ title: '驳回失败', description: err.message, variant: 'destructive' });
+                                      }
+                                    }}
+                                    className="px-2 py-0.5 bg-red-500 hover:bg-red-600 text-white rounded text-xs"
+                                    title="驳回"
+                                  >
+                                    驳回
+                                  </button>
+                                </>
+                              )}
+                            </>
                           )}
                           {file.approval_status === 'approved' && (
                             <span className="px-2 py-0.5 bg-green-100 text-green-700 rounded text-xs">已通过</span>
