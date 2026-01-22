@@ -1252,6 +1252,7 @@ finance_sidebar_start('finance_dashboard');
                 <tr>
                     <?php if ($viewMode === 'contract'): ?>
                         <th style="width:40px;"></th>
+                        <th style="width:50px;">序号</th>
                         <th>客户</th>
                         <th>活动标签</th>
                         <th>合同</th>
@@ -1304,9 +1305,11 @@ finance_sidebar_start('finance_dashboard');
                 </thead>
                 <tbody>
                 <?php if (empty($rows)): ?>
-                    <tr><td colspan="<?= $viewMode === 'contract' ? 13 : ($viewMode === 'staff_summary' ? 6 : 15) ?>" class="text-center text-muted">暂无数据</td></tr>
+                    <tr><td colspan="<?= $viewMode === 'contract' ? 14 : ($viewMode === 'staff_summary' ? 6 : 15) ?>" class="text-center text-muted">暂无数据</td></tr>
                 <?php else: ?>
+                    <?php $rowIndex = 0; ?>
                     <?php foreach ($rows as $row): ?>
+                    <?php $rowIndex++; ?>
                         <?php
                         $statusLabel = '';
                         $badge = 'secondary';
@@ -1349,6 +1352,7 @@ finance_sidebar_start('finance_dashboard');
                                 <td>
                                     <button type="button" class="btn btn-sm btn-outline-secondary btnToggleInstallments" data-contract-id="<?= (int)($row['contract_id'] ?? 0) ?>">▾</button>
                                 </td>
+                                <td class="text-muted small"><?= $rowIndex ?></td>
                             <?php endif; ?>
                             <?php if ($viewMode === 'staff_summary'): ?>
                                 <td><?= htmlspecialchars($row['user_name'] ?? '') ?></td>
