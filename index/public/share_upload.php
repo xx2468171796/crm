@@ -570,11 +570,21 @@ $token = trim($_GET['token'] ?? '');
         }
         
         // 处理选择的文件
+        const MAX_FILE_SIZE = 2 * 1024 * 1024 * 1024; // 2GB
+        
         function handleFiles(files) {
+            let oversizedFiles = [];
             for (const file of files) {
+                if (file.size > MAX_FILE_SIZE) {
+                    oversizedFiles.push(file.name);
+                    continue;
+                }
                 if (!selectedFiles.find(f => f.name === file.name && f.size === file.size)) {
                     selectedFiles.push(file);
                 }
+            }
+            if (oversizedFiles.length > 0) {
+                showToast(`以下文件超过2GB限制: ${oversizedFiles.join(', ')}`, 'error');
             }
             renderFileList();
         }

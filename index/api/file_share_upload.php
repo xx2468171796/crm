@@ -31,7 +31,7 @@ try {
     $stmt = $pdo->prepare("
         SELECT 
             fsl.*,
-            p.name AS project_name,
+            p.project_name AS project_name,
             p.customer_id,
             c.name AS customer_name,
             c.group_code
@@ -84,8 +84,26 @@ try {
     $file = $_FILES['file'];
     
     if ($file['error'] !== UPLOAD_ERR_OK) {
+        $errorMessages = [
+            UPLOAD_ERR_INI_SIZE => '文件大小超过服务器限制',
+            UPLOAD_ERR_FORM_SIZE => '文件大小超过表单限制',
+            UPLOAD_ERR_PARTIAL => '文件只有部分被上传',
+            UPLOAD_ERR_NO_FILE => '没有文件被上传',
+            UPLOAD_ERR_NO_TMP_DIR => '找不到临时文件夹',
+            UPLOAD_ERR_CANT_WRITE => '文件写入失败',
+            UPLOAD_ERR_EXTENSION => '文件上传被扩展阻止'
+        ];
+        $errorMsg = $errorMessages[$file['error']] ?? ('上传错误代码: ' . $file['error']);
         http_response_code(400);
-        echo json_encode(['error' => '文件上传失败: ' . $file['error']]);
+        echo json_encode(['error' => $errorMsg]);
+        exit;
+    }
+    
+    // 限制单个文件大小不超过2GB
+    $maxSize = 2 * 1024 * 1024 * 1024; // 2GB
+    if ($file['size'] > $maxSize) {
+        http_response_code(400);
+        echo json_encode(['error' => '单个文件大小不能超过2GB']);
         exit;
     }
     
