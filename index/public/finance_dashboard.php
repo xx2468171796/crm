@@ -1100,7 +1100,7 @@ finance_sidebar_start('finance_dashboard');
         <div class="card border-0 bg-success bg-opacity-10 h-100">
             <div class="card-body py-2 px-3">
                 <div class="text-muted small">已收合计</div>
-                <div class="fw-bold text-success" id="sumPaidDisplay"><?= number_format((float)($sumRow['sum_paid'] ?? 0), 2) ?></div>
+                <div class="fw-bold text-success fs-4" id="sumPaidDisplay"><?= number_format((float)($sumRow['sum_paid'] ?? 0), 2) ?></div>
                 <small id="sumPaidCurrency" class="text-secondary"></small>
             </div>
         </div>
@@ -1109,20 +1109,34 @@ finance_sidebar_start('finance_dashboard');
         <div class="card border-0 bg-danger bg-opacity-10 h-100">
             <div class="card-body py-2 px-3">
                 <div class="text-muted small">未收合计</div>
-                <div class="fw-bold text-danger" id="sumUnpaidDisplay"><?= number_format((float)($sumRow['sum_unpaid'] ?? 0), 2) ?></div>
+                <div class="fw-bold text-danger fs-5" id="sumUnpaidDisplay"><?= number_format((float)($sumRow['sum_unpaid'] ?? 0), 2) ?></div>
                 <small id="sumUnpaidCurrency" class="text-secondary"></small>
             </div>
         </div>
     </div>
-    <div class="col-6 col-md-2">
+    <div class="col-12 col-md-2">
         <div class="card border-0 bg-light h-100">
             <div class="card-body py-2 px-3">
-                <div class="text-muted small mb-1">金额显示</div>
-                <select class="form-select form-select-sm" id="dashAmountMode">
-                    <option value="original">原始(TWD)</option>
-                    <option value="fixed" selected>固定汇率(CNY)</option>
-                    <option value="floating">浮动汇率(CNY)</option>
-                </select>
+                <div class="d-flex flex-column gap-1">
+                    <select class="form-select form-select-sm" id="dashAmountMode">
+                        <option value="original">原始(TWD)</option>
+                        <option value="fixed" selected>固定汇率(CNY)</option>
+                        <option value="floating">浮动汇率(CNY)</option>
+                    </select>
+                    <div class="d-flex gap-1">
+                        <select class="form-select form-select-sm" id="dashGroup1">
+                            <option value="">分组合计</option>
+                            <option value="settlement_status">已结清/未结清</option>
+                            <option value="status">状态</option>
+                            <option value="create_month">创建月份</option>
+                            <option value="receipt_month">收款月份</option>
+                            <option value="sales_user">按签约人</option>
+                            <option value="owner_user">按归属人</option>
+                            <option value="payment_method">按收款方式</option>
+                        </select>
+                        <div id="dashColumnToggleContainer"></div>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
@@ -1264,26 +1278,6 @@ finance_sidebar_start('finance_dashboard');
 
 <div class="card">
     <div class="card-body">
-        <?php if ($viewMode !== 'staff_summary'): ?>
-            <div class="d-flex justify-content-end mb-2">
-                <div class="d-flex align-items-center gap-2">
-                    <div class="input-group input-group-sm" style="width:auto;">
-                        <span class="input-group-text">分组合计</span>
-                        <select class="form-select" id="dashGroup1">
-                            <option value="">不分组</option>
-                            <option value="settlement_status">已结清/未结清</option>
-                            <option value="status">状态</option>
-                            <option value="create_month">创建月份</option>
-                            <option value="receipt_month">收款月份</option>
-                            <option value="sales_user">按签约人</option>
-                            <option value="owner_user">按归属人</option>
-                            <option value="payment_method">按收款方式</option>
-                        </select>
-                    </div>
-                    <div id="dashColumnToggleContainer"></div>
-                </div>
-            </div>
-        <?php endif; ?>
         <!-- 无限滚动容器 -->
         <div id="dashboardScrollContainer" style="max-height: 840px; overflow-y: auto; position: relative;">
             <table class="table table-hover align-middle" id="financeDashboardTable" style="margin-bottom: 0;">
