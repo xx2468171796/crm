@@ -77,7 +77,10 @@ if ($period === 'this_month') {
         $dueStart = sprintf('%04d-%02d-01', $y, $m);
         $dueEnd = date('Y-m-t', $ts);
     }
+} elseif ($period === 'custom') {
+    // 自定义时间：保留用户输入的 due_start 和 due_end
 } elseif ($period === '') {
+    // 所有时间：清空日期筛选
     $dueStart = '';
     $dueEnd = '';
 }
