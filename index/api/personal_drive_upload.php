@@ -39,7 +39,7 @@ if ($file['error'] !== UPLOAD_ERR_OK) {
 }
 
 try {
-    $pdo = Db::getConnection();
+    $pdo = Db::pdo();
     
     // 获取用户网盘
     $stmt = $pdo->prepare("SELECT * FROM personal_drives WHERE user_id = ?");

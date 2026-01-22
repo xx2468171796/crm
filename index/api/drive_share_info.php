@@ -16,7 +16,7 @@ if (empty($token)) {
 }
 
 try {
-    $pdo = Db::getConnection();
+    $pdo = Db::pdo();
     
     $stmt = $pdo->prepare("
         SELECT dsl.*, u.name as user_name, u.username

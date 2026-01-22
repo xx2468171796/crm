@@ -7,7 +7,7 @@
 require_once __DIR__ . '/../core/db.php';
 
 try {
-    $pdo = Db::getConnection();
+    $pdo = Db::pdo();
     
     // 创建 file_share_links 表
     $sql = "

@@ -25,7 +25,7 @@ if (empty($token)) {
 }
 
 try {
-    $pdo = Db::getConnection();
+    $pdo = Db::pdo();
     
     // 获取分享链接信息
     $stmt = $pdo->prepare("

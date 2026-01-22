@@ -17,7 +17,7 @@ if (empty($token) || $projectId <= 0) {
 }
 
 try {
-    $pdo = Db::getConnection();
+    $pdo = Db::pdo();
     
     // 验证token
     $stmt = $pdo->prepare("SELECT id FROM customers WHERE portal_token = ?");

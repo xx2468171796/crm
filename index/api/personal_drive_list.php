@@ -19,7 +19,7 @@ $folderPath = trim($_GET['folder_path'] ?? '/');
 if (empty($folderPath)) $folderPath = '/';
 
 try {
-    $pdo = Db::getConnection();
+    $pdo = Db::pdo();
     
     // 获取或创建用户网盘
     $stmt = $pdo->prepare("SELECT * FROM personal_drives WHERE user_id = ?");

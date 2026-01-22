@@ -6,7 +6,7 @@
 require_once __DIR__ . '/../core/db.php';
 
 try {
-    $pdo = Db::getConnection();
+    $pdo = Db::pdo();
     
     // 1. 创建 personal_drives 表 - 用户网盘信息
     $sql1 = "

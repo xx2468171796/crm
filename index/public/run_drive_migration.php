@@ -7,7 +7,7 @@ if ($key !== 'migrate_personal_drive_2025') {
 }
 
 try {
-    $pdo = Db::getConnection();
+    $pdo = Db::pdo();
     
     $sql1 = "
     CREATE TABLE IF NOT EXISTS personal_drives (

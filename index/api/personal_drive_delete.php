@@ -32,7 +32,7 @@ if ($fileId <= 0) {
 }
 
 try {
-    $pdo = Db::getConnection();
+    $pdo = Db::pdo();
     
     // 获取文件信息
     $stmt = $pdo->prepare("

@@ -13,7 +13,7 @@ if (!$user || !in_array($user['role'], ['admin', 'manager', '主管'])) {
     exit;
 }
 
-$pdo = Db::getConnection();
+$pdo = Db::pdo();
 
 // 处理AJAX请求
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {

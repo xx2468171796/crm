@@ -42,7 +42,7 @@ if ($expiresInDays < 1 || $expiresInDays > 365) {
 }
 
 try {
-    $pdo = Db::getConnection();
+    $pdo = Db::pdo();
     
     // 验证项目存在
     $stmt = $pdo->prepare("SELECT id, name FROM projects WHERE id = ?");

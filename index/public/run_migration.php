@@ -9,7 +9,7 @@ if ($key !== 'migrate_file_share_2025') {
 }
 
 try {
-    $pdo = Db::getConnection();
+    $pdo = Db::pdo();
     
     // 创建 file_share_links 表
     $sql = "
