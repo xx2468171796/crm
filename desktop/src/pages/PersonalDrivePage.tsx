@@ -77,6 +77,11 @@ export default function PersonalDrivePage() {
   const [showMoveModal, setShowMoveModal] = useState(false);
   const [moveTargetPath, setMoveTargetPath] = useState('/');
 
+  // 右键菜单
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; file: DriveFile } | null>(null);
+  // 单文件分享
+  const [shareFileId, setShareFileId] = useState<number | null>(null);
+
 
   const loadFiles = useCallback(async (path: string = '/') => {
     if (!serverUrl || !token) return;
@@ -212,6 +217,7 @@ export default function PersonalDrivePage() {
         },
         body: JSON.stringify({
           folder_path: currentPath,
+          file_id: shareFileId || undefined,  // 支持单文件分享
           password: sharePassword || undefined,
           max_visits: shareMaxVisits ? parseInt(shareMaxVisits) : undefined,
           expires_in_days: parseInt(shareExpireDays) || 7,
@@ -230,6 +236,40 @@ export default function PersonalDrivePage() {
       setGeneratingShare(false);
     }
   };
+
+  // 右键菜单处理
+  const handleContextMenu = (e: React.MouseEvent, file: DriveFile) => {
+    e.preventDefault();
+    setContextMenu({ x: e.clientX, y: e.clientY, file });
+  };
+
+  // 打开文件分享弹窗
+  const openFileShareModal = (fileId: number) => {
+    setShareFileId(fileId);
+    setSharePassword('');
+    setShareMaxVisits('');
+    setShareExpireDays('7');
+    setGeneratedLink(null);
+    setShowShareModal(true);
+    setContextMenu(null);
+  };
+
+  // 打开文件夹分享弹窗
+  const openFolderShareModal = () => {
+    setShareFileId(null);
+    setSharePassword('');
+    setShareMaxVisits('');
+    setShareExpireDays('7');
+    setGeneratedLink(null);
+    setShowShareModal(true);
+  };
+
+  // 关闭右键菜单
+  useEffect(() => {
+    const handleClick = () => setContextMenu(null);
+    document.addEventListener('click', handleClick);
+    return () => document.removeEventListener('click', handleClick);
+  }, []);
 
   const copyShareLink = () => {
     if (generatedLink?.share_url) {
@@ -403,7 +443,7 @@ export default function PersonalDrivePage() {
               <input type="file" multiple onChange={handleFileUpload} className="hidden" disabled={uploading} />
             </label>
             <button
-              onClick={openShareModal}
+              onClick={openFolderShareModal}
               className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-green-500/80 hover:bg-green-600 rounded-lg transition-colors"
             >
               <Share2 className="w-4 h-4" />
@@ -545,6 +585,7 @@ export default function PersonalDrivePage() {
             {files.map((file) => (
               <div
                 key={file.id}
+                onContextMenu={(e) => handleContextMenu(e, file)}
                 className={`flex items-center gap-3 p-3 bg-white rounded-lg border transition-colors ${selectedFiles.has(file.id) ? 'border-cyan-400 bg-cyan-50' : 'hover:border-gray-300'}`}
               >
                 <input
@@ -569,6 +610,13 @@ export default function PersonalDrivePage() {
                   </div>
                 </div>
                 <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => openFileShareModal(file.id)}
+                    className="p-2 text-gray-400 hover:text-green-500 rounded-lg hover:bg-green-50 transition-colors"
+                    title="分享"
+                  >
+                    <Share2 className="w-4 h-4" />
+                  </button>
                   <button
                     onClick={() => openRenameModal(file)}
                     className="p-2 text-gray-400 hover:text-blue-500 rounded-lg hover:bg-blue-50 transition-colors"
@@ -606,7 +654,7 @@ export default function PersonalDrivePage() {
             <div className="px-6 py-4 border-b flex items-center justify-between bg-gradient-to-r from-cyan-500 to-teal-600">
               <h3 className="text-lg font-semibold flex items-center gap-2 text-white">
                 <Share2 className="w-5 h-5" />
-                生成分享链接
+                {shareFileId ? '分享文件' : '分享当前目录'}
               </h3>
               <button
                 onClick={() => setShowShareModal(false)}
@@ -621,7 +669,9 @@ export default function PersonalDrivePage() {
                 <>
                   <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
                     <p className="text-sm text-blue-700">
-                      生成链接后，他人可以通过此链接上传文件到您的网盘。文件将自动重命名为"分享+文件名+时间"。
+                      {shareFileId 
+                        ? '生成链接后，他人可以通过此链接下载此文件。'
+                        : '生成链接后，他人可以通过此链接查看和下载当前目录的文件。'}
                     </p>
                   </div>
 
@@ -841,6 +891,36 @@ export default function PersonalDrivePage() {
               <button onClick={handleMove} className="flex-1 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700">移动</button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* 右键菜单 */}
+      {contextMenu && (
+        <div
+          className="fixed bg-white rounded-lg shadow-xl border py-1 z-50 min-w-[150px]"
+          style={{ left: contextMenu.x, top: contextMenu.y }}
+        >
+          <button
+            onClick={() => openFileShareModal(contextMenu.file.id)}
+            className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
+          >
+            <Share2 className="w-4 h-4 text-green-500" />
+            分享文件
+          </button>
+          <button
+            onClick={() => { openRenameModal(contextMenu.file); setContextMenu(null); }}
+            className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
+          >
+            <Edit3 className="w-4 h-4 text-blue-500" />
+            重命名
+          </button>
+          <button
+            onClick={() => { handleDelete(contextMenu.file.id); setContextMenu(null); }}
+            className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 flex items-center gap-2 text-red-600"
+          >
+            <Trash2 className="w-4 h-4" />
+            删除
+          </button>
         </div>
       )}
     </div>
