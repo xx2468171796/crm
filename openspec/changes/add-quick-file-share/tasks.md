@@ -1,31 +1,31 @@
 # Tasks: 快速文件分享上传功能
 
 ## 1. 数据库设计
-- [ ] 1.1 创建 `file_share_links` 表存储分享链接信息
-- [ ] 1.2 添加字段：project_id, token, created_by, expires_at, max_visits, visit_count, password, cdn_region
+- [x] 1.1 创建 `file_share_links` 表存储分享链接信息
+- [x] 1.2 添加字段：project_id, token, created_by, expires_at, max_visits, visit_count, password, region_id
 
 ## 2. 后端API开发
-- [ ] 2.1 创建 `file_share_create.php` - 生成分享链接
-- [ ] 2.2 创建 `file_share_upload.php` - 处理分享上传（无需认证）
-- [ ] 2.3 创建 `file_share_info.php` - 获取分享链接信息
-- [ ] 2.4 修改文件存储逻辑，支持"分享+"和"客户上传+"前缀重命名
+- [x] 2.1 创建 `file_share_create.php` - 生成分享链接
+- [x] 2.2 创建 `file_share_upload.php` - 处理分享上传（无需认证）
+- [x] 2.3 创建 `file_share_info.php` - 获取分享链接信息
+- [x] 2.4 修改文件存储逻辑，支持"分享+"和"客户上传+"前缀重命名
 
 ## 3. 分享上传页面
-- [ ] 3.1 创建 `share_upload.php` 公开上传页面
-- [ ] 3.2 实现拖拽上传功能
-- [ ] 3.3 实现批量文件选择上传
-- [ ] 3.4 实现文件夹拖拽上传
-- [ ] 3.5 显示上传进度和结果反馈
+- [x] 3.1 创建 `share_upload.php` 公开上传页面（门户风格UI）
+- [x] 3.2 实现拖拽上传功能
+- [x] 3.3 实现批量文件选择上传
+- [x] 3.4 实现文件夹拖拽上传
+- [x] 3.5 显示上传进度和结果反馈
 
 ## 4. 桌面端集成
-- [ ] 4.1 在 `ProjectDetailPage.tsx` 添加"生成传输链接"按钮
-- [ ] 4.2 实现链接生成和复制功能
-- [ ] 4.3 显示已生成的链接列表和状态
+- [x] 4.1 在 `ProjectDetailPage.tsx` 添加"生成传输链接"按钮
+- [x] 4.2 实现链接生成和复制功能（支持密码、访问次数、有效期设置）
+- [x] 4.3 集成分享节点选择
 
 ## 5. 客户门户集成
-- [ ] 5.1 在 `portal.php` 项目详情添加"资料上传"板块
-- [ ] 5.2 实现门户内的文件上传功能
-- [ ] 5.3 自动重命名为"客户上传+文件名"
+- [x] 5.1 在 `portal.php` 项目详情添加"资料上传"板块
+- [x] 5.2 实现门户内的文件上传功能
+- [x] 5.3 自动重命名为"客户上传+文件名"
 
 ## 6. 测试验证
 - [ ] 6.1 测试分享链接生成和过期机制

@@ -1269,3 +1269,97 @@
     max-width: 50px;
   }
 }
+
+/* ========== 文件上传区域 ========== */
+.portal-upload-zone {
+  border: 2px dashed var(--portal-border);
+  border-radius: var(--portal-radius);
+  padding: 40px 20px;
+  text-align: center;
+  transition: all 0.3s ease;
+  cursor: pointer;
+  background: var(--portal-bg);
+}
+
+.portal-upload-zone:hover,
+.portal-upload-zone.dragover {
+  border-color: var(--portal-primary);
+  background: rgba(8, 145, 178, 0.05);
+}
+
+.portal-upload-icon {
+  font-size: 48px;
+  color: var(--portal-primary);
+  margin-bottom: 16px;
+}
+
+.portal-upload-text {
+  font-size: 16px;
+  font-weight: 500;
+  color: var(--portal-text);
+  margin-bottom: 8px;
+}
+
+.portal-upload-hint {
+  font-size: 13px;
+  color: var(--portal-text-muted);
+}
+
+.portal-file-item,
+.portal-uploaded-file {
+  display: flex;
+  align-items: center;
+  padding: 12px 16px;
+  background: var(--portal-bg);
+  border-radius: var(--portal-radius-sm);
+  margin-bottom: 8px;
+  gap: 12px;
+}
+
+.portal-file-icon {
+  font-size: 24px;
+  color: var(--portal-primary);
+  flex-shrink: 0;
+}
+
+.portal-file-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.portal-file-name {
+  font-weight: 500;
+  color: var(--portal-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.portal-file-size {
+  font-size: 12px;
+  color: var(--portal-text-muted);
+  margin-top: 2px;
+}
+
+.portal-file-remove {
+  background: none;
+  border: none;
+  color: var(--portal-text-muted);
+  cursor: pointer;
+  padding: 4px;
+  font-size: 18px;
+  transition: color 0.2s;
+}
+
+.portal-file-remove:hover {
+  color: var(--portal-error);
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.spin {
+  animation: spin 1s linear infinite;
+}

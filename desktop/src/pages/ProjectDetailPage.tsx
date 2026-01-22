@@ -284,6 +284,16 @@ export default function ProjectDetailPage() {
   const [regionLinks, setRegionLinks] = useState<Array<{ region_name: string; url: string; is_default: boolean }>>([]);
   const [loadingLinks, setLoadingLinks] = useState(false);
 
+  // 分享上传链接
+  const [showShareLinkModal, setShowShareLinkModal] = useState(false);
+  const [shareRegions, setShareRegions] = useState<Array<{ id: number; region_name: string; is_default: boolean }>>([]);
+  const [selectedShareRegion, setSelectedShareRegion] = useState<number | null>(null);
+  const [sharePassword, setSharePassword] = useState('');
+  const [shareMaxVisits, setShareMaxVisits] = useState('');
+  const [shareExpireDays, setShareExpireDays] = useState('7');
+  const [generatingShareLink, setGeneratingShareLink] = useState(false);
+  const [generatedShareLink, setGeneratedShareLink] = useState<{ url: string; expires_at: string } | null>(null);
+
   const { queueUpload } = useUploader();
 
   const canManageFile = (file: any) => {
@@ -804,6 +814,81 @@ export default function ProjectDetailPage() {
   const copyRegionLink = (url: string, regionName: string) => {
     navigator.clipboard.writeText(url);
     toast({ title: '成功', description: `${regionName}链接已复制到剪贴板` });
+  };
+
+  // 打开分享链接生成弹窗
+  const handleOpenShareLinkModal = async () => {
+    if (!serverUrl || !token || !project) return;
+    
+    setShowShareLinkModal(true);
+    setGeneratedShareLink(null);
+    setSharePassword('');
+    setShareMaxVisits('');
+    setShareExpireDays('7');
+    setSelectedShareRegion(null);
+    
+    // 加载分享节点列表
+    try {
+      const res = await fetch(`${serverUrl}/api/share_regions.php?action=list`, {
+        headers: { 'Authorization': `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (data.success && data.data) {
+        setShareRegions(data.data);
+        // 默认选择默认节点
+        const defaultRegion = data.data.find((r: any) => r.is_default);
+        if (defaultRegion) {
+          setSelectedShareRegion(defaultRegion.id);
+        }
+      }
+    } catch (err) {
+      console.error('加载分享节点失败:', err);
+    }
+  };
+
+  // 生成分享链接
+  const generateShareLink = async () => {
+    if (!serverUrl || !token || !project) return;
+    
+    setGeneratingShareLink(true);
+    try {
+      const res = await fetch(`${serverUrl}/api/file_share_create.php`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          project_id: project.id,
+          region_id: selectedShareRegion,
+          password: sharePassword || undefined,
+          max_visits: shareMaxVisits ? parseInt(shareMaxVisits) : undefined,
+          expires_in_days: parseInt(shareExpireDays) || 7,
+        }),
+      });
+      const data = await res.json();
+      if (data.success && data.data) {
+        setGeneratedShareLink({
+          url: data.data.share_url,
+          expires_at: data.data.expires_at,
+        });
+        toast({ title: '成功', description: '分享链接已生成' });
+      } else {
+        toast({ title: '错误', description: data.error || '生成失败', variant: 'destructive' });
+      }
+    } catch (err: any) {
+      toast({ title: '错误', description: err.message || '生成失败', variant: 'destructive' });
+    } finally {
+      setGeneratingShareLink(false);
+    }
+  };
+
+  // 复制分享链接
+  const copyShareLink = () => {
+    if (generatedShareLink?.url) {
+      navigator.clipboard.writeText(generatedShareLink.url);
+      toast({ title: '成功', description: '分享链接已复制到剪贴板' });
+    }
   };
 
   // 切换 tab 时加载数据
@@ -1426,6 +1511,13 @@ export default function ProjectDetailPage() {
                 复制链接
               </button>
             )}
+            <button
+              onClick={handleOpenShareLinkModal}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-green-500/80 hover:bg-green-600 rounded-lg transition-colors"
+            >
+              <Upload className="w-4 h-4" />
+              生成传输链接
+            </button>
             {canViewPortalPassword() && customer && (
               <button
                 onClick={async () => {
@@ -3190,6 +3282,167 @@ export default function ProjectDetailPage() {
               >
                 关闭
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 分享链接生成弹窗 */}
+      {showShareLinkModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl w-[500px] max-h-[80vh] overflow-hidden shadow-2xl">
+            <div className="px-6 py-4 border-b flex items-center justify-between bg-gradient-to-r from-green-500 to-emerald-600">
+              <h3 className="text-lg font-semibold flex items-center gap-2 text-white">
+                <Upload className="w-5 h-5" />
+                生成文件传输链接
+              </h3>
+              <button
+                onClick={() => setShowShareLinkModal(false)}
+                className="p-1.5 hover:bg-white/20 rounded-lg text-white/80 hover:text-white"
+              >
+                ✕
+              </button>
+            </div>
+            
+            <div className="p-6 space-y-4">
+              {!generatedShareLink ? (
+                <>
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                    <p className="text-sm text-blue-700">
+                      生成的链接可以发送给客户，客户无需登录即可上传文件到此项目的"客户文件"分类中。
+                    </p>
+                  </div>
+                  
+                  {/* 分享节点选择 */}
+                  {shareRegions.length > 0 && (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">分享节点</label>
+                      <select
+                        value={selectedShareRegion || ''}
+                        onChange={(e) => setSelectedShareRegion(e.target.value ? parseInt(e.target.value) : null)}
+                        className="w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                      >
+                        <option value="">默认节点</option>
+                        {shareRegions.map((r) => (
+                          <option key={r.id} value={r.id}>
+                            {r.is_default ? '⭐ ' : ''}{r.region_name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+                  
+                  {/* 有效期 */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">有效期（天）</label>
+                    <input
+                      type="number"
+                      value={shareExpireDays}
+                      onChange={(e) => setShareExpireDays(e.target.value)}
+                      min="1"
+                      max="365"
+                      className="w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                      placeholder="默认7天"
+                    />
+                  </div>
+                  
+                  {/* 访问密码 */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">访问密码（可选）</label>
+                    <input
+                      type="text"
+                      value={sharePassword}
+                      onChange={(e) => setSharePassword(e.target.value)}
+                      className="w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                      placeholder="留空表示不设置密码"
+                    />
+                  </div>
+                  
+                  {/* 访问次数限制 */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">访问次数限制（可选）</label>
+                    <input
+                      type="number"
+                      value={shareMaxVisits}
+                      onChange={(e) => setShareMaxVisits(e.target.value)}
+                      min="1"
+                      className="w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                      placeholder="留空表示不限制"
+                    />
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="bg-green-50 border border-green-200 rounded-lg p-4 text-center">
+                    <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-3">
+                      <Check className="w-6 h-6 text-green-600" />
+                    </div>
+                    <h4 className="font-semibold text-green-800 mb-2">链接已生成</h4>
+                    <p className="text-sm text-green-700 mb-1">
+                      有效期至: {new Date(generatedShareLink.expires_at).toLocaleString('zh-CN')}
+                    </p>
+                    {sharePassword && (
+                      <p className="text-sm text-green-700">访问密码: {sharePassword}</p>
+                    )}
+                  </div>
+                  
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={generatedShareLink.url}
+                      readOnly
+                      className="flex-1 px-3 py-2 border rounded-lg text-sm bg-gray-50"
+                    />
+                    <button
+                      onClick={copyShareLink}
+                      className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center gap-1"
+                    >
+                      <Copy className="w-4 h-4" />
+                      复制
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+            
+            <div className="px-6 py-4 border-t bg-gray-50 flex gap-3">
+              {!generatedShareLink ? (
+                <>
+                  <button
+                    onClick={() => setShowShareLinkModal(false)}
+                    className="flex-1 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300"
+                  >
+                    取消
+                  </button>
+                  <button
+                    onClick={generateShareLink}
+                    disabled={generatingShareLink}
+                    className="flex-1 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 flex items-center justify-center gap-2"
+                  >
+                    {generatingShareLink ? (
+                      <>
+                        <RefreshCw className="w-4 h-4 animate-spin" />
+                        生成中...
+                      </>
+                    ) : (
+                      <>
+                        <Upload className="w-4 h-4" />
+                        生成链接
+                      </>
+                    )}
+                  </button>
+                </>
+              ) : (
+                <button
+                  onClick={() => {
+                    setGeneratedShareLink(null);
+                    setShowShareLinkModal(false);
+                  }}
+                  className="w-full py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300"
+                >
+                  关闭
+                </button>
+              )}
             </div>
           </div>
         </div>

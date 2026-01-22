@@ -680,6 +680,7 @@ if (empty($token)) {
                 <a class="portal-tab active" data-tab="tab-progress" onclick="switchProjectTab(event, 'progress')">进度看板</a>
                 <a class="portal-tab" data-tab="tab-requirements" onclick="switchProjectTab(event, 'requirements')">需求看板</a>
                 <a class="portal-tab" data-tab="tab-deliverables" onclick="switchProjectTab(event, 'deliverables')">交付作品</a>
+                <a class="portal-tab" data-tab="tab-upload" onclick="switchProjectTab(event, 'upload')">资料上传</a>
             </div>
             
             <div id="tab-progress" class="portal-tab-content active">
@@ -727,11 +728,50 @@ if (empty($token)) {
                     </div>
                 </div>
             </div>
+            
+            <div id="tab-upload" class="portal-tab-content" style="display: none;">
+                <div class="portal-card portal-card-solid">
+                    <h4 style="font-size: 16px; font-weight: 600; margin: 0 0 16px;">
+                        <i class="bi bi-cloud-upload" style="color: var(--portal-primary);"></i> 上传资料文件
+                    </h4>
+                    <p style="color: var(--portal-text-muted); margin-bottom: 20px; font-size: 14px;">
+                        在此处上传您的资料文件，文件将自动保存到项目的"客户文件"分类中。
+                    </p>
+                    
+                    <div id="portalUploadZone" class="portal-upload-zone" onclick="document.getElementById('portalFileInput').click()">
+                        <div class="portal-upload-icon">
+                            <i class="bi bi-cloud-arrow-up"></i>
+                        </div>
+                        <div class="portal-upload-text">拖拽文件到此处或点击选择文件</div>
+                        <div class="portal-upload-hint">支持批量上传多个文件</div>
+                        <input type="file" id="portalFileInput" multiple style="display: none;" onchange="handlePortalFileSelect(event)">
+                    </div>
+                    
+                    <div id="portalUploadList" style="margin-top: 16px;"></div>
+                    
+                    <button id="portalUploadBtn" class="portal-btn portal-btn-primary" style="display: none; margin-top: 16px; width: 100%;" onclick="startPortalUpload()">
+                        <i class="bi bi-upload"></i> 开始上传 (<span id="portalFileCount">0</span> 个文件)
+                    </button>
+                </div>
+                
+                <div class="portal-card portal-card-solid" style="margin-top: 16px;">
+                    <h4 style="font-size: 16px; font-weight: 600; margin: 0 0 16px;">
+                        <i class="bi bi-folder" style="color: var(--portal-primary);"></i> 已上传的文件
+                    </h4>
+                    <div id="portalUploadedFiles">
+                        <div class="portal-loading">
+                            <div class="portal-spinner"></div>
+                            <span class="portal-loading-text">加载中...</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
         `;
         
         loadForms(projectId);
         loadDeliverables(projectId);
         loadStageTimes(projectId);
+        loadPortalUploadedFiles(projectId);
     }
 
     function switchProjectTab(e, tabName) {
@@ -1888,6 +1928,190 @@ if (empty($token)) {
             PortalUI.Toast.error('网络错误，请稍后重试');
         }
     }
+
+    // ========== 门户文件上传 ==========
+    let portalSelectedFiles = [];
+    
+    function handlePortalFileSelect(event) {
+        const files = Array.from(event.target.files);
+        files.forEach(file => {
+            if (!portalSelectedFiles.find(f => f.name === file.name && f.size === file.size)) {
+                portalSelectedFiles.push(file);
+            }
+        });
+        renderPortalUploadList();
+    }
+    
+    function renderPortalUploadList() {
+        const listContainer = document.getElementById('portalUploadList');
+        const uploadBtn = document.getElementById('portalUploadBtn');
+        const fileCount = document.getElementById('portalFileCount');
+        
+        if (portalSelectedFiles.length === 0) {
+            listContainer.innerHTML = '';
+            uploadBtn.style.display = 'none';
+            return;
+        }
+        
+        uploadBtn.style.display = 'block';
+        fileCount.textContent = portalSelectedFiles.length;
+        
+        listContainer.innerHTML = portalSelectedFiles.map((file, idx) => `
+            <div class="portal-file-item" id="portal-file-${idx}">
+                <div class="portal-file-icon"><i class="bi bi-file-earmark"></i></div>
+                <div class="portal-file-info">
+                    <div class="portal-file-name">${escapeHtml(file.name)}</div>
+                    <div class="portal-file-size">${formatFileSize(file.size)}</div>
+                </div>
+                <button class="portal-file-remove" onclick="removePortalFile(${idx})">
+                    <i class="bi bi-x"></i>
+                </button>
+            </div>
+        `).join('');
+    }
+    
+    function removePortalFile(idx) {
+        portalSelectedFiles.splice(idx, 1);
+        renderPortalUploadList();
+    }
+    
+    function escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+    
+    function formatFileSize(bytes) {
+        if (bytes === 0) return '0 B';
+        const k = 1024;
+        const sizes = ['B', 'KB', 'MB', 'GB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+    }
+    
+    async function startPortalUpload() {
+        if (!currentProjectId || portalSelectedFiles.length === 0) return;
+        
+        const uploadBtn = document.getElementById('portalUploadBtn');
+        uploadBtn.disabled = true;
+        uploadBtn.innerHTML = '<i class="bi bi-arrow-repeat spin"></i> 上传中...';
+        
+        let successCount = 0;
+        let failCount = 0;
+        
+        for (let i = 0; i < portalSelectedFiles.length; i++) {
+            const file = portalSelectedFiles[i];
+            const fileItem = document.getElementById(`portal-file-${i}`);
+            
+            try {
+                const formData = new FormData();
+                formData.append('token', TOKEN);
+                formData.append('project_id', currentProjectId);
+                formData.append('file', file);
+                
+                const res = await fetch(`${API_URL}/portal_file_upload.php`, {
+                    method: 'POST',
+                    body: formData
+                });
+                const data = await res.json();
+                
+                if (data.success) {
+                    fileItem.innerHTML = `
+                        <div class="portal-file-icon" style="color: #10b981;"><i class="bi bi-check-circle-fill"></i></div>
+                        <div class="portal-file-info">
+                            <div class="portal-file-name">${escapeHtml(file.name)}</div>
+                            <div class="portal-file-size" style="color: #10b981;">上传成功</div>
+                        </div>
+                    `;
+                    successCount++;
+                } else {
+                    throw new Error(data.error || '上传失败');
+                }
+            } catch (err) {
+                fileItem.innerHTML = `
+                    <div class="portal-file-icon" style="color: #ef4444;"><i class="bi bi-x-circle-fill"></i></div>
+                    <div class="portal-file-info">
+                        <div class="portal-file-name">${escapeHtml(file.name)}</div>
+                        <div class="portal-file-size" style="color: #ef4444;">${err.message}</div>
+                    </div>
+                `;
+                failCount++;
+            }
+        }
+        
+        uploadBtn.disabled = false;
+        uploadBtn.style.display = 'none';
+        portalSelectedFiles = [];
+        
+        if (successCount > 0) {
+            PortalUI.Toast.success(`成功上传 ${successCount} 个文件` + (failCount > 0 ? `，${failCount} 个失败` : ''));
+            loadPortalUploadedFiles(currentProjectId);
+        } else if (failCount > 0) {
+            PortalUI.Toast.error(`上传失败: ${failCount} 个文件`);
+        }
+    }
+    
+    function loadPortalUploadedFiles(projectId) {
+        const container = document.getElementById('portalUploadedFiles');
+        if (!container) return;
+        
+        fetch(`${API_URL}/portal_customer_files.php?token=${TOKEN}&project_id=${projectId}`)
+            .then(r => r.json())
+            .then(data => {
+                if (data.success && data.data && data.data.length > 0) {
+                    container.innerHTML = data.data.map(f => `
+                        <div class="portal-uploaded-file">
+                            <div class="portal-file-icon"><i class="bi bi-file-earmark"></i></div>
+                            <div class="portal-file-info">
+                                <div class="portal-file-name">${escapeHtml(f.file_name)}</div>
+                                <div class="portal-file-size">${formatFileSize(f.file_size)} · ${formatTime(f.create_time)}</div>
+                            </div>
+                        </div>
+                    `).join('');
+                } else {
+                    container.innerHTML = `
+                        <div class="portal-empty" style="padding: 24px;">
+                            <div class="portal-empty-icon"><i class="bi bi-folder2-open"></i></div>
+                            <div class="portal-empty-title">暂无上传的文件</div>
+                        </div>
+                    `;
+                }
+            })
+            .catch(() => {
+                container.innerHTML = '<div style="color: #ef4444; text-align: center; padding: 20px;">加载失败</div>';
+            });
+    }
+    
+    // 拖拽上传
+    document.addEventListener('dragover', function(e) {
+        const uploadZone = document.getElementById('portalUploadZone');
+        if (uploadZone && uploadZone.offsetParent !== null) {
+            e.preventDefault();
+            uploadZone.classList.add('dragover');
+        }
+    });
+    
+    document.addEventListener('dragleave', function(e) {
+        const uploadZone = document.getElementById('portalUploadZone');
+        if (uploadZone) {
+            uploadZone.classList.remove('dragover');
+        }
+    });
+    
+    document.addEventListener('drop', function(e) {
+        const uploadZone = document.getElementById('portalUploadZone');
+        if (uploadZone && uploadZone.offsetParent !== null) {
+            e.preventDefault();
+            uploadZone.classList.remove('dragover');
+            const files = Array.from(e.dataTransfer.files);
+            files.forEach(file => {
+                if (!portalSelectedFiles.find(f => f.name === file.name && f.size === file.size)) {
+                    portalSelectedFiles.push(file);
+                }
+            });
+            renderPortalUploadList();
+        }
+    });
 
     // ========== 初始化 ==========
     document.addEventListener('DOMContentLoaded', function() {
