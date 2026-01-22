@@ -56,7 +56,7 @@ try {
     if (!empty($file['storage_key'])) {
         try {
             $s3 = new S3StorageProvider($storageConfig, []);
-            $s3->deleteFile($file['storage_key']);
+            $s3->deleteObject($file['storage_key']);
         } catch (Exception $e) {
             // 记录日志但不阻止删除
             error_log("删除S3文件失败: " . $e->getMessage());

@@ -85,9 +85,11 @@ try {
     
     // 上传到S3
     $s3 = new S3StorageProvider($storageConfig, []);
-    $uploadResult = $s3->uploadFile($file['tmp_name'], $storageKey, $file['type'] ?? 'application/octet-stream');
+    $uploadResult = $s3->putObject($storageKey, $file['tmp_name'], [
+        'ContentType' => $file['type'] ?? 'application/octet-stream'
+    ]);
     
-    if (!$uploadResult) {
+    if (!$uploadResult || empty($uploadResult['success'])) {
         http_response_code(500);
         echo json_encode(['error' => '文件上传到存储失败']);
         exit;
