@@ -68,7 +68,7 @@ try {
     $pdo = Db::pdo();
     
     // 验证项目存在
-    $stmt = $pdo->prepare("SELECT id, name FROM projects WHERE id = ?");
+    $stmt = $pdo->prepare("SELECT id, project_name FROM projects WHERE id = ?");
     $stmt->execute([$projectId]);
     $project = $stmt->fetch(PDO::FETCH_ASSOC);
     
@@ -147,7 +147,7 @@ try {
             'id' => $linkId,
             'token' => $token,
             'share_url' => $shareUrl,
-            'project_name' => $project['name'],
+            'project_name' => $project['project_name'],
             'expires_at' => $expiresAt,
             'max_visits' => $maxVisits,
             'has_password' => !empty($password),
