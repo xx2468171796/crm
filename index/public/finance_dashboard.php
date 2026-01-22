@@ -973,24 +973,23 @@ finance_sidebar_start('finance_dashboard');
                         <option value="" selected>（汇总不按状态筛）</option>
                     <?php endif; ?>
                 </select>
-                <span class="text-muted small">签约时间:</span>
+                <select class="form-select form-select-sm" name="date_type" id="dashDateType" style="width:auto;">
+                    <option value="sign" <?= ($receiptStart === '' && $receiptEnd === '') ? 'selected' : '' ?>>签约时间</option>
+                    <option value="receipt" <?= ($receiptStart !== '' || $receiptEnd !== '') ? 'selected' : '' ?>>实收时间</option>
+                </select>
                 <select class="form-select form-select-sm" name="period" id="dashboardPeriodSelect" style="width:auto;">
-                    <option value="" <?= ($period === '' && $dueStart === '' && $dueEnd === '') ? 'selected' : '' ?>>所有时间</option>
+                    <option value="" <?= ($period === '' && $dueStart === '' && $dueEnd === '' && $receiptStart === '' && $receiptEnd === '') ? 'selected' : '' ?>>所有时间</option>
                     <option value="this_month" <?= $period === 'this_month' ? 'selected' : '' ?>>本月</option>
                     <option value="last_month" <?= $period === 'last_month' ? 'selected' : '' ?>>上月</option>
-                    <option value="custom" <?= ($period === 'custom' || ($period === '' && ($dueStart !== '' || $dueEnd !== ''))) ? 'selected' : '' ?>>自定义</option>
+                    <option value="custom" <?= ($period === 'custom' || ($period === '' && ($dueStart !== '' || $dueEnd !== '' || $receiptStart !== '' || $receiptEnd !== ''))) ? 'selected' : '' ?>>自定义</option>
                 </select>
-                <input type="date" class="form-control form-control-sm" name="due_start" value="<?= htmlspecialchars($dueStart) ?>" style="width:130px;" placeholder="签约开始" title="合同签约开始日期">
-                <input type="date" class="form-control form-control-sm" name="due_end" value="<?= htmlspecialchars($dueEnd) ?>" style="width:130px;" placeholder="签约结束" title="合同签约结束日期">
+                <input type="date" class="form-control form-control-sm" id="dashDateStart" style="width:130px;" placeholder="开始日期">
+                <input type="date" class="form-control form-control-sm" id="dashDateEnd" style="width:130px;" placeholder="结束日期">
+                <input type="hidden" name="due_start" id="dashDueStart" value="<?= htmlspecialchars($dueStart) ?>">
+                <input type="hidden" name="due_end" id="dashDueEnd" value="<?= htmlspecialchars($dueEnd) ?>">
+                <input type="hidden" name="receipt_start" id="dashReceiptStart" value="<?= htmlspecialchars($receiptStart) ?>">
+                <input type="hidden" name="receipt_end" id="dashReceiptEnd" value="<?= htmlspecialchars($receiptEnd) ?>">
                 <input type="hidden" name="per_page" value="9999999">
-            </div>
-            <!-- 第二行：实收日期筛选 -->
-            <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
-                <span class="text-muted small fw-bold" style="color:#198754!important;">实收时间筛选:</span>
-                <input type="date" class="form-control form-control-sm" name="receipt_start" value="<?= htmlspecialchars($receiptStart) ?>" style="width:140px; border-color:#198754;" placeholder="实收开始" title="实收开始日期（筛选在此时间内有收款的合同）">
-                <span class="text-muted">至</span>
-                <input type="date" class="form-control form-control-sm" name="receipt_end" value="<?= htmlspecialchars($receiptEnd) ?>" style="width:140px; border-color:#198754;" placeholder="实收结束" title="实收结束日期（筛选在此时间内有收款的合同）">
-                <span class="text-muted small">（筛选指定时间内有收款的合同）</span>
                 <?php if (in_array(($user['role'] ?? ''), ['finance', 'admin', 'system_admin', 'super_admin'], true) && $viewMode !== 'staff_summary'): ?>
                 <div class="dropdown" data-bs-auto-close="outside">
                     <button class="btn btn-outline-secondary btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
@@ -1521,6 +1520,48 @@ finance_sidebar_start('finance_dashboard');
 <script>
 // 初始化客户分类筛选字段
 document.addEventListener('DOMContentLoaded', function() {
+    // 日期类型切换逻辑
+    const dateType = document.getElementById('dashDateType');
+    const dateStart = document.getElementById('dashDateStart');
+    const dateEnd = document.getElementById('dashDateEnd');
+    const dueStart = document.getElementById('dashDueStart');
+    const dueEnd = document.getElementById('dashDueEnd');
+    const receiptStart = document.getElementById('dashReceiptStart');
+    const receiptEnd = document.getElementById('dashReceiptEnd');
+    
+    function syncDateFields() {
+        const type = dateType?.value || 'sign';
+        if (type === 'sign') {
+            dueStart.value = dateStart.value;
+            dueEnd.value = dateEnd.value;
+            receiptStart.value = '';
+            receiptEnd.value = '';
+        } else {
+            receiptStart.value = dateStart.value;
+            receiptEnd.value = dateEnd.value;
+            dueStart.value = '';
+            dueEnd.value = '';
+        }
+    }
+    
+    function initDateFields() {
+        const type = dateType?.value || 'sign';
+        if (type === 'sign') {
+            dateStart.value = dueStart?.value || '';
+            dateEnd.value = dueEnd?.value || '';
+        } else {
+            dateStart.value = receiptStart?.value || '';
+            dateEnd.value = receiptEnd?.value || '';
+        }
+    }
+    
+    if (dateType && dateStart && dateEnd) {
+        initDateFields();
+        dateType.addEventListener('change', initDateFields);
+        dateStart.addEventListener('change', syncDateFields);
+        dateEnd.addEventListener('change', syncDateFields);
+    }
+    
     if (typeof CustomerFilterFields !== 'undefined') {
         const selectedValues = CustomerFilterFields.parseUrlParams();
         CustomerFilterFields.render('customerFilterFieldsContainer', {
