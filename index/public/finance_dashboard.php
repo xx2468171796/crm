@@ -1097,25 +1097,77 @@ finance_sidebar_start('finance_dashboard');
 </script>
 
 <?php if ($viewMode !== 'staff_summary'): ?>
-<div class="d-flex align-items-center gap-3 mb-2 px-2 py-1 bg-light rounded small flex-wrap">
-    <span class="text-muted">合同数 <span class="fw-semibold text-dark"><?= number_format((int)($sumRow['contract_count'] ?? 0)) ?></span></span>
-    <span class="text-muted">分期数 <span class="fw-semibold text-dark"><?= number_format((int)($sumRow['installment_count'] ?? 0)) ?></span></span>
-    <span class="text-muted">应收合计 <span class="fw-semibold text-dark" id="sumDueDisplay"><?= number_format((float)($sumRow['sum_due'] ?? 0), 2) ?></span> <small id="sumDueCurrency" class="text-secondary"></small></span>
-    <span class="text-muted">已收合计 <span class="fw-semibold text-dark" id="sumPaidDisplay"><?= number_format((float)($sumRow['sum_paid'] ?? 0), 2) ?></span> <small id="sumPaidCurrency" class="text-secondary"></small></span>
-    <span class="text-muted">未收合计 <span class="fw-semibold text-danger" id="sumUnpaidDisplay"><?= number_format((float)($sumRow['sum_unpaid'] ?? 0), 2) ?></span> <small id="sumUnpaidCurrency" class="text-secondary"></small></span>
-    <span class="ms-auto d-flex align-items-center gap-2 flex-wrap">
-        <div class="d-flex align-items-center gap-1">
-            <label class="text-muted mb-0 small">金额显示:</label>
-            <select class="form-select form-select-sm" id="dashAmountMode" style="width:auto;min-width:140px;">
-                <option value="original">原始金额(TWD)</option>
-                <option value="fixed" selected>固定汇率折算(CNY)</option>
-                <option value="floating">浮动汇率折算(CNY)</option>
-            </select>
+<!-- 汇总统计卡片 -->
+<div class="row g-2 mb-3">
+    <div class="col-6 col-md-2">
+        <div class="card border-0 bg-primary bg-opacity-10 h-100">
+            <div class="card-body py-2 px-3">
+                <div class="d-flex align-items-center">
+                    <div class="rounded-circle bg-primary bg-opacity-25 p-2 me-2">
+                        <i class="bi bi-file-earmark-text text-primary"></i>
+                    </div>
+                    <div>
+                        <div class="text-muted small">合同数</div>
+                        <div class="fw-bold fs-5"><?= number_format((int)($sumRow['contract_count'] ?? 0)) ?></div>
+                    </div>
+                </div>
+            </div>
         </div>
-        <a href="index.php?page=exchange_rate" class="btn btn-outline-secondary btn-sm" title="汇率管理">
-            <i class="bi bi-currency-exchange"></i> 汇率
-        </a>
-    </span>
+    </div>
+    <div class="col-6 col-md-2">
+        <div class="card border-0 bg-info bg-opacity-10 h-100">
+            <div class="card-body py-2 px-3">
+                <div class="d-flex align-items-center">
+                    <div class="rounded-circle bg-info bg-opacity-25 p-2 me-2">
+                        <i class="bi bi-calendar-check text-info"></i>
+                    </div>
+                    <div>
+                        <div class="text-muted small">分期数</div>
+                        <div class="fw-bold fs-5"><?= number_format((int)($sumRow['installment_count'] ?? 0)) ?></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-2">
+        <div class="card border-0 bg-secondary bg-opacity-10 h-100">
+            <div class="card-body py-2 px-3">
+                <div class="text-muted small">应收合计</div>
+                <div class="fw-bold text-dark" id="sumDueDisplay"><?= number_format((float)($sumRow['sum_due'] ?? 0), 2) ?></div>
+                <small id="sumDueCurrency" class="text-secondary"></small>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-2">
+        <div class="card border-0 bg-success bg-opacity-10 h-100">
+            <div class="card-body py-2 px-3">
+                <div class="text-muted small">已收合计</div>
+                <div class="fw-bold text-success" id="sumPaidDisplay"><?= number_format((float)($sumRow['sum_paid'] ?? 0), 2) ?></div>
+                <small id="sumPaidCurrency" class="text-secondary"></small>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-2">
+        <div class="card border-0 bg-danger bg-opacity-10 h-100">
+            <div class="card-body py-2 px-3">
+                <div class="text-muted small">未收合计</div>
+                <div class="fw-bold text-danger" id="sumUnpaidDisplay"><?= number_format((float)($sumRow['sum_unpaid'] ?? 0), 2) ?></div>
+                <small id="sumUnpaidCurrency" class="text-secondary"></small>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-2">
+        <div class="card border-0 bg-light h-100">
+            <div class="card-body py-2 px-3">
+                <div class="text-muted small mb-1">金额显示</div>
+                <select class="form-select form-select-sm" id="dashAmountMode">
+                    <option value="original">原始(TWD)</option>
+                    <option value="fixed" selected>固定汇率(CNY)</option>
+                    <option value="floating">浮动汇率(CNY)</option>
+                </select>
+            </div>
+        </div>
+    </div>
 </div>
 <script>
 (function() {
