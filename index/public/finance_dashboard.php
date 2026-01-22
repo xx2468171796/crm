@@ -643,6 +643,7 @@ $groupStats = [];
 if ($viewMode === 'contract') {
     $groupStatsSql = 'SELECT
         u.realname AS signer_name,
+        c.currency AS contract_currency,
         COUNT(DISTINCT c.id) AS contract_count,
         COALESCE(SUM(i.amount_due), 0) AS sum_due,
         COALESCE(SUM(i.amount_paid), 0) AS sum_paid,
@@ -698,21 +699,41 @@ if ($viewMode === 'contract') {
         }
         $groupStatsParams['focus_user_id'] = $focusUserId;
     }
-    $groupStatsSql .= ' GROUP BY u.id, u.realname';
+    // 添加时间筛选条件
+    if ($dueStart !== '') {
+        $groupStatsSql .= ' AND c.sign_date >= :due_start';
+        $groupStatsParams['due_start'] = $dueStart;
+    }
+    if ($dueEnd !== '') {
+        $groupStatsSql .= ' AND c.sign_date <= :due_end';
+        $groupStatsParams['due_end'] = $dueEnd;
+    }
+    $groupStatsSql .= ' GROUP BY u.id, u.realname, c.currency';
     $groupStatsRows = Db::query($groupStatsSql, $groupStatsParams);
     foreach ($groupStatsRows as $row) {
         $key = $row['signer_name'] ?: '未分配签约人';
-        $groupStats[$key] = [
-            'count' => (int)$row['contract_count'],
-            'sum_due' => (float)$row['sum_due'],
-            'sum_paid' => (float)$row['sum_paid'],
-            'sum_unpaid' => (float)$row['sum_unpaid']
-        ];
+        $currency = $row['contract_currency'] ?: 'TWD';
+        if (!isset($groupStats[$key])) {
+            $groupStats[$key] = [
+                'count' => 0,
+                'by_currency' => []
+            ];
+        }
+        $groupStats[$key]['count'] += (int)$row['contract_count'];
+        if (!isset($groupStats[$key]['by_currency'][$currency])) {
+            $groupStats[$key]['by_currency'][$currency] = [
+                'sum_due' => 0, 'sum_paid' => 0, 'sum_unpaid' => 0
+            ];
+        }
+        $groupStats[$key]['by_currency'][$currency]['sum_due'] += (float)$row['sum_due'];
+        $groupStats[$key]['by_currency'][$currency]['sum_paid'] += (float)$row['sum_paid'];
+        $groupStats[$key]['by_currency'][$currency]['sum_unpaid'] += (float)$row['sum_unpaid'];
     }
     
     // 按归属人分组统计
     $ownerGroupStatsSql = 'SELECT
         ou.realname AS owner_name,
+        c.currency AS contract_currency,
         COUNT(DISTINCT c.id) AS contract_count,
         COALESCE(SUM(i.amount_due), 0) AS sum_due,
         COALESCE(SUM(i.amount_paid), 0) AS sum_paid,
@@ -756,17 +777,36 @@ if ($viewMode === 'contract') {
         $ownerGroupStatsSql .= ' AND cu.owner_user_id = :focus_user_id';
         $ownerGroupStatsParams['focus_user_id'] = $focusUserId;
     }
-    $ownerGroupStatsSql .= ' GROUP BY ou.id, ou.realname';
+    // 添加时间筛选条件
+    if ($dueStart !== '') {
+        $ownerGroupStatsSql .= ' AND c.sign_date >= :due_start';
+        $ownerGroupStatsParams['due_start'] = $dueStart;
+    }
+    if ($dueEnd !== '') {
+        $ownerGroupStatsSql .= ' AND c.sign_date <= :due_end';
+        $ownerGroupStatsParams['due_end'] = $dueEnd;
+    }
+    $ownerGroupStatsSql .= ' GROUP BY ou.id, ou.realname, c.currency';
     $ownerGroupStatsRows = Db::query($ownerGroupStatsSql, $ownerGroupStatsParams);
     $ownerGroupStats = [];
     foreach ($ownerGroupStatsRows as $row) {
         $key = $row['owner_name'] ?: '未分配归属人';
-        $ownerGroupStats[$key] = [
-            'count' => (int)$row['contract_count'],
-            'sum_due' => (float)$row['sum_due'],
-            'sum_paid' => (float)$row['sum_paid'],
-            'sum_unpaid' => (float)$row['sum_unpaid']
-        ];
+        $currency = $row['contract_currency'] ?: 'TWD';
+        if (!isset($ownerGroupStats[$key])) {
+            $ownerGroupStats[$key] = [
+                'count' => 0,
+                'by_currency' => []
+            ];
+        }
+        $ownerGroupStats[$key]['count'] += (int)$row['contract_count'];
+        if (!isset($ownerGroupStats[$key]['by_currency'][$currency])) {
+            $ownerGroupStats[$key]['by_currency'][$currency] = [
+                'sum_due' => 0, 'sum_paid' => 0, 'sum_unpaid' => 0
+            ];
+        }
+        $ownerGroupStats[$key]['by_currency'][$currency]['sum_due'] += (float)$row['sum_due'];
+        $ownerGroupStats[$key]['by_currency'][$currency]['sum_paid'] += (float)$row['sum_paid'];
+        $ownerGroupStats[$key]['by_currency'][$currency]['sum_unpaid'] += (float)$row['sum_unpaid'];
     }
 }
 

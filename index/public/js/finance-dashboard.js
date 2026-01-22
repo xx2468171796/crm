@@ -89,19 +89,50 @@ function formatAmountByRateTWD(amountTWD) {
 
 // 更新所有分组合计显示（汇率切换时调用）
 function updateGroupSumsDisplay() {
-    document.querySelectorAll('tr.dash-group-row[data-sum-due]').forEach(header => {
-        const sumDue = parseFloat(header.getAttribute('data-sum-due') || 0);
-        const sumPaid = parseFloat(header.getAttribute('data-sum-paid') || 0);
-        const sumUnpaid = parseFloat(header.getAttribute('data-sum-unpaid') || 0);
+    const mode = document.getElementById('dashAmountMode')?.value || 'fixed';
+    const useFloating = (mode === 'floating');
+    const targetCurrency = (mode === 'original') ? 'TWD' : 'CNY';
+    
+    document.querySelectorAll('tr.dash-group-row[data-by-currency]').forEach(header => {
+        const byCurrencyStr = header.getAttribute('data-by-currency') || '{}';
+        let byCurrency = {};
+        try { byCurrency = JSON.parse(byCurrencyStr); } catch(e) {}
         
+        // 按目标货币汇总
+        let sumDue = 0, sumPaid = 0, sumUnpaid = 0;
+        Object.keys(byCurrency).forEach(code => {
+            const data = byCurrency[code];
+            const rate = getExchangeRate(code, useFloating);
+            if (targetCurrency === 'TWD') {
+                // 转换到TWD
+                const twdRate = getExchangeRate('TWD', useFloating);
+                sumDue += (data.sum_due / rate) * twdRate;
+                sumPaid += (data.sum_paid / rate) * twdRate;
+                sumUnpaid += (data.sum_unpaid / rate) * twdRate;
+            } else {
+                // 转换到CNY
+                sumDue += data.sum_due / rate;
+                sumPaid += data.sum_paid / rate;
+                sumUnpaid += data.sum_unpaid / rate;
+            }
+        });
+        
+        const fmt = (v) => v.toLocaleString('zh-CN', {minimumFractionDigits: 2, maximumFractionDigits: 2});
         const dueEl = header.querySelector('.group-sum-due');
         const paidEl = header.querySelector('.group-sum-paid');
         const unpaidEl = header.querySelector('.group-sum-unpaid');
         
-        if (dueEl) dueEl.textContent = formatAmountByRate(sumDue);
-        if (paidEl) paidEl.textContent = formatAmountByRate(sumPaid);
-        if (unpaidEl) unpaidEl.textContent = formatAmountByRate(sumUnpaid);
+        if (dueEl) dueEl.textContent = fmt(sumDue) + ' ' + targetCurrency;
+        if (paidEl) paidEl.textContent = fmt(sumPaid) + ' ' + targetCurrency;
+        if (unpaidEl) unpaidEl.textContent = fmt(sumUnpaid) + ' ' + targetCurrency;
     });
+}
+
+// 获取汇率（相对于CNY）
+function getExchangeRate(code, useFloating) {
+    if (code === 'CNY') return 1;
+    const r = DashboardExchangeRate.rates[code] || DashboardExchangeRate.rates['TWD'] || { fixed: 4.5, floating: 4.5 };
+    return useFloating ? r.floating : r.fixed;
 }
 
 // ==================== 工具函数 ====================
@@ -2317,27 +2348,64 @@ const AjaxDashboard = {
         const groupStats = data.groupStats || {};
         let html = '';
         let groupCounter = 0;
+        
+        // 获取汇率转换函数
+        const mode = document.getElementById('dashAmountMode')?.value || 'fixed';
+        const useFloating = (mode === 'floating');
+        const targetCurrency = (mode === 'original') ? 'TWD' : 'CNY';
+        
+        const calcGroupSums = (byCurrency) => {
+            let sumDue = 0, sumPaid = 0, sumUnpaid = 0;
+            Object.keys(byCurrency || {}).forEach(code => {
+                const data = byCurrency[code];
+                const rate = getExchangeRate(code, useFloating);
+                if (targetCurrency === 'TWD') {
+                    const twdRate = getExchangeRate('TWD', useFloating);
+                    sumDue += (data.sum_due / rate) * twdRate;
+                    sumPaid += (data.sum_paid / rate) * twdRate;
+                    sumUnpaid += (data.sum_unpaid / rate) * twdRate;
+                } else {
+                    sumDue += data.sum_due / rate;
+                    sumPaid += data.sum_paid / rate;
+                    sumUnpaid += data.sum_unpaid / rate;
+                }
+            });
+            return { sumDue, sumPaid, sumUnpaid };
+        };
+        
+        const fmt = (v) => v.toLocaleString('zh-CN', {minimumFractionDigits: 2, maximumFractionDigits: 2});
 
         Object.keys(groups).sort().forEach(groupName => {
             const items = groups[groupName];
-            const stats = groupStats[groupName] || {
-                count: items.length,
-                sum_due: items.reduce((sum, r) => sum + parseFloat(r.total_due || 0), 0),
-                sum_paid: items.reduce((sum, r) => sum + parseFloat(r.total_paid || 0), 0),
-                sum_unpaid: items.reduce((sum, r) => sum + parseFloat(r.total_unpaid || 0), 0)
-            };
+            const statsData = groupStats[groupName] || {};
+            const byCurrency = statsData.by_currency || {};
+            
+            // 如果没有by_currency数据，使用旧的方式计算
+            let stats;
+            if (Object.keys(byCurrency).length > 0) {
+                const sums = calcGroupSums(byCurrency);
+                stats = { count: statsData.count || items.length, ...sums };
+            } else {
+                stats = {
+                    count: items.length,
+                    sumDue: items.reduce((sum, r) => sum + parseFloat(r.total_due || 0), 0),
+                    sumPaid: items.reduce((sum, r) => sum + parseFloat(r.total_paid || 0), 0),
+                    sumUnpaid: items.reduce((sum, r) => sum + parseFloat(r.total_unpaid || 0), 0)
+                };
+            }
 
             const groupId = 'g_' + (++groupCounter);
+            const byCurrencyJson = JSON.stringify(byCurrency).replace(/"/g, '&quot;');
             
-            html += `<tr class="table-light dash-group-row" data-group-header="${groupId}" style="cursor:pointer;">`;
+            html += `<tr class="table-light dash-group-row" data-group-header="${groupId}" data-by-currency="${byCurrencyJson}" style="cursor:pointer;">`;
             html += `<td colspan="20">`;
             html += `<div class="d-flex justify-content-between align-items-center">`;
             html += `<div class="fw-semibold"><span class="group-toggle-icon me-2">▾</span>${groupName}</div>`;
             html += `<div class="d-flex gap-3 align-items-center">`;
             html += `<span class="small text-muted">${stats.count} 条</span>`;
-            html += `<span class="small">应收 <span class="text-dark fw-semibold">${stats.sum_due.toFixed(2)}</span></span>`;
-            html += `<span class="small">已收 <span class="text-success fw-semibold">${stats.sum_paid.toFixed(2)}</span></span>`;
-            html += `<span class="small">未收 <span class="text-danger fw-semibold">${stats.sum_unpaid.toFixed(2)}</span></span>`;
+            html += `<span class="small">应收 <span class="text-dark fw-semibold group-sum-due">${fmt(stats.sumDue)} ${targetCurrency}</span></span>`;
+            html += `<span class="small">已收 <span class="text-success fw-semibold group-sum-paid">${fmt(stats.sumPaid)} ${targetCurrency}</span></span>`;
+            html += `<span class="small">未收 <span class="text-danger fw-semibold group-sum-unpaid">${fmt(stats.sumUnpaid)} ${targetCurrency}</span></span>`;
             html += `</div></div></td></tr>`;
 
             items.forEach(row => {
