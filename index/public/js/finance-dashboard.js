@@ -491,8 +491,17 @@ function applyDashboardFilters() {
     const ownerChecks = form.querySelectorAll('input[name="owner_user_ids[]"]:checked');
     ownerChecks.forEach(el => params.append('owner_user_ids[]', el.value));
     
-    // 使用URL导航实现刷新（保持简单可靠）
-    window.location.href = 'index.php?' + params.toString();
+    // 使用Ajax刷新数据
+    if (typeof AjaxDashboard !== 'undefined' && AjaxDashboard.sendRequest) {
+        // 更新URL但不刷新页面
+        const newUrl = 'index.php?' + params.toString();
+        window.history.replaceState({}, '', newUrl);
+        // 使用Ajax加载数据
+        AjaxDashboard.sendRequest({ page: 1 });
+    } else {
+        // 降级为整页刷新
+        window.location.href = 'index.php?' + params.toString();
+    }
 }
 
 function getCurrentFilters() {
