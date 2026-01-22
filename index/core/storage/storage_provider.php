@@ -361,7 +361,7 @@ class S3StorageProvider extends AbstractStorageProvider
         $response = curl_exec($ch);
         $status = curl_getinfo($ch, CURLINFO_HTTP_CODE);
         $error = curl_error($ch);
-        curl_close($ch);
+        // curl_close($ch); // PHP 8.0+ 不再需要手动关闭
 
         if (isset($handle) && is_resource($handle)) {
             fclose($handle);
