@@ -77,8 +77,6 @@ export default function PersonalDrivePage() {
   const [showMoveModal, setShowMoveModal] = useState(false);
   const [moveTargetPath, setMoveTargetPath] = useState('/');
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const [_contextMenu, setContextMenu] = useState<{ x: number; y: number; file: DriveFile } | null>(null);
 
   const loadFiles = useCallback(async (path: string = '/') => {
     if (!serverUrl || !token) return;
@@ -379,21 +377,8 @@ export default function PersonalDrivePage() {
     setRenameTarget({ id: file.id, name: file.filename, type: 'file' });
     setNewName(file.filename);
     setShowRenameModal(true);
-    setContextMenu(null);
   };
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const _handleContextMenu = (e: React.MouseEvent, file: DriveFile) => {
-    e.preventDefault();
-    setContextMenu({ x: e.clientX, y: e.clientY, file });
-  };
-
-  // 关闭右键菜单
-  useEffect(() => {
-    const handleClick = () => setContextMenu(null);
-    document.addEventListener('click', handleClick);
-    return () => document.removeEventListener('click', handleClick);
-  }, []);
 
   return (
     <div className="min-h-screen bg-gray-50">
