@@ -4,7 +4,8 @@ import { useSettingsStore } from '@/stores/settings';
 import { useToast } from '@/hooks/use-toast';
 import {
   HardDrive, Upload, Trash2, Share2, Folder, RefreshCw,
-  ChevronRight, Copy, Lock, Clock, Check, X, ArrowLeft
+  ChevronRight, Copy, Lock, Clock, Check, X, ArrowLeft,
+  FolderPlus, Edit3, Move, MoreVertical
 } from 'lucide-react';
 
 interface DriveFile {
@@ -61,6 +62,23 @@ export default function PersonalDrivePage() {
 
   const [selectedFiles, setSelectedFiles] = useState<Set<number>>(new Set());
   const [deleting, setDeleting] = useState(false);
+
+  // 文件夹管理
+  const [showNewFolderModal, setShowNewFolderModal] = useState(false);
+  const [newFolderName, setNewFolderName] = useState('');
+  const [creatingFolder, setCreatingFolder] = useState(false);
+
+  // 重命名
+  const [showRenameModal, setShowRenameModal] = useState(false);
+  const [renameTarget, setRenameTarget] = useState<{ id: number; name: string; type: 'file' | 'folder' } | null>(null);
+  const [newName, setNewName] = useState('');
+
+  // 移动
+  const [showMoveModal, setShowMoveModal] = useState(false);
+  const [moveTargetPath, setMoveTargetPath] = useState('/');
+
+  // 右键菜单
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; file: DriveFile } | null>(null);
 
   const loadFiles = useCallback(async (path: string = '/') => {
     if (!serverUrl || !token) return;
@@ -286,6 +304,128 @@ export default function PersonalDrivePage() {
     return '📄';
   };
 
+  // 创建文件夹
+  const handleCreateFolder = async () => {
+    if (!newFolderName.trim()) {
+      toast({ title: '请输入文件夹名称', variant: 'destructive' });
+      return;
+    }
+    setCreatingFolder(true);
+    try {
+      const res = await fetch(`${serverUrl}/api/personal_drive_folder.php`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'create', parent_path: currentPath, folder_name: newFolderName }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        toast({ title: '文件夹创建成功' });
+        setShowNewFolderModal(false);
+        setNewFolderName('');
+        loadFiles(currentPath);
+      } else {
+        toast({ title: '创建失败', description: data.error, variant: 'destructive' });
+      }
+    } catch (err: any) {
+      toast({ title: '创建失败', description: err.message, variant: 'destructive' });
+    } finally {
+      setCreatingFolder(false);
+    }
+  };
+
+  // 重命名文件
+  const handleRename = async () => {
+    if (!renameTarget || !newName.trim()) return;
+    try {
+      const res = await fetch(`${serverUrl}/api/personal_drive_file_action.php`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'rename', file_id: renameTarget.id, new_name: newName }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        toast({ title: '重命名成功' });
+        setShowRenameModal(false);
+        setRenameTarget(null);
+        loadFiles(currentPath);
+      } else {
+        toast({ title: '重命名失败', description: data.error, variant: 'destructive' });
+      }
+    } catch (err: any) {
+      toast({ title: '重命名失败', description: err.message, variant: 'destructive' });
+    }
+  };
+
+  // 移动文件
+  const handleMove = async () => {
+    if (selectedFiles.size === 0) return;
+    try {
+      const res = await fetch(`${serverUrl}/api/personal_drive_file_action.php`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'batch_move', file_ids: Array.from(selectedFiles), target_path: moveTargetPath }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        toast({ title: '移动成功', description: `已移动 ${data.data.moved_count} 个文件` });
+        setShowMoveModal(false);
+        setSelectedFiles(new Set());
+        loadFiles(currentPath);
+      } else {
+        toast({ title: '移动失败', description: data.error, variant: 'destructive' });
+      }
+    } catch (err: any) {
+      toast({ title: '移动失败', description: err.message, variant: 'destructive' });
+    }
+  };
+
+  // 批量删除(使用新API)
+  const handleBatchDeleteNew = async () => {
+    if (selectedFiles.size === 0) return;
+    if (!confirm(`确定要删除选中的 ${selectedFiles.size} 个文件吗？`)) return;
+    setDeleting(true);
+    try {
+      const res = await fetch(`${serverUrl}/api/personal_drive_file_action.php`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'batch_delete', file_ids: Array.from(selectedFiles) }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        toast({ title: '删除成功', description: `已删除 ${data.data.deleted_count} 个文件` });
+        setSelectedFiles(new Set());
+        loadFiles(currentPath);
+      } else {
+        toast({ title: '删除失败', description: data.error, variant: 'destructive' });
+      }
+    } catch (err: any) {
+      toast({ title: '删除失败', description: err.message, variant: 'destructive' });
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  // 打开重命名弹窗
+  const openRenameModal = (file: DriveFile) => {
+    setRenameTarget({ id: file.id, name: file.filename, type: 'file' });
+    setNewName(file.filename);
+    setShowRenameModal(true);
+    setContextMenu(null);
+  };
+
+  // 右键菜单
+  const handleContextMenu = (e: React.MouseEvent, file: DriveFile) => {
+    e.preventDefault();
+    setContextMenu({ x: e.clientX, y: e.clientY, file });
+  };
+
+  // 关闭右键菜单
+  useEffect(() => {
+    const handleClick = () => setContextMenu(null);
+    document.addEventListener('click', handleClick);
+    return () => document.removeEventListener('click', handleClick);
+  }, []);
+
   return (
     <div className="min-h-screen bg-gray-50">
       {/* 顶部栏 */}
@@ -383,17 +523,35 @@ export default function PersonalDrivePage() {
         )}
       </div>
 
+      {/* 工具栏 */}
+      <div className="bg-white border-b px-6 py-2 flex items-center gap-3">
+        <button
+          onClick={() => { setShowNewFolderModal(true); setNewFolderName(''); }}
+          className="text-sm text-gray-600 hover:text-cyan-600 flex items-center gap-1.5 px-2 py-1 rounded hover:bg-gray-100"
+        >
+          <FolderPlus className="w-4 h-4" />
+          新建文件夹
+        </button>
+      </div>
+
       {/* 批量操作栏 */}
       {selectedFiles.size > 0 && (
         <div className="bg-cyan-50 border-b px-6 py-2 flex items-center gap-3">
           <span className="text-sm text-cyan-700">已选择 {selectedFiles.size} 个文件</span>
           <button
-            onClick={handleBatchDelete}
+            onClick={handleBatchDeleteNew}
             disabled={deleting}
             className="text-sm text-red-600 hover:text-red-700 flex items-center gap-1"
           >
             <Trash2 className="w-4 h-4" />
             {deleting ? '删除中...' : '批量删除'}
+          </button>
+          <button
+            onClick={() => { setShowMoveModal(true); setMoveTargetPath('/'); }}
+            className="text-sm text-blue-600 hover:text-blue-700 flex items-center gap-1"
+          >
+            <Move className="w-4 h-4" />
+            移动到
           </button>
           <button
             onClick={() => setSelectedFiles(new Set())}
@@ -457,6 +615,13 @@ export default function PersonalDrivePage() {
                   </div>
                 </div>
                 <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => openRenameModal(file)}
+                    className="p-2 text-gray-400 hover:text-blue-500 rounded-lg hover:bg-blue-50 transition-colors"
+                    title="重命名"
+                  >
+                    <Edit3 className="w-4 h-4" />
+                  </button>
                   <button
                     onClick={() => handleDelete(file.id)}
                     className="p-2 text-gray-400 hover:text-red-500 rounded-lg hover:bg-red-50 transition-colors"
@@ -622,6 +787,104 @@ export default function PersonalDrivePage() {
                   关闭
                 </button>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 新建文件夹弹窗 */}
+      {showNewFolderModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl w-[400px] overflow-hidden shadow-2xl">
+            <div className="px-6 py-4 border-b flex items-center justify-between bg-gradient-to-r from-cyan-500 to-teal-600">
+              <h3 className="text-lg font-semibold flex items-center gap-2 text-white">
+                <FolderPlus className="w-5 h-5" />
+                新建文件夹
+              </h3>
+              <button onClick={() => setShowNewFolderModal(false)} className="p-1.5 hover:bg-white/20 rounded-lg text-white/80 hover:text-white">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-6">
+              <label className="block text-sm font-medium text-gray-700 mb-2">文件夹名称</label>
+              <input
+                type="text"
+                value={newFolderName}
+                onChange={(e) => setNewFolderName(e.target.value)}
+                className="w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                placeholder="请输入文件夹名称"
+                autoFocus
+              />
+            </div>
+            <div className="px-6 py-4 border-t bg-gray-50 flex gap-3">
+              <button onClick={() => setShowNewFolderModal(false)} className="flex-1 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300">取消</button>
+              <button onClick={handleCreateFolder} disabled={creatingFolder} className="flex-1 py-2 bg-cyan-600 text-white rounded-lg hover:bg-cyan-700 disabled:opacity-50">
+                {creatingFolder ? '创建中...' : '创建'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 重命名弹窗 */}
+      {showRenameModal && renameTarget && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl w-[400px] overflow-hidden shadow-2xl">
+            <div className="px-6 py-4 border-b flex items-center justify-between bg-gradient-to-r from-blue-500 to-indigo-600">
+              <h3 className="text-lg font-semibold flex items-center gap-2 text-white">
+                <Edit3 className="w-5 h-5" />
+                重命名
+              </h3>
+              <button onClick={() => setShowRenameModal(false)} className="p-1.5 hover:bg-white/20 rounded-lg text-white/80 hover:text-white">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-6">
+              <label className="block text-sm font-medium text-gray-700 mb-2">新名称</label>
+              <input
+                type="text"
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
+                className="w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="请输入新名称"
+                autoFocus
+              />
+            </div>
+            <div className="px-6 py-4 border-t bg-gray-50 flex gap-3">
+              <button onClick={() => setShowRenameModal(false)} className="flex-1 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300">取消</button>
+              <button onClick={handleRename} className="flex-1 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">确定</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 移动文件弹窗 */}
+      {showMoveModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl w-[400px] overflow-hidden shadow-2xl">
+            <div className="px-6 py-4 border-b flex items-center justify-between bg-gradient-to-r from-purple-500 to-pink-600">
+              <h3 className="text-lg font-semibold flex items-center gap-2 text-white">
+                <Move className="w-5 h-5" />
+                移动到
+              </h3>
+              <button onClick={() => setShowMoveModal(false)} className="p-1.5 hover:bg-white/20 rounded-lg text-white/80 hover:text-white">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-6">
+              <label className="block text-sm font-medium text-gray-700 mb-2">目标路径</label>
+              <input
+                type="text"
+                value={moveTargetPath}
+                onChange={(e) => setMoveTargetPath(e.target.value)}
+                className="w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                placeholder="/ 表示根目录"
+              />
+              <p className="text-xs text-gray-500 mt-2">输入目标文件夹路径，例如: /项目资料</p>
+            </div>
+            <div className="px-6 py-4 border-t bg-gray-50 flex gap-3">
+              <button onClick={() => setShowMoveModal(false)} className="flex-1 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300">取消</button>
+              <button onClick={handleMove} className="flex-1 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700">移动</button>
             </div>
           </div>
         </div>
