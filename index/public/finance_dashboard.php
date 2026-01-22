@@ -1524,10 +1524,26 @@ document.addEventListener('DOMContentLoaded', function() {
     const dateType = document.getElementById('dashDateType');
     const dateStart = document.getElementById('dashDateStart');
     const dateEnd = document.getElementById('dashDateEnd');
+    const periodSelect = document.getElementById('dashboardPeriodSelect');
     const dueStart = document.getElementById('dashDueStart');
     const dueEnd = document.getElementById('dashDueEnd');
     const receiptStart = document.getElementById('dashReceiptStart');
     const receiptEnd = document.getElementById('dashReceiptEnd');
+    
+    // 获取本月/上月日期范围
+    function getMonthRange(type) {
+        const now = new Date();
+        let start, end;
+        if (type === 'this_month') {
+            start = new Date(now.getFullYear(), now.getMonth(), 1);
+            end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+        } else if (type === 'last_month') {
+            start = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+            end = new Date(now.getFullYear(), now.getMonth(), 0);
+        }
+        const fmt = (d) => d.toISOString().split('T')[0];
+        return { start: fmt(start), end: fmt(end) };
+    }
     
     function syncDateFields() {
         const type = dateType?.value || 'sign';
@@ -1555,11 +1571,44 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
     
+    // 时间段选择变化时自动填充日期
+    function onPeriodChange() {
+        const period = periodSelect?.value || '';
+        if (period === 'this_month' || period === 'last_month') {
+            const range = getMonthRange(period);
+            dateStart.value = range.start;
+            dateEnd.value = range.end;
+            syncDateFields();
+        } else if (period === '') {
+            dateStart.value = '';
+            dateEnd.value = '';
+            syncDateFields();
+        }
+    }
+    
     if (dateType && dateStart && dateEnd) {
         initDateFields();
-        dateType.addEventListener('change', initDateFields);
-        dateStart.addEventListener('change', syncDateFields);
-        dateEnd.addEventListener('change', syncDateFields);
+        dateType.addEventListener('change', function() {
+            initDateFields();
+            // 如果当前选择了本月/上月，重新应用日期范围
+            const period = periodSelect?.value || '';
+            if (period === 'this_month' || period === 'last_month') {
+                onPeriodChange();
+            }
+        });
+        dateStart.addEventListener('change', function() {
+            syncDateFields();
+            // 手动修改日期时切换到自定义
+            if (periodSelect) periodSelect.value = 'custom';
+        });
+        dateEnd.addEventListener('change', function() {
+            syncDateFields();
+            if (periodSelect) periodSelect.value = 'custom';
+        });
+    }
+    
+    if (periodSelect) {
+        periodSelect.addEventListener('change', onPeriodChange);
     }
     
     if (typeof CustomerFilterFields !== 'undefined') {
