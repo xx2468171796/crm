@@ -171,8 +171,8 @@ try {
     $stmt = $pdo->prepare("
         INSERT INTO deliverables 
         (project_id, deliverable_name, deliverable_type, file_category, file_path, file_size, 
-         visibility_level, approval_status, submitted_at, create_time, update_time)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         visibility_level, approval_status, submitted_by, submitted_at, create_time, update_time)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ");
     $stmt->execute([
         $link['project_id'],
@@ -183,6 +183,7 @@ try {
         $file['size'],
         'client',
         'approved',
+        $link['created_by'],  // 使用分享链接创建者作为submitted_by
         $now,
         $now,
         $now
