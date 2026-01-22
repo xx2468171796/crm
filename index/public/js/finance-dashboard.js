@@ -1540,13 +1540,18 @@ function dashRefreshView() {
                 header.style.cursor = 'pointer';
                 const td = document.createElement('td');
                 td.colSpan = colCount;
+                // 获取目标货币
+                const mode = document.getElementById('dashAmountMode')?.value || 'fixed';
+                const targetCurrency = (mode === 'original') ? 'TWD' : 'CNY';
+                const fmt = (v) => v.toLocaleString('zh-CN', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+                
                 td.innerHTML = '<div class="d-flex justify-content-between align-items-center">'
                     + '<div class="fw-semibold"><span class="group-toggle-icon me-2">▾</span>' + esc(dashBuildGroupLabel(key, val)) + '</div>'
                     + '<div class="d-flex gap-3 align-items-center">'
                     + '<span class="small text-muted">' + String(finalSums.count || items.length) + ' 条</span>'
-                    + '<span class="small">应收 <span class="text-dark fw-semibold group-sum-due">' + formatAmountByRate(finalSums.sumDue) + '</span></span>'
-                    + '<span class="small">已收 <span class="text-success fw-semibold group-sum-paid">' + formatAmountByRate(finalSums.sumPaid) + '</span></span>'
-                    + '<span class="small">未收 <span class="text-danger fw-semibold group-sum-unpaid">' + formatAmountByRate(finalSums.sumUnpaid) + '</span></span>'
+                    + '<span class="small">应收 <span class="text-dark fw-semibold group-sum-due">' + fmt(finalSums.sumDue) + ' ' + targetCurrency + '</span></span>'
+                    + '<span class="small">已收 <span class="text-success fw-semibold group-sum-paid">' + fmt(finalSums.sumPaid) + ' ' + targetCurrency + '</span></span>'
+                    + '<span class="small">未收 <span class="text-danger fw-semibold group-sum-unpaid">' + fmt(finalSums.sumUnpaid) + ' ' + targetCurrency + '</span></span>'
                     + '<div class="btn-group btn-group-sm ms-2">'
                     + '<button type="button" class="btn btn-outline-secondary py-0 px-1 group-sort-btn" data-group-id="' + groupId + '" data-sort-key="due_date" title="按应收时间排序">期</button>'
                     + '<button type="button" class="btn btn-outline-secondary py-0 px-1 group-sort-btn" data-group-id="' + groupId + '" data-sort-key="receipt_time" title="按收款时间排序">收</button>'
