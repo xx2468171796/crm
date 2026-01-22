@@ -5,7 +5,7 @@ import { useToast } from '@/hooks/use-toast';
 import {
   HardDrive, Upload, Trash2, Share2, Folder, RefreshCw,
   ChevronRight, Copy, Lock, Clock, Check, X, ArrowLeft,
-  FolderPlus, Edit3, Move, MoreVertical
+  FolderPlus, Edit3, Move
 } from 'lucide-react';
 
 interface DriveFile {
@@ -77,8 +77,8 @@ export default function PersonalDrivePage() {
   const [showMoveModal, setShowMoveModal] = useState(false);
   const [moveTargetPath, setMoveTargetPath] = useState('/');
 
-  // 右键菜单
-  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; file: DriveFile } | null>(null);
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const [_contextMenu, setContextMenu] = useState<{ x: number; y: number; file: DriveFile } | null>(null);
 
   const loadFiles = useCallback(async (path: string = '/') => {
     if (!serverUrl || !token) return;
@@ -192,37 +192,6 @@ export default function PersonalDrivePage() {
     }
   };
 
-  const handleBatchDelete = async () => {
-    if (selectedFiles.size === 0) return;
-    if (!confirm(`确定要删除选中的 ${selectedFiles.size} 个文件吗？`)) return;
-
-    setDeleting(true);
-    let successCount = 0;
-    let failCount = 0;
-
-    for (const fileId of selectedFiles) {
-      try {
-        const res = await fetch(`${serverUrl}/api/personal_drive_delete.php`, {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ file_id: fileId }),
-        });
-        const data = await res.json();
-        if (data.success) successCount++;
-        else failCount++;
-      } catch {
-        failCount++;
-      }
-    }
-
-    setDeleting(false);
-    setSelectedFiles(new Set());
-    toast({ title: '批量删除完成', description: `成功 ${successCount} 个${failCount > 0 ? `，失败 ${failCount} 个` : ''}` });
-    loadFiles(currentPath);
-  };
 
   const openShareModal = () => {
     setShowShareModal(true);
@@ -413,8 +382,8 @@ export default function PersonalDrivePage() {
     setContextMenu(null);
   };
 
-  // 右键菜单
-  const handleContextMenu = (e: React.MouseEvent, file: DriveFile) => {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const _handleContextMenu = (e: React.MouseEvent, file: DriveFile) => {
     e.preventDefault();
     setContextMenu({ x: e.clientX, y: e.clientY, file });
   };
