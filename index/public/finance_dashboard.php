@@ -1283,7 +1283,6 @@ finance_sidebar_start('finance_dashboard');
                         <th style="width:40px;"></th>
                         <th style="width:50px;">序号</th>
                         <th>客户</th>
-                        <th>活动标签</th>
                         <th>合同</th>
                         <th>签约人</th>
                         <th>客户归属</th>
@@ -1409,7 +1408,6 @@ finance_sidebar_start('finance_dashboard');
                                     <div><?= htmlspecialchars($row['customer_name'] ?? '') ?></div>
                                     <div class="small text-muted"><?= htmlspecialchars($row['customer_code'] ?? '') ?> <?= htmlspecialchars($row['customer_mobile'] ?? '') ?></div>
                                 </td>
-                                <td><?= htmlspecialchars($row['activity_tag'] ?? '') ?></td>
                                 <td>
                                     <div><?= htmlspecialchars($row['contract_no'] ?? '') ?></div>
                                     <div class="small text-muted"><?= htmlspecialchars($row['contract_title'] ?? '') ?></div>
