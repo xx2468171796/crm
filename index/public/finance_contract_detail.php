@@ -508,9 +508,10 @@ layout_header('合同详情');
                         <?php endif; ?>
                     </div>
                     <div class="col-md-4">
-                        <label class="form-label">签约日期 <?php if (($user['role'] ?? '') !== 'admin'): ?><small class="text-muted">(仅管理员可修改)</small><?php endif; ?></label>
-                        <input type="date" class="form-control" name="sign_date" value="<?= htmlspecialchars($contract['sign_date'] ?? '') ?>" <?= ($user['role'] ?? '') !== 'admin' ? 'disabled' : '' ?>>
-                        <?php if (($user['role'] ?? '') !== 'admin'): ?>
+                        <?php $canEditSignDate = in_array(($user['role'] ?? ''), ['admin', 'system_admin', 'super_admin'], true); ?>
+                        <label class="form-label">签约日期 <?php if (!$canEditSignDate): ?><small class="text-muted">(仅管理员可修改)</small><?php endif; ?></label>
+                        <input type="datetime-local" class="form-control" name="sign_date" value="<?= htmlspecialchars(str_replace(' ', 'T', $contract['sign_date'] ?? '')) ?>" <?= !$canEditSignDate ? 'disabled' : '' ?>>
+                        <?php if (!$canEditSignDate): ?>
                             <input type="hidden" name="sign_date" value="<?= htmlspecialchars($contract['sign_date'] ?? '') ?>">
                         <?php endif; ?>
                     </div>
