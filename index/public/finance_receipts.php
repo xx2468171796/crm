@@ -7,6 +7,9 @@ require_once __DIR__ . '/../core/rbac.php';
 auth_require();
 $user = current_user();
 
+// 加载货币列表
+$currencies = Db::query("SELECT code, name, fixed_rate, floating_rate FROM currencies WHERE status = 1 ORDER BY sort_order ASC");
+
 if (!canOrAdmin(PermissionCode::FINANCE_EDIT)) {
     layout_header('无权访问');
     echo '<div class="alert alert-danger">仅财务/管理员可进行收款登记。</div>';
@@ -112,9 +115,9 @@ layout_header('收款登记');
                 <div class="col-md-3">
                     <label class="form-label">收款货币</label>
                     <select class="form-select" name="receive_currency" id="receiveCurrency">
-                        <option value="TWD" selected>TWD（新台币）</option>
-                        <option value="CNY">CNY（人民币）</option>
-                        <option value="USD">USD（美元）</option>
+                        <?php foreach ($currencies as $cur): ?>
+                            <option value="<?= htmlspecialchars($cur['code']) ?>" <?= $cur['code'] === 'TWD' ? 'selected' : '' ?>><?= htmlspecialchars($cur['code']) ?>（<?= htmlspecialchars($cur['name']) ?>）</option>
+                        <?php endforeach; ?>
                     </select>
                 </div>
                 <div class="col-md-3">

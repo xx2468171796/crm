@@ -6,13 +6,27 @@ require_once __DIR__ . '/../core/dict.php';
 require_once __DIR__ . '/../core/finance_status.php';
 require_once __DIR__ . '/../core/rbac.php';
 
-// 货币汇率（相对于TWD）
+// 从数据库加载货币列表
+function getCurrencies(): array {
+    static $currencies = null;
+    if ($currencies === null) {
+        $currencies = Db::query("SELECT code, name, fixed_rate, floating_rate FROM currencies WHERE status = 1 ORDER BY sort_order ASC");
+    }
+    return $currencies;
+}
+
+// 货币汇率（从数据库加载）
 function getExchangeRates(): array {
-    return [
-        'TWD' => 1.0,
-        'CNY' => 4.5,    // 1 CNY = 4.5 TWD
-        'USD' => 32.0,   // 1 USD = 32 TWD
-    ];
+    $currencies = getCurrencies();
+    $rates = [];
+    foreach ($currencies as $c) {
+        $rates[$c['code']] = (float)($c['fixed_rate'] ?? 1.0);
+    }
+    // 确保有默认值
+    if (empty($rates)) {
+        $rates = ['TWD' => 4.5, 'CNY' => 1.0, 'USD' => 0.14];
+    }
+    return $rates;
 }
 
 function convertCurrency(float $amount, string $fromCurrency, string $toCurrency): float {
@@ -526,9 +540,9 @@ layout_header('合同详情');
                     <div class="col-md-3">
                         <label class="form-label">合同货币</label>
                         <select class="form-select" name="currency">
-                            <option value="TWD" <?= ($contract['currency'] ?? 'TWD') === 'TWD' ? 'selected' : '' ?>>TWD（新台币）</option>
-                            <option value="CNY" <?= ($contract['currency'] ?? '') === 'CNY' ? 'selected' : '' ?>>CNY（人民币）</option>
-                            <option value="USD" <?= ($contract['currency'] ?? '') === 'USD' ? 'selected' : '' ?>>USD（美元）</option>
+                            <?php foreach (getCurrencies() as $cur): ?>
+                                <option value="<?= htmlspecialchars($cur['code']) ?>" <?= ($contract['currency'] ?? 'TWD') === $cur['code'] ? 'selected' : '' ?>><?= htmlspecialchars($cur['code']) ?>（<?= htmlspecialchars($cur['name']) ?>）</option>
+                            <?php endforeach; ?>
                         </select>
                     </div>
                     <div class="col-md-3">
