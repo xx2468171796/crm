@@ -145,11 +145,9 @@ if ($viewId > 0 && !empty($viewFilters)) {
 }
 
 $page = max(1, intval($_GET['page_num'] ?? 1));
-$perPage = intval($_GET['per_page'] ?? 9999); // 默认全部显示
-if ($perPage === 0 || $perPage === 9999) {
-    $perPage = 9999; // 全部显示
-} elseif (!in_array($perPage, [10, 20, 50, 100, 500, 1000], true)) {
-    $perPage = 9999;
+$perPage = intval($_GET['per_page'] ?? 9999999); // 默认全部显示
+if ($perPage <= 0) {
+    $perPage = 9999999; // 全部显示
 }
 $offset = ($page - 1) * $perPage;
 
