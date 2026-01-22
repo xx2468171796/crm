@@ -936,11 +936,7 @@ finance_sidebar_start('finance_dashboard');
             
             <!-- 常用筛选（始终显示） -->
             <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
-                <select class="form-select form-select-sm" name="view_mode" style="width:auto;">
-                    <option value="contract" <?= $viewMode === 'contract' ? 'selected' : '' ?>>合同视图</option>
-                    <option value="installment" <?= $viewMode === 'installment' ? 'selected' : '' ?>>分期视图</option>
-                    <option value="staff_summary" <?= $viewMode === 'staff_summary' ? 'selected' : '' ?>>按人员汇总</option>
-                </select>
+                <input type="hidden" name="view_mode" value="<?= htmlspecialchars($viewMode) ?>">
                 <input type="text" class="form-control form-control-sm" name="keyword" placeholder="客户/合同号/项目编号" value="<?= htmlspecialchars($keyword) ?>" style="width:180px;">
                 <select class="form-select form-select-sm" name="status" style="width:auto;">
                     <option value="">全部状态</option>
