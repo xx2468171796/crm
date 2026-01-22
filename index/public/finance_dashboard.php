@@ -893,7 +893,7 @@ finance_sidebar_start('finance_dashboard');
                     <option value="20" <?= $perPage == 20 ? 'selected' : '' ?>>20条</option>
                     <option value="50" <?= $perPage == 50 ? 'selected' : '' ?>>50条</option>
                     <option value="100" <?= $perPage == 100 ? 'selected' : '' ?>>100条</option>
-                    <option value="9999" <?= $perPage == 9999 ? 'selected' : '' ?>>全部</option>
+                    <option value="9999999" <?= $perPage == 9999999 ? 'selected' : '' ?>>全部</option>
                 </select>
                 <?php if (in_array(($user['role'] ?? ''), ['finance', 'admin', 'system_admin', 'super_admin'], true) && $viewMode !== 'staff_summary'): ?>
                 <div class="dropdown" data-bs-auto-close="outside">
