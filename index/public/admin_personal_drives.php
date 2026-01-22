@@ -63,7 +63,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
 
 // 获取所有用户网盘
 $stmt = $pdo->query("
-    SELECT pd.*, u.name as user_name, u.username, d.name as dept_name,
+    SELECT pd.*, u.realname as user_name, u.username, d.name as dept_name,
            (SELECT COUNT(*) FROM drive_files WHERE drive_id = pd.id) as file_count
     FROM personal_drives pd
     JOIN users u ON u.id = pd.user_id
