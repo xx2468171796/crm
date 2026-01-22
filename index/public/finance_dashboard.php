@@ -1293,9 +1293,8 @@ finance_sidebar_start('finance_dashboard');
                         <th>未收</th>
                         <th>
                             状态
-                            <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-1 ms-1 dashSortBtn" data-sort="status" title="按状态排序">状</button>
-                            <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-1 ms-1 dashSortBtn" data-sort="create_time" title="按创建时间排序">创</button>
-                            <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-1 ms-1 dashSortBtn" data-sort="receipt_time" title="按收款时间排序">收</button>
+                            <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-1 ms-1 dashSortBtn" data-sort="sign_date" title="按签约时间排序">签<span class="sort-icon"></span></button>
+                            <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-1 ms-1 dashSortBtn" data-sort="receipt_time" title="按收款时间排序">收<span class="sort-icon"></span></button>
                         </th>
                         <th>附件</th>
                         <th>操作</th>
@@ -1375,7 +1374,7 @@ finance_sidebar_start('finance_dashboard');
                         <tr
                             <?= $viewMode === 'contract' ? 'data-contract-row="1" data-contract-id="' . (int)($row['contract_id'] ?? 0) . '" data-total-due="' . (float)($row['total_due'] ?? 0) . '" data-total-paid="' . (float)($row['total_paid'] ?? 0) . '" data-due-date="' . htmlspecialchars((string)($row['first_due_date'] ?? '')) . '"' : '' ?>
                             <?= $viewMode === 'installment' ? 'data-installment-id="' . (int)($row['id'] ?? 0) . '" data-amount-due="' . (float)($row['amount_due'] ?? 0) . '" data-amount-paid="' . (float)($row['amount_paid'] ?? 0) . '" data-due-date="' . htmlspecialchars((string)($row['due_date'] ?? '')) . '"' : '' ?>
-                            <?= $viewMode !== 'staff_summary' ? 'data-status-label="' . htmlspecialchars((string)$statusLabel) . '" data-create-time="' . (int)$rowCreateTs . '" data-last-received-date="' . htmlspecialchars($rowLastReceipt) . '" data-signer-name="' . htmlspecialchars((string)($row['signer_name'] ?? '')) . '" data-owner-name="' . htmlspecialchars((string)($row['owner_name'] ?? '')) . '" data-payment-method="' . htmlspecialchars(getPaymentMethodLabel((string)($row['last_payment_method'] ?? '')) ?: '未收款') . '"' : '' ?>
+                            <?= $viewMode !== 'staff_summary' ? 'data-status-label="' . htmlspecialchars((string)$statusLabel) . '" data-create-time="' . (int)$rowCreateTs . '" data-last-received-date="' . htmlspecialchars($rowLastReceipt) . '" data-sign-date="' . htmlspecialchars((string)($row['contract_sign_date'] ?? '')) . '" data-signer-name="' . htmlspecialchars((string)($row['signer_name'] ?? '')) . '" data-owner-name="' . htmlspecialchars((string)($row['owner_name'] ?? '')) . '" data-payment-method="' . htmlspecialchars(getPaymentMethodLabel((string)($row['last_payment_method'] ?? '')) ?: '未收款') . '"' : '' ?>
                         >
                             <?php if ($viewMode === 'contract'): ?>
                                 <td>

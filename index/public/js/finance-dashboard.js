@@ -1386,6 +1386,7 @@ function dashGetSortVal(el, key) {
     if (!el) return '';
     if (key === 'create_time') return Number(el.getAttribute('data-create-time') || 0);
     if (key === 'receipt_time') return String(el.getAttribute('data-last-received-date') || '');
+    if (key === 'sign_date') return String(el.getAttribute('data-sign-date') || '');
     if (key === 'status') return String(el.getAttribute('data-status-label') || '');
     return '';
 }
@@ -1403,6 +1404,15 @@ function dashCompareEls(a, b) {
     }
 
     if (dashSortKey === 'receipt_time') {
+        const va = String(dashGetSortVal(a, dashSortKey) || '');
+        const vb = String(dashGetSortVal(b, dashSortKey) || '');
+        const da = va === '' ? '0000-00-00' : va;
+        const db = vb === '' ? '0000-00-00' : vb;
+        const d = da.localeCompare(db);
+        return dashSortDir === 'asc' ? (d || (ia - ib)) : ((-d) || (ia - ib));
+    }
+
+    if (dashSortKey === 'sign_date') {
         const va = String(dashGetSortVal(a, dashSortKey) || '');
         const vb = String(dashGetSortVal(b, dashSortKey) || '');
         const da = va === '' ? '0000-00-00' : va;
@@ -2081,9 +2091,24 @@ function initDashboard() {
                 dashSortDir = (dashSortDir === 'asc') ? 'desc' : 'asc';
             } else {
                 dashSortKey = key;
-                if (key === 'create_time' || key === 'receipt_time') dashSortDir = 'desc';
+                if (key === 'create_time' || key === 'receipt_time' || key === 'sign_date') dashSortDir = 'desc';
                 else dashSortDir = 'asc';
             }
+            // 更新排序指示器
+            document.querySelectorAll('.dashSortBtn').forEach(b => {
+                const icon = b.querySelector('.sort-icon');
+                if (icon) {
+                    if (b.getAttribute('data-sort') === dashSortKey) {
+                        icon.textContent = dashSortDir === 'asc' ? '↑' : '↓';
+                        b.classList.add('btn-primary');
+                        b.classList.remove('btn-outline-secondary');
+                    } else {
+                        icon.textContent = '';
+                        b.classList.remove('btn-primary');
+                        b.classList.add('btn-outline-secondary');
+                    }
+                }
+            });
             dashRefreshView();
         });
     });
