@@ -661,8 +661,8 @@ $sql .= ($viewMode === 'contract'
     ? ' ORDER BY c.id DESC'
     : ($viewMode === 'staff_summary'
         ? ' ORDER BY contract_amount DESC, receipt_amount DESC, unpaid_amount DESC, u.id DESC'
-        : ' ORDER BY i.due_date ASC, overdue_days DESC, i.id DESC'))
-    . ' LIMIT ' . $perPage . ' OFFSET ' . $offset;
+        : ' ORDER BY i.due_date ASC, overdue_days DESC, i.id DESC'));
+// 不再使用分页，显示全部数据
 $rows = Db::query($sql, $params);
 
 // 查询完整的分组汇总数据（不受分页限制）
