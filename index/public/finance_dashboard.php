@@ -474,14 +474,22 @@ if ($viewMode !== 'staff_summary' && $focusUserId > 0 && $focusUserType !== '') 
 
 if ($status !== '') {
     if ($viewMode === 'contract') {
-        $sql .= ' AND (
-            (c.manual_status IS NOT NULL AND c.manual_status <> "" AND c.manual_status = :status)
-            OR (
-                (c.manual_status IS NULL OR c.manual_status = "")
-                AND (CASE WHEN c.status = "active" THEN "剩余几期" ELSE c.status END) = :status
-            )
-        )';
-        $params['status'] = $status;
+        if ($status === '已结清') {
+            // 已结清：合同状态为已结清，或手动状态为已结清
+            $sql .= ' AND (c.status = "已结清" OR c.manual_status = "已结清")';
+        } elseif ($status === '未结清') {
+            // 未结清：合同状态不是已结清，且手动状态也不是已结清
+            $sql .= ' AND (c.status <> "已结清" AND (c.manual_status IS NULL OR c.manual_status = "" OR c.manual_status <> "已结清"))';
+        } else {
+            $sql .= ' AND (
+                (c.manual_status IS NOT NULL AND c.manual_status <> "" AND c.manual_status = :status)
+                OR (
+                    (c.manual_status IS NULL OR c.manual_status = "")
+                    AND c.status = :status
+                )
+            )';
+            $params['status'] = $status;
+        }
     } elseif ($viewMode === 'installment') {
         if ($status === '已收') {
             $sql .= ' AND (i.amount_due > 0 AND (i.amount_due - i.amount_paid) <= 0.00001)';
@@ -842,10 +850,8 @@ finance_sidebar_start('finance_dashboard');
                 <select class="form-select form-select-sm" name="status" style="width:auto;">
                     <option value="">全部状态</option>
                     <?php if ($viewMode === 'contract'): ?>
-                        <option value="已收几期" <?= $status === '已收几期' ? 'selected' : '' ?>>已收几期</option>
-                        <option value="剩余几期" <?= $status === '剩余几期' ? 'selected' : '' ?>>剩余几期</option>
                         <option value="已结清" <?= $status === '已结清' ? 'selected' : '' ?>>已结清</option>
-                        <option value="作废" <?= $status === '作废' ? 'selected' : '' ?>>作废</option>
+                        <option value="未结清" <?= $status === '未结清' ? 'selected' : '' ?>>未结清</option>
                     <?php elseif ($viewMode === 'installment'): ?>
                         <option value="待收" <?= $status === '待收' ? 'selected' : '' ?>>待收</option>
                         <option value="催款" <?= $status === '催款' ? 'selected' : '' ?>>催款</option>
@@ -1055,6 +1061,7 @@ finance_sidebar_start('finance_dashboard');
                         <span class="input-group-text">分组1</span>
                         <select class="form-select" id="dashGroup1">
                             <option value="">不分组</option>
+                            <option value="settlement_status">已结清/未结清</option>
                             <option value="status">状态</option>
                             <option value="create_month">创建月份</option>
                             <option value="receipt_month">收款月份</option>
@@ -1067,6 +1074,7 @@ finance_sidebar_start('finance_dashboard');
                         <span class="input-group-text">分组2</span>
                         <select class="form-select" id="dashGroup2">
                             <option value="">不分组</option>
+                            <option value="settlement_status">已结清/未结清</option>
                             <option value="status">状态</option>
                             <option value="create_month">创建月份</option>
                             <option value="receipt_month">收款月份</option>

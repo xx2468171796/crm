@@ -1201,6 +1201,11 @@ function dashStatusRank(label) {
 
 function dashGetGroupVal(el, key) {
     if (!key) return '';
+    if (key === 'settlement_status') {
+        // 按已结清/未结清分组
+        const statusLabel = String(el.getAttribute('data-status-label') || '').trim();
+        return (statusLabel === '已结清') ? '已结清' : '未结清';
+    }
     if (key === 'status') return String(el.getAttribute('data-status-label') || '').trim() || '未知状态';
     if (key === 'create_month') {
         const m = normalizeMonthByUnixTs(el.getAttribute('data-create-time'));
@@ -1225,6 +1230,7 @@ function dashGetGroupVal(el, key) {
 }
 
 function dashBuildGroupLabel(key, val) {
+    if (key === 'settlement_status') return '结清状态：' + val;
     if (key === 'status') return '状态：' + val;
     if (key === 'create_month') return '创建：' + val;
     if (key === 'receipt_month') return '收款：' + val;
