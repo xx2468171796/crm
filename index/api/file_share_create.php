@@ -4,9 +4,6 @@
  * POST /api/file_share_create.php
  */
 
-// 先启动session和认证
-require_once __DIR__ . '/../core/auth.php';
-
 // CORS处理
 $origin = $_SERVER['HTTP_ORIGIN'] ?? '*';
 header("Access-Control-Allow-Origin: $origin");
@@ -26,8 +23,22 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     exit;
 }
 
-// 验证用户登录
-$user = current_user();
+// 支持两种认证方式：桌面端token认证 或 web session认证
+$user = null;
+
+// 检查是否有Authorization header (桌面端)
+$authHeader = $_SERVER['HTTP_AUTHORIZATION'] ?? '';
+if (preg_match('/Bearer\s+(.+)/', $authHeader, $matches)) {
+    require_once __DIR__ . '/../core/desktop_auth.php';
+    $user = desktop_verify_token($matches[1]);
+}
+
+// 如果没有token认证，尝试session认证
+if (!$user) {
+    require_once __DIR__ . '/../core/auth.php';
+    $user = current_user();
+}
+
 if (!$user) {
     http_response_code(401);
     echo json_encode(['error' => 'Unauthorized']);
