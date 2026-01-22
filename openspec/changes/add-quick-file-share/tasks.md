@@ -2,7 +2,7 @@
 
 ## 1. 数据库设计
 - [ ] 1.1 创建 `file_share_links` 表存储分享链接信息
-- [ ] 1.2 添加字段：project_id, token, created_by, expires_at, max_uploads, upload_count
+- [ ] 1.2 添加字段：project_id, token, created_by, expires_at, max_visits, visit_count, password, cdn_region
 
 ## 2. 后端API开发
 - [ ] 2.1 创建 `file_share_create.php` - 生成分享链接
