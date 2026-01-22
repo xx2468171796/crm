@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Kanban, ListTodo, FileCheck, FolderSync, DollarSign, Settings, LogOut, User, ClipboardList, PanelRightOpen, Users, FolderKanban, Pin, PinOff } from 'lucide-react';
+import { LayoutDashboard, Kanban, ListTodo, FileCheck, FolderSync, DollarSign, Settings, LogOut, User, ClipboardList, PanelRightOpen, Users, FolderKanban, Pin, PinOff, HardDrive } from 'lucide-react';
 import { useAuthStore } from '@/stores/auth';
 import { cn } from '@/lib/utils';
 import { onEvent, EVENTS } from '@/lib/windowEvents';
@@ -20,6 +20,7 @@ const navItems = [
   { to: '/approval', icon: FileCheck, label: '作品审批', managerOnly: true },
   { to: '/file-logs', icon: FolderSync, label: '文件日志' },
   { to: '/file-sync', icon: FolderSync, label: '文件同步' },
+  { to: '/personal-drive', icon: HardDrive, label: '我的网盘' },
   { to: '/finance', icon: DollarSign, label: '我的财务' },
   { to: '/settings', icon: Settings, label: '设置' },
 ];
