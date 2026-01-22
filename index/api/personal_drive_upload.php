@@ -68,7 +68,7 @@ try {
     $stmt->execute([$user['id']]);
     $userInfo = $stmt->fetch(PDO::FETCH_ASSOC);
     $deptName = $userInfo['dept_name'] ?? '未分配部门';
-    $userName = $user['realname'] ?? $user['username'];
+    $userName = $user['name'] ?? $user['username'];
     
     // 生成存储路径: 部门/用户名/网盘文件/
     $config = require __DIR__ . '/../config/storage.php';
@@ -86,10 +86,10 @@ try {
     // 上传到S3
     $s3 = new S3StorageProvider($storageConfig, []);
     $uploadResult = $s3->putObject($storageKey, $file['tmp_name'], [
-        'ContentType' => $file['type'] ?? 'application/octet-stream'
+        'mime_type' => $file['type'] ?? 'application/octet-stream'
     ]);
     
-    if (!$uploadResult || empty($uploadResult['success'])) {
+    if (!$uploadResult || empty($uploadResult['storage_key'])) {
         http_response_code(500);
         echo json_encode(['error' => '文件上传到存储失败']);
         exit;
