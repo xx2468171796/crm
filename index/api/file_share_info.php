@@ -31,7 +31,7 @@ try {
             fsl.expires_at,
             fsl.status,
             fsl.note,
-            p.name AS project_name,
+            p.project_name AS project_name,
             c.name AS customer_name,
             c.group_code
         FROM file_share_links fsl
