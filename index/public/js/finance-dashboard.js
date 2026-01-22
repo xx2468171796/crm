@@ -456,6 +456,9 @@ function applyDashboardFilters() {
     const status = form.querySelector('select[name="status"]')?.value || '';
     if (status) params.set('status', status);
     
+    const dateType = form.querySelector('select[name="date_type"]')?.value || 'sign';
+    params.set('date_type', dateType);
+    
     const period = form.querySelector('select[name="period"]')?.value || '';
     if (period) params.set('period', period);
     
@@ -464,6 +467,12 @@ function applyDashboardFilters() {
     
     const dueEnd = form.querySelector('input[name="due_end"]')?.value || '';
     if (dueEnd) params.set('due_end', dueEnd);
+    
+    const receiptStart = form.querySelector('input[name="receipt_start"]')?.value || '';
+    if (receiptStart) params.set('receipt_start', receiptStart);
+    
+    const receiptEnd = form.querySelector('input[name="receipt_end"]')?.value || '';
+    if (receiptEnd) params.set('receipt_end', receiptEnd);
     
     const perPage = form.querySelector('input[name="per_page"]')?.value || form.querySelector('select[name="per_page"]')?.value || '9999999';
     params.set('per_page', perPage);
