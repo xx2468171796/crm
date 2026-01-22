@@ -59,6 +59,9 @@ export default function PersonalDrivePage() {
   const [shareExpireDays, setShareExpireDays] = useState('7');
   const [generatingShare, setGeneratingShare] = useState(false);
   const [generatedLink, setGeneratedLink] = useState<ShareLink | null>(null);
+  // 分享节点选择
+  const [shareRegions, setShareRegions] = useState<Array<{ id: number; region_name: string; is_default: boolean }>>([]);
+  const [selectedShareRegion, setSelectedShareRegion] = useState<number | null>(null);
 
   const [selectedFiles, setSelectedFiles] = useState<Set<number>>(new Set());
   const [deleting, setDeleting] = useState(false);
@@ -77,8 +80,8 @@ export default function PersonalDrivePage() {
   const [showMoveModal, setShowMoveModal] = useState(false);
   const [moveTargetPath, setMoveTargetPath] = useState('/');
 
-  // 右键菜单
-  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; file: DriveFile } | null>(null);
+  // 右键菜单 - 支持文件和文件夹
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; item: DriveFile | { id: number; name: string; path: string }; type: 'file' | 'folder' } | null>(null);
   // 单文件分享
   const [shareFileId, setShareFileId] = useState<number | null>(null);
 
@@ -208,7 +211,8 @@ export default function PersonalDrivePage() {
         },
         body: JSON.stringify({
           folder_path: currentPath,
-          file_id: shareFileId || undefined,  // 支持单文件分享
+          file_id: shareFileId || undefined,
+          region_id: selectedShareRegion || undefined,
           password: sharePassword || undefined,
           max_visits: shareMaxVisits ? parseInt(shareMaxVisits) : undefined,
           expires_in_days: parseInt(shareExpireDays) || 7,
@@ -228,10 +232,36 @@ export default function PersonalDrivePage() {
     }
   };
 
-  // 右键菜单处理
-  const handleContextMenu = (e: React.MouseEvent, file: DriveFile) => {
+  // 右键菜单处理 - 文件
+  const handleFileContextMenu = (e: React.MouseEvent, file: DriveFile) => {
     e.preventDefault();
-    setContextMenu({ x: e.clientX, y: e.clientY, file });
+    setContextMenu({ x: e.clientX, y: e.clientY, item: file, type: 'file' });
+  };
+
+  // 右键菜单处理 - 文件夹
+  const handleFolderContextMenu = (e: React.MouseEvent, folder: { id: number; name: string; path: string }) => {
+    e.preventDefault();
+    setContextMenu({ x: e.clientX, y: e.clientY, item: folder, type: 'folder' });
+  };
+
+  // 加载分享节点
+  const loadShareRegions = async () => {
+    if (!serverUrl || !token) return;
+    try {
+      const res = await fetch(`${serverUrl}/api/share_regions.php?action=list`, {
+        headers: { 'Authorization': `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (data.success && data.data) {
+        setShareRegions(data.data);
+        const defaultRegion = data.data.find((r: any) => r.is_default);
+        if (defaultRegion) {
+          setSelectedShareRegion(defaultRegion.id);
+        }
+      }
+    } catch (err) {
+      console.error('加载分享节点失败:', err);
+    }
   };
 
   // 打开文件分享弹窗
@@ -241,18 +271,23 @@ export default function PersonalDrivePage() {
     setShareMaxVisits('');
     setShareExpireDays('7');
     setGeneratedLink(null);
+    setSelectedShareRegion(null);
     setShowShareModal(true);
     setContextMenu(null);
+    loadShareRegions();
   };
 
   // 打开文件夹分享弹窗
-  const openFolderShareModal = () => {
+  const openFolderShareModal = (folderPath?: string) => {
     setShareFileId(null);
     setSharePassword('');
     setShareMaxVisits('');
     setShareExpireDays('7');
     setGeneratedLink(null);
+    setSelectedShareRegion(null);
     setShowShareModal(true);
+    setContextMenu(null);
+    loadShareRegions();
   };
 
   // 关闭右键菜单
@@ -561,6 +596,7 @@ export default function PersonalDrivePage() {
               <div
                 key={folder}
                 onClick={() => navigateToFolder(folder)}
+                onContextMenu={(e) => handleFolderContextMenu(e, { id: 0, name: folder, path: currentPath === '/' ? `/${folder}` : `${currentPath}/${folder}` })}
                 className="flex items-center gap-3 p-3 bg-white rounded-lg border hover:border-cyan-300 hover:bg-cyan-50 cursor-pointer transition-colors"
               >
                 <Folder className="w-8 h-8 text-yellow-500" />
@@ -576,7 +612,7 @@ export default function PersonalDrivePage() {
             {files.map((file) => (
               <div
                 key={file.id}
-                onContextMenu={(e) => handleContextMenu(e, file)}
+                onContextMenu={(e) => handleFileContextMenu(e, file)}
                 className={`flex items-center gap-3 p-3 bg-white rounded-lg border transition-colors ${selectedFiles.has(file.id) ? 'border-cyan-400 bg-cyan-50' : 'hover:border-gray-300'}`}
               >
                 <input
@@ -709,6 +745,27 @@ export default function PersonalDrivePage() {
                       placeholder="留空表示不限制"
                     />
                   </div>
+
+                  {/* 分享节点选择 */}
+                  {shareRegions.length > 0 && (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        分享节点
+                      </label>
+                      <select
+                        value={selectedShareRegion || ''}
+                        onChange={(e) => setSelectedShareRegion(e.target.value ? parseInt(e.target.value) : null)}
+                        className="w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                      >
+                        <option value="">默认节点</option>
+                        {shareRegions.map((r) => (
+                          <option key={r.id} value={r.id}>
+                            {r.is_default ? '⭐ ' : ''}{r.region_name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
                 </>
               ) : (
                 <>
@@ -891,27 +948,41 @@ export default function PersonalDrivePage() {
           className="fixed bg-white rounded-lg shadow-xl border py-1 z-50 min-w-[150px]"
           style={{ left: contextMenu.x, top: contextMenu.y }}
         >
-          <button
-            onClick={() => openFileShareModal(contextMenu.file.id)}
-            className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
-          >
-            <Share2 className="w-4 h-4 text-green-500" />
-            分享文件
-          </button>
-          <button
-            onClick={() => { openRenameModal(contextMenu.file); setContextMenu(null); }}
-            className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
-          >
-            <Edit3 className="w-4 h-4 text-blue-500" />
-            重命名
-          </button>
-          <button
-            onClick={() => { handleDelete(contextMenu.file.id); setContextMenu(null); }}
-            className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 flex items-center gap-2 text-red-600"
-          >
-            <Trash2 className="w-4 h-4" />
-            删除
-          </button>
+          {contextMenu.type === 'file' ? (
+            <>
+              <button
+                onClick={() => openFileShareModal((contextMenu.item as DriveFile).id)}
+                className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
+              >
+                <Share2 className="w-4 h-4 text-green-500" />
+                分享文件
+              </button>
+              <button
+                onClick={() => { openRenameModal(contextMenu.item as DriveFile); setContextMenu(null); }}
+                className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
+              >
+                <Edit3 className="w-4 h-4 text-blue-500" />
+                重命名
+              </button>
+              <button
+                onClick={() => { handleDelete((contextMenu.item as DriveFile).id); setContextMenu(null); }}
+                className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 flex items-center gap-2 text-red-600"
+              >
+                <Trash2 className="w-4 h-4" />
+                删除
+              </button>
+            </>
+          ) : (
+            <>
+              <button
+                onClick={() => { openFolderShareModal((contextMenu.item as { path: string }).path); }}
+                className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
+              >
+                <Share2 className="w-4 h-4 text-green-500" />
+                分享文件夹
+              </button>
+            </>
+          )}
         </div>
       )}
     </div>
