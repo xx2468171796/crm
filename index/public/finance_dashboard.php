@@ -1053,14 +1053,43 @@ finance_sidebar_start('finance_dashboard');
         document.getElementById('sumUnpaidCurrency').textContent = currency;
     }
     
+    // 更新表格中的金额单元格显示
+    function updateAmountCells() {
+        const mode = document.getElementById('dashAmountMode')?.value || 'fixed';
+        const useFloating = (mode === 'floating');
+        const fmt = (v) => v.toLocaleString('zh-CN', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+        
+        document.querySelectorAll('.amount-cell').forEach(cell => {
+            const amount = parseFloat(cell.getAttribute('data-amount') || 0);
+            const currency = cell.getAttribute('data-currency') || 'TWD';
+            const convertedEl = cell.querySelector('.amount-converted');
+            
+            if (mode === 'original') {
+                // 原始模式：隐藏折算金额
+                if (convertedEl) convertedEl.style.display = 'none';
+            } else {
+                // 折算模式：显示折算后的CNY金额
+                const rate = getRate(currency, useFloating);
+                const converted = amount / rate;
+                if (convertedEl) {
+                    convertedEl.textContent = '≈ ' + fmt(converted) + ' CNY';
+                    convertedEl.style.display = 'block';
+                }
+            }
+        });
+    }
+    
     document.getElementById('dashAmountMode')?.addEventListener('change', function() {
         updateAmountDisplay();
+        updateAmountCells();
         // 更新分组合计显示
         if (typeof updateGroupSumsDisplay === 'function') {
             updateGroupSumsDisplay();
         }
     });
     updateAmountDisplay();
+    // 延迟执行以确保汇率已加载
+    setTimeout(updateAmountCells, 500);
 })();
 </script>
 <?php endif; ?>
@@ -1259,10 +1288,23 @@ finance_sidebar_start('finance_dashboard');
                                     <td><?= htmlspecialchars($row['owner_name'] ?? '') ?></td>
                                 <?php endif; ?>
                                 <?php if ($viewMode === 'contract'): ?>
+                                    <?php $contractCurrency = $row['contract_currency'] ?? 'TWD'; ?>
                                     <td><?= (int)($row['installment_count'] ?? 0) ?></td>
-                                    <td><?= number_format((float)($row['total_due'] ?? 0), 2) ?></td>
-                                    <td><?= number_format((float)($row['total_paid'] ?? 0), 2) ?></td>
-                                    <td><?= number_format((float)($row['total_unpaid'] ?? 0), 2) ?></td>
+                                    <td class="amount-cell" data-amount="<?= (float)($row['total_due'] ?? 0) ?>" data-currency="<?= htmlspecialchars($contractCurrency) ?>">
+                                        <span class="amount-original"><?= number_format((float)($row['total_due'] ?? 0), 2) ?></span>
+                                        <small class="text-muted"><?= htmlspecialchars($contractCurrency) ?></small>
+                                        <div class="amount-converted text-info small" style="display:none;"></div>
+                                    </td>
+                                    <td class="amount-cell" data-amount="<?= (float)($row['total_paid'] ?? 0) ?>" data-currency="<?= htmlspecialchars($contractCurrency) ?>">
+                                        <span class="amount-original"><?= number_format((float)($row['total_paid'] ?? 0), 2) ?></span>
+                                        <small class="text-muted"><?= htmlspecialchars($contractCurrency) ?></small>
+                                        <div class="amount-converted text-info small" style="display:none;"></div>
+                                    </td>
+                                    <td class="amount-cell" data-amount="<?= (float)($row['total_unpaid'] ?? 0) ?>" data-currency="<?= htmlspecialchars($contractCurrency) ?>">
+                                        <span class="amount-original"><?= number_format((float)($row['total_unpaid'] ?? 0), 2) ?></span>
+                                        <small class="text-muted"><?= htmlspecialchars($contractCurrency) ?></small>
+                                        <div class="amount-converted text-danger small" style="display:none;"></div>
+                                    </td>
                                     <td>
                                         <span class="badge bg-<?= $badge ?>"><?= htmlspecialchars($statusLabel) ?></span>
                                         <div class="small text-muted">最近收款：<?= !empty($row['last_received_date']) ? htmlspecialchars((string)$row['last_received_date']) : '-' ?></div>
