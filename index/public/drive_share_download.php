@@ -8,6 +8,7 @@ require_once __DIR__ . '/../core/storage/storage_provider.php';
 
 $token = trim($_GET['token'] ?? '');
 $fileId = intval($_GET['file_id'] ?? 0);
+$isPreview = isset($_GET['preview']) && $_GET['preview'] == '1';
 
 if (empty($token) || !$fileId) {
     http_response_code(400);
@@ -82,14 +83,23 @@ try {
     
     $stream = $s3->readStream($file['storage_key']);
     
-    // 设置下载头
+    // 设置响应头
     $filename = $file['original_filename'] ?: $file['filename'];
     $encodedFilename = rawurlencode($filename);
+    $mimeType = $file['file_type'] ?: 'application/octet-stream';
     
-    header('Content-Type: ' . ($file['file_type'] ?: 'application/octet-stream'));
-    header('Content-Disposition: attachment; filename="' . $filename . '"; filename*=UTF-8\'\'' . $encodedFilename);
+    header('Content-Type: ' . $mimeType);
     header('Content-Length: ' . $file['file_size']);
-    header('Cache-Control: no-cache');
+    
+    if ($isPreview) {
+        // 预览模式：inline 显示，允许浏览器直接渲染
+        header('Content-Disposition: inline; filename="' . $filename . '"; filename*=UTF-8\'\'' . $encodedFilename);
+        header('Cache-Control: public, max-age=3600');
+    } else {
+        // 下载模式：attachment 强制下载
+        header('Content-Disposition: attachment; filename="' . $filename . '"; filename*=UTF-8\'\'' . $encodedFilename);
+        header('Cache-Control: no-cache');
+    }
     
     // 输出文件内容
     fpassthru($stream);
