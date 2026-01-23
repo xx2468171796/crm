@@ -165,18 +165,18 @@ $token = trim($_GET['token'] ?? '');
         /* 文件列表 */
         .file-list {
             margin-top: 20px;
-            max-height: 300px;
+            max-height: 400px;
             overflow-y: auto;
         }
         
         .file-item {
             display: flex;
-            align-items: center;
+            align-items: flex-start;
             gap: 12px;
-            padding: 12px 16px;
+            padding: 14px 16px;
             background: var(--portal-bg);
             border-radius: var(--portal-radius);
-            margin-bottom: 8px;
+            margin-bottom: 10px;
             transition: all 0.2s ease;
         }
         
@@ -184,10 +184,23 @@ $token = trim($_GET['token'] ?? '');
             background: rgba(99, 102, 241, 0.05);
         }
         
+        .file-item.uploading {
+            border-left: 3px solid var(--portal-primary);
+        }
+        
+        .file-item.success {
+            border-left: 3px solid var(--portal-success);
+        }
+        
+        .file-item.error {
+            border-left: 3px solid var(--portal-error);
+        }
+        
         .file-icon {
             font-size: 24px;
             color: var(--portal-primary);
             flex-shrink: 0;
+            margin-top: 2px;
         }
         
         .file-info {
@@ -210,20 +223,67 @@ $token = trim($_GET['token'] ?? '');
             margin-top: 2px;
         }
         
-        .file-progress {
-            height: 4px;
-            background: var(--portal-border);
-            border-radius: 2px;
-            margin-top: 8px;
-            overflow: hidden;
+        /* 进度条区域 */
+        .file-progress-area {
+            margin-top: 10px;
             display: none;
+        }
+        
+        .file-progress-area.active {
+            display: block;
+        }
+        
+        .progress-label {
+            display: flex;
+            justify-content: space-between;
+            font-size: 11px;
+            color: var(--portal-text-muted);
+            margin-bottom: 4px;
+        }
+        
+        .progress-label .chunk-info {
+            color: var(--portal-primary);
+            font-weight: 500;
+        }
+        
+        .file-progress {
+            height: 6px;
+            background: var(--portal-border);
+            border-radius: 3px;
+            overflow: hidden;
+            position: relative;
         }
         
         .file-progress-bar {
             height: 100%;
             background: var(--portal-gradient);
-            border-radius: 2px;
-            transition: width 0.3s ease;
+            border-radius: 3px;
+            transition: width 0.2s ease;
+            position: relative;
+        }
+        
+        .file-progress-bar::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent);
+            animation: shimmer 1.5s infinite;
+        }
+        
+        @keyframes shimmer {
+            0% { transform: translateX(-100%); }
+            100% { transform: translateX(100%); }
+        }
+        
+        .progress-percent {
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--portal-primary);
+            margin-top: 4px;
+            text-align: right;
         }
         
         .file-status {
@@ -247,6 +307,51 @@ $token = trim($_GET['token'] ?? '');
         .file-remove:hover {
             background: rgba(239, 68, 68, 0.1);
             color: var(--portal-error);
+        }
+        
+        /* 总体进度 */
+        .overall-progress {
+            background: var(--portal-bg);
+            border-radius: var(--portal-radius);
+            padding: 16px;
+            margin-top: 16px;
+            display: none;
+        }
+        
+        .overall-progress.active {
+            display: block;
+        }
+        
+        .overall-progress-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+        
+        .overall-progress-title {
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--portal-text);
+        }
+        
+        .overall-progress-stats {
+            font-size: 12px;
+            color: var(--portal-text-muted);
+        }
+        
+        .overall-progress-bar {
+            height: 8px;
+            background: var(--portal-border);
+            border-radius: 4px;
+            overflow: hidden;
+        }
+        
+        .overall-progress-fill {
+            height: 100%;
+            background: var(--portal-gradient);
+            border-radius: 4px;
+            transition: width 0.3s ease;
         }
         
         /* 上传按钮 */
@@ -407,6 +512,17 @@ $token = trim($_GET['token'] ?? '');
                         
                         <div class="file-list" id="fileList"></div>
                         
+                        <!-- 总体上传进度 -->
+                        <div class="overall-progress" id="overallProgress">
+                            <div class="overall-progress-header">
+                                <span class="overall-progress-title">總體上傳進度</span>
+                                <span class="overall-progress-stats" id="overallStats">0 / 0 檔案</span>
+                            </div>
+                            <div class="overall-progress-bar">
+                                <div class="overall-progress-fill" id="overallProgressFill" style="width: 0%"></div>
+                            </div>
+                        </div>
+                        
                         <div class="upload-submit">
                             <button class="portal-btn portal-btn-primary portal-btn-block" id="uploadBtn" style="display: none;">
                                 <i class="bi bi-upload"></i> 開始上傳 (<span id="fileCount">0</span> 個檔案)
@@ -426,6 +542,8 @@ $token = trim($_GET['token'] ?? '');
     <script>
         const token = '<?php echo htmlspecialchars($token, ENT_QUOTES, 'UTF-8'); ?>';
         const API_BASE = '/api';
+        const CHUNK_SIZE = 90 * 1024 * 1024; // 90MB 分片大小
+        const MAX_FILE_SIZE = 2 * 1024 * 1024 * 1024; // 2GB 最大文件大小
         
         let linkInfo = null;
         let verifiedPassword = '';
@@ -579,8 +697,6 @@ $token = trim($_GET['token'] ?? '');
         }
         
         // 处理选择的文件
-        const MAX_FILE_SIZE = 2 * 1024 * 1024 * 1024; // 2GB
-        
         function handleFiles(files) {
             let oversizedFiles = [];
             for (const file of files) {
@@ -612,25 +728,33 @@ $token = trim($_GET['token'] ?? '');
             uploadBtn.style.display = 'block';
             document.getElementById('fileCount').textContent = selectedFiles.length;
             
-            fileList.innerHTML = selectedFiles.map((file, index) => `
+            fileList.innerHTML = selectedFiles.map((file, index) => {
+                const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
+                return `
                 <div class="file-item" id="file-${index}">
                     <div class="file-icon">
                         <i class="bi ${getFileIcon(file.name)}"></i>
                     </div>
                     <div class="file-info">
                         <div class="file-name">${escapeHtml(file.name)}</div>
-                        <div class="file-size">${formatFileSize(file.size)}</div>
-                        <div class="file-progress">
-                            <div class="file-progress-bar" style="width: 0%"></div>
+                        <div class="file-size">${formatFileSize(file.size)} · ${totalChunks} 個分片</div>
+                        <div class="file-progress-area" id="progress-area-${index}">
+                            <div class="progress-label">
+                                <span class="chunk-info" id="chunk-info-${index}">準備中...</span>
+                                <span id="progress-percent-${index}">0%</span>
+                            </div>
+                            <div class="file-progress">
+                                <div class="file-progress-bar" id="progress-bar-${index}" style="width: 0%"></div>
+                            </div>
                         </div>
                     </div>
-                    <div class="file-status">
+                    <div class="file-status" id="file-status-${index}">
                         <button class="file-remove" onclick="removeFile(${index})">
                             <i class="bi bi-x-lg"></i>
                         </button>
                     </div>
                 </div>
-            `).join('');
+            `}).join('');
         }
         
         // 移除文件
@@ -645,62 +769,182 @@ $token = trim($_GET['token'] ?? '');
             uploadBtn.disabled = true;
             uploadBtn.innerHTML = '<i class="bi bi-arrow-repeat spin"></i> 上傳中...';
             
+            // 显示总体进度
+            document.getElementById('overallProgress').classList.add('active');
+            
             let successCount = 0;
             let failCount = 0;
+            const totalFiles = selectedFiles.length;
+            
+            console.log('%c[上傳開始] 共 ' + totalFiles + ' 個檔案待上傳', 'color: #6366f1; font-weight: bold;');
             
             for (let i = 0; i < selectedFiles.length; i++) {
                 const file = selectedFiles[i];
                 const fileItem = document.getElementById(`file-${i}`);
-                const progressBar = fileItem.querySelector('.file-progress');
-                const progressInner = fileItem.querySelector('.file-progress-bar');
-                const statusDiv = fileItem.querySelector('.file-status');
+                const progressArea = document.getElementById(`progress-area-${i}`);
+                const chunkInfo = document.getElementById(`chunk-info-${i}`);
+                const progressPercent = document.getElementById(`progress-percent-${i}`);
+                const progressBar = document.getElementById(`progress-bar-${i}`);
+                const statusDiv = document.getElementById(`file-status-${i}`);
                 
-                progressBar.style.display = 'block';
-                statusDiv.innerHTML = '';
+                // 显示进度区域
+                progressArea.classList.add('active');
+                fileItem.classList.add('uploading');
+                statusDiv.innerHTML = '<i class="bi bi-arrow-repeat spin" style="color: var(--portal-primary); font-size: 18px;"></i>';
+                
+                // 更新总体进度
+                updateOverallProgress(i, totalFiles, 0);
+                
+                console.log(`%c[檔案 ${i + 1}/${totalFiles}] 開始上傳: ${file.name} (${formatFileSize(file.size)})`, 'color: #0891b2;');
                 
                 try {
-                    await uploadFile(file, (progress) => {
-                        progressInner.style.width = `${progress}%`;
+                    await uploadFileChunked(file, i, {
+                        onChunkProgress: (chunkIndex, totalChunks, chunkPercent) => {
+                            chunkInfo.textContent = `分片 ${chunkIndex + 1}/${totalChunks}`;
+                            const overallFilePercent = ((chunkIndex + chunkPercent / 100) / totalChunks) * 100;
+                            progressBar.style.width = `${overallFilePercent}%`;
+                            progressPercent.textContent = `${Math.round(overallFilePercent)}%`;
+                            
+                            // 更新总体进度
+                            updateOverallProgress(i, totalFiles, overallFilePercent);
+                        },
+                        onChunkComplete: (chunkIndex, totalChunks) => {
+                            console.log(`  ✓ 分片 ${chunkIndex + 1}/${totalChunks} 上傳完成`);
+                        }
                     });
                     
-                    progressBar.style.display = 'none';
+                    // 上传成功
+                    fileItem.classList.remove('uploading');
+                    fileItem.classList.add('success');
+                    chunkInfo.textContent = '上傳完成';
+                    progressPercent.textContent = '100%';
+                    progressBar.style.width = '100%';
                     statusDiv.innerHTML = '<i class="bi bi-check-circle-fill" style="color: var(--portal-success); font-size: 20px;"></i>';
                     successCount++;
                     
+                    console.log(`%c[檔案 ${i + 1}/${totalFiles}] ✓ 上傳成功: ${file.name}`, 'color: #10b981; font-weight: bold;');
+                    
                 } catch (error) {
-                    progressBar.style.display = 'none';
+                    // 上传失败
+                    fileItem.classList.remove('uploading');
+                    fileItem.classList.add('error');
+                    chunkInfo.textContent = '上傳失敗';
                     statusDiv.innerHTML = `<i class="bi bi-x-circle-fill" style="color: var(--portal-error); font-size: 20px;" title="${escapeHtml(error.message)}"></i>`;
                     failCount++;
+                    
+                    console.error(`%c[檔案 ${i + 1}/${totalFiles}] ✗ 上傳失敗: ${file.name}`, 'color: #ef4444; font-weight: bold;');
+                    console.error('  錯誤詳情:', error.message);
                 }
+                
+                // 更新总体进度（文件完成）
+                updateOverallProgress(i + 1, totalFiles, 0);
             }
             
+            // 上传完成总结
+            console.log('%c[上傳完成] 成功: ' + successCount + ', 失敗: ' + failCount, 
+                failCount === 0 ? 'color: #10b981; font-weight: bold;' : 'color: #f59e0b; font-weight: bold;');
+            
             if (successCount > 0 && failCount === 0) {
-                // 全部成功，显示提示后刷新页面
-                showToast(`成功上傳 ${successCount} 個檔案`, 'success');
+                showToast(`成功上傳 ${successCount} 個檔案！`, 'success');
+                console.log('%c1.5秒後自動刷新頁面...', 'color: #6366f1;');
                 setTimeout(() => {
                     window.location.reload();
                 }, 1500);
             } else if (successCount > 0 && failCount > 0) {
-                // 部分成功，显示提示后刷新页面
-                showToast(`成功上傳 ${successCount} 個檔案，${failCount} 個失敗`, 'warning');
+                showToast(`成功 ${successCount} 個，失敗 ${failCount} 個`, 'warning');
                 setTimeout(() => {
                     window.location.reload();
                 }, 2000);
             } else if (failCount > 0) {
-                // 全部失败，允许重试
                 uploadBtn.disabled = false;
                 uploadBtn.innerHTML = '<i class="bi bi-upload"></i> 重新上傳';
                 showToast(`上傳失敗: ${failCount} 個檔案`, 'error');
             }
         }
         
-        // 上传单个文件
-        function uploadFile(file, onProgress) {
+        // 更新总体进度
+        function updateOverallProgress(completedFiles, totalFiles, currentFilePercent) {
+            const overallPercent = ((completedFiles + currentFilePercent / 100) / totalFiles) * 100;
+            document.getElementById('overallProgressFill').style.width = `${overallPercent}%`;
+            document.getElementById('overallStats').textContent = `${Math.min(completedFiles + 1, totalFiles)} / ${totalFiles} 檔案 (${Math.round(overallPercent)}%)`;
+        }
+        
+        // 分片上传单个文件
+        async function uploadFileChunked(file, fileIndex, callbacks) {
+            const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
+            
+            console.log(`  檔案大小: ${formatFileSize(file.size)}, 分片數: ${totalChunks}, 分片大小: ${formatFileSize(CHUNK_SIZE)}`);
+            
+            // 1. 初始化上传
+            console.log('  → 初始化分片上傳...');
+            const initResponse = await fetch(`${API_BASE}/file_share_chunk_upload.php`, {
+                method: 'POST',
+                body: new URLSearchParams({
+                    action: 'init',
+                    token: token,
+                    password: verifiedPassword,
+                    file_name: file.name,
+                    file_size: file.size,
+                    file_type: file.type || 'application/octet-stream',
+                    total_chunks: totalChunks
+                })
+            });
+            
+            const initData = await initResponse.json();
+            if (!initData.success) {
+                throw new Error(initData.error || '初始化上傳失敗');
+            }
+            
+            const uploadId = initData.upload_id;
+            console.log(`  ✓ 初始化成功, upload_id: ${uploadId}`);
+            
+            // 2. 逐个上传分片
+            for (let chunkIndex = 0; chunkIndex < totalChunks; chunkIndex++) {
+                const start = chunkIndex * CHUNK_SIZE;
+                const end = Math.min(start + CHUNK_SIZE, file.size);
+                const chunk = file.slice(start, end);
+                
+                console.log(`  → 上傳分片 ${chunkIndex + 1}/${totalChunks} (${formatFileSize(chunk.size)})`);
+                
+                // 上传分片并监控进度
+                await uploadChunk(uploadId, chunkIndex, chunk, (percent) => {
+                    callbacks.onChunkProgress(chunkIndex, totalChunks, percent);
+                });
+                
+                callbacks.onChunkComplete(chunkIndex, totalChunks);
+            }
+            
+            // 3. 完成上传（合并分片）
+            console.log('  → 合併分片中...');
+            const completeResponse = await fetch(`${API_BASE}/file_share_chunk_upload.php`, {
+                method: 'POST',
+                body: new URLSearchParams({
+                    action: 'complete',
+                    token: token,
+                    password: verifiedPassword,
+                    upload_id: uploadId
+                })
+            });
+            
+            const completeData = await completeResponse.json();
+            if (!completeData.success) {
+                throw new Error(completeData.error || '合併分片失敗');
+            }
+            
+            console.log('  ✓ 合併完成');
+            return completeData;
+        }
+        
+        // 上传单个分片
+        function uploadChunk(uploadId, chunkIndex, chunkBlob, onProgress) {
             return new Promise((resolve, reject) => {
                 const formData = new FormData();
+                formData.append('action', 'upload_chunk');
                 formData.append('token', token);
                 formData.append('password', verifiedPassword);
-                formData.append('file', file);
+                formData.append('upload_id', uploadId);
+                formData.append('chunk_index', chunkIndex);
+                formData.append('chunk', chunkBlob, 'chunk');
                 
                 const xhr = new XMLHttpRequest();
                 
@@ -717,10 +961,10 @@ $token = trim($_GET['token'] ?? '');
                             if (response.success) {
                                 resolve(response);
                             } else {
-                                reject(new Error(response.error || '上传失败'));
+                                reject(new Error(response.error || '分片上傳失敗'));
                             }
                         } catch {
-                            reject(new Error('响应解析错误'));
+                            reject(new Error('響應解析錯誤'));
                         }
                     } else {
                         try {
@@ -732,10 +976,10 @@ $token = trim($_GET['token'] ?? '');
                     }
                 });
                 
-                xhr.addEventListener('error', () => reject(new Error('网络错误')));
-                xhr.addEventListener('abort', () => reject(new Error('上传已取消')));
+                xhr.addEventListener('error', () => reject(new Error('網絡錯誤')));
+                xhr.addEventListener('abort', () => reject(new Error('上傳已取消')));
                 
-                xhr.open('POST', `${API_BASE}/file_share_upload.php`);
+                xhr.open('POST', `${API_BASE}/file_share_chunk_upload.php`);
                 xhr.send(formData);
             });
         }
