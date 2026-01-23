@@ -137,13 +137,12 @@ function handleInit($pdo, $customer, $projectId) {
         mkdir($tempDir, 0755, true);
     }
     
-    // 确保chunk_upload_tasks表存在
+    // 确保chunk_upload_tasks表存在并有必要的列
     try {
         $pdo->exec("
             CREATE TABLE IF NOT EXISTS chunk_upload_tasks (
                 id INT AUTO_INCREMENT PRIMARY KEY,
                 upload_id VARCHAR(64) NOT NULL UNIQUE,
-                upload_type VARCHAR(32) DEFAULT 'portal',
                 project_id INT,
                 customer_id INT,
                 file_name VARCHAR(512) NOT NULL,
@@ -163,11 +162,11 @@ function handleInit($pdo, $customer, $projectId) {
         // 表可能已存在，忽略错误
     }
     
-    // 记录上传任务
+    // 记录上传任务（使用基本列，兼容已有表结构）
     $stmt = $pdo->prepare("
         INSERT INTO chunk_upload_tasks 
-        (upload_id, upload_type, project_id, customer_id, file_name, file_size, file_type, total_chunks, temp_dir)
-        VALUES (?, 'portal', ?, ?, ?, ?, ?, ?, ?)
+        (upload_id, project_id, customer_id, file_name, file_size, file_type, total_chunks, temp_dir)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     ");
     $stmt->execute([
         $uploadId,
