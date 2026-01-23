@@ -55,11 +55,11 @@ try {
     
     // 获取客户上传的文件（包括门户上传和分享链接上传）
     $stmt = $pdo->prepare("
-        SELECT id, file_name, file_size, create_time, upload_source
+        SELECT id, deliverable_name as file_name, file_size, create_time, deliverable_type as upload_source
         FROM deliverables 
         WHERE project_id = ? 
-        AND category = '客户文件'
-        AND (file_name LIKE '客户上传+%' OR file_name LIKE '分享+%')
+        AND file_category = 'customer_file'
+        AND (deliverable_name LIKE '客户上传+%' OR deliverable_name LIKE '分享+%')
         ORDER BY create_time DESC
     ");
     $stmt->execute([$projectId]);
