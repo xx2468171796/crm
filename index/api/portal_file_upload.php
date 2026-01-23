@@ -51,7 +51,7 @@ try {
     }
     
     // 验证项目属于该客户
-    $stmt = $pdo->prepare("SELECT id, name FROM projects WHERE id = ? AND customer_id = ?");
+    $stmt = $pdo->prepare("SELECT id, project_name FROM projects WHERE id = ? AND customer_id = ?");
     $stmt->execute([$projectId, $customer['id']]);
     $project = $stmt->fetch(PDO::FETCH_ASSOC);
     

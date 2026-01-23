@@ -99,7 +99,7 @@ function handleInit($pdo, $customer, $projectId) {
     }
     
     // 验证项目属于该客户
-    $stmt = $pdo->prepare("SELECT id, name FROM projects WHERE id = ? AND customer_id = ?");
+    $stmt = $pdo->prepare("SELECT id, project_name FROM projects WHERE id = ? AND customer_id = ?");
     $stmt->execute([$projectId, $customer['id']]);
     $project = $stmt->fetch(PDO::FETCH_ASSOC);
     
@@ -284,7 +284,7 @@ function handleComplete($pdo, $customer) {
     }
     
     // 验证项目
-    $stmt = $pdo->prepare("SELECT id, name FROM projects WHERE id = ? AND customer_id = ?");
+    $stmt = $pdo->prepare("SELECT id, project_name FROM projects WHERE id = ? AND customer_id = ?");
     $stmt->execute([$task['project_id'], $customer['id']]);
     $project = $stmt->fetch(PDO::FETCH_ASSOC);
     
@@ -330,7 +330,7 @@ function handleComplete($pdo, $customer) {
     // 获取客户文件夹路径
     $groupCode = $customer['group_code'] ?? '';
     $customerName = $customer['name'] ?? '未知客户';
-    $projectName = $project['name'] ?? '未知项目';
+    $projectName = $project['project_name'] ?? '未知项目';
     
     $folderName = $groupCode ? "{$groupCode} {$customerName}" : $customerName;
     $basePath = "customers/{$folderName}/{$projectName}/客户文件";
