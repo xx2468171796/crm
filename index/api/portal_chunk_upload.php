@@ -351,7 +351,7 @@ function handleComplete($pdo, $customer) {
     @rmdir($tempDir);
     
     if (!$uploadResult || empty($uploadResult['success'])) {
-        $stmt = $pdo->prepare("UPDATE chunk_upload_tasks SET status = 'failed' WHERE upload_id = ?");
+        $stmt = $pdo->prepare("UPDATE chunk_upload_tasks SET status = 'aborted' WHERE upload_id = ?");
         $stmt->execute([$uploadId]);
         
         http_response_code(500);
