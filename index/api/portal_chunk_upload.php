@@ -137,36 +137,19 @@ function handleInit($pdo, $customer, $projectId) {
         mkdir($tempDir, 0755, true);
     }
     
-    // 确保chunk_upload_tasks表存在并有必要的列
+    // 确保chunk_upload_tasks表有customer_id列（兼容旧表结构）
     try {
-        $pdo->exec("
-            CREATE TABLE IF NOT EXISTS chunk_upload_tasks (
-                id INT AUTO_INCREMENT PRIMARY KEY,
-                upload_id VARCHAR(64) NOT NULL UNIQUE,
-                project_id INT,
-                customer_id INT,
-                file_name VARCHAR(512) NOT NULL,
-                file_size BIGINT NOT NULL,
-                file_type VARCHAR(128),
-                total_chunks INT NOT NULL,
-                uploaded_chunks INT DEFAULT 0,
-                temp_dir VARCHAR(512),
-                status ENUM('uploading','completed','failed','aborted') DEFAULT 'uploading',
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-                INDEX idx_upload_id (upload_id),
-                INDEX idx_status (status)
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
-        ");
+        $pdo->exec("ALTER TABLE chunk_upload_tasks ADD COLUMN customer_id INT AFTER project_id");
     } catch (PDOException $e) {
-        // 表可能已存在，忽略错误
+        // 列可能已存在，忽略
     }
     
-    // 记录上传任务（使用基本列，兼容已有表结构）
+    // 记录上传任务
+    $now = time();
     $stmt = $pdo->prepare("
         INSERT INTO chunk_upload_tasks 
-        (upload_id, project_id, customer_id, file_name, file_size, file_type, total_chunks, temp_dir)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        (upload_id, project_id, customer_id, file_name, file_size, file_type, total_chunks, temp_dir, create_time, update_time)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ");
     $stmt->execute([
         $uploadId,
@@ -176,7 +159,9 @@ function handleInit($pdo, $customer, $projectId) {
         $fileSize,
         $fileType,
         $totalChunks,
-        $tempDir
+        $tempDir,
+        $now,
+        $now
     ]);
     
     echo json_encode([
