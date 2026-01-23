@@ -340,17 +340,17 @@ function handleComplete($pdo, $customer) {
     
     $s3 = new S3StorageProvider($storageConfig, []);
     $uploadResult = $s3->putObject($storageKey, $mergedFile, [
-        'ContentType' => $task['file_type'] ?? 'application/octet-stream'
+        'mime_type' => $task['file_type'] ?? 'application/octet-stream'
     ]);
     
-    // 清理临时文件
-    @unlink($mergedFile);
+    // 清理临时文件（putObject内部已删除源文件，这里清理分片）
     foreach ($chunkFiles as $chunkFile) {
         @unlink($chunkFile);
     }
     @rmdir($tempDir);
     
-    if (!$uploadResult || empty($uploadResult['success'])) {
+    // S3StorageProvider返回包含storage_key的数组
+    if (!$uploadResult || empty($uploadResult['storage_key'])) {
         $stmt = $pdo->prepare("UPDATE chunk_upload_tasks SET status = 'aborted' WHERE upload_id = ?");
         $stmt->execute([$uploadId]);
         
@@ -360,20 +360,26 @@ function handleComplete($pdo, $customer) {
     }
     
     // 记录到deliverables表
+    $now = time();
     $stmt = $pdo->prepare("
         INSERT INTO deliverables 
-        (project_id, file_path, file_name, file_size, category, storage_key, upload_source, create_time)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        (project_id, deliverable_name, deliverable_type, file_category, file_path, file_size, 
+         visibility_level, approval_status, submitted_by, submitted_at, create_time, update_time)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ");
     $stmt->execute([
         $task['project_id'],
-        $basePath . '/' . $uniqueName,
         $storedName,
-        $task['file_size'],
-        '客户文件',
+        'portal_upload',
+        'customer_file',
         $storageKey,
-        'portal',
-        time()
+        $task['file_size'],
+        'client',
+        'approved',
+        $customer['id'],
+        $now,
+        $now,
+        $now
     ]);
     
     // 更新任务状态
