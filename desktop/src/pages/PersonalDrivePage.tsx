@@ -975,7 +975,7 @@ export default function PersonalDrivePage() {
           ) : (
             <>
               <button
-                onClick={() => { openFolderShareModal((contextMenu.item as { path: string }).path); }}
+                onClick={() => { openFolderShareModal(); }}
                 className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
               >
                 <Share2 className="w-4 h-4 text-green-500" />
