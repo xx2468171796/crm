@@ -354,6 +354,24 @@ $token = trim($_GET['token'] ?? '');
             transition: width 0.3s ease;
         }
         
+        /* 上传限制提示 */
+        .upload-limit-notice {
+            background: rgba(99, 102, 241, 0.1);
+            border: 1px solid rgba(99, 102, 241, 0.2);
+            border-radius: var(--portal-radius);
+            padding: 12px 16px;
+            margin-bottom: 16px;
+            font-size: 13px;
+            color: var(--portal-primary);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .upload-limit-notice i {
+            font-size: 16px;
+        }
+        
         /* 上传按钮 */
         .upload-submit {
             margin-top: 20px;
@@ -434,6 +452,83 @@ $token = trim($_GET['token'] ?? '');
         .spin {
             animation: spin 1s linear infinite;
         }
+        
+        /* 联系客服弹框 */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.5);
+            backdrop-filter: blur(4px);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 2000;
+            animation: fadeIn 0.2s ease;
+        }
+        
+        .modal-dialog {
+            background: var(--portal-card-solid);
+            border-radius: var(--portal-radius-lg);
+            padding: 32px;
+            max-width: 420px;
+            width: 90%;
+            text-align: center;
+            box-shadow: var(--portal-shadow-lg);
+            animation: scaleIn 0.2s ease;
+        }
+        
+        .modal-icon {
+            width: 64px;
+            height: 64px;
+            background: rgba(245, 158, 11, 0.1);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 20px;
+        }
+        
+        .modal-icon i {
+            font-size: 32px;
+            color: #f59e0b;
+        }
+        
+        .modal-title {
+            font-size: 20px;
+            font-weight: 600;
+            color: var(--portal-text);
+            margin-bottom: 12px;
+        }
+        
+        .modal-content {
+            font-size: 14px;
+            color: var(--portal-text-muted);
+            line-height: 1.6;
+            margin-bottom: 24px;
+        }
+        
+        .modal-actions {
+            display: flex;
+            gap: 12px;
+            justify-content: center;
+        }
+        
+        .modal-actions button {
+            min-width: 120px;
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        
+        @keyframes scaleIn {
+            from { opacity: 0; transform: scale(0.9); }
+            to { opacity: 1; transform: scale(1); }
+        }
     </style>
 </head>
 <body class="portal-page">
@@ -491,12 +586,17 @@ $token = trim($_GET['token'] ?? '');
                     
                     <!-- 上传区域 -->
                     <div id="uploadSection" style="display: none;">
+                        <div class="upload-limit-notice">
+                            <i class="bi bi-info-circle"></i>
+                            單個檔案大小上限為 <strong>2GB</strong>，超過此限制的檔案將被忽略
+                        </div>
+                        
                         <div class="portal-upload-zone" id="dropZone">
                             <div class="portal-upload-icon">
                                 <i class="bi bi-cloud-arrow-up"></i>
                             </div>
                             <div class="portal-upload-text">拖曳檔案到此處上傳</div>
-                            <div class="portal-upload-hint">或點擊選擇檔案，支援批量上傳</div>
+                            <div class="portal-upload-hint">或點擊選擇檔案，支援批量上傳（單檔上限 2GB）</div>
                             <input type="file" id="fileInput" multiple style="display: none;">
                             <input type="file" id="folderInput" webkitdirectory style="display: none;">
                         </div>
@@ -539,6 +639,24 @@ $token = trim($_GET['token'] ?? '');
     <!-- Toast提示容器 -->
     <div class="toast-container" id="toastContainer"></div>
     
+    <!-- 联系客服弹框 -->
+    <div class="modal-overlay" id="contactModal" style="display: none;">
+        <div class="modal-dialog">
+            <div class="modal-icon">
+                <i class="bi bi-exclamation-triangle"></i>
+            </div>
+            <div class="modal-title">上傳遇到問題</div>
+            <div class="modal-content">
+                您的檔案已連續上傳失敗多次，可能是網絡不穩定或檔案過大導致。<br><br>
+                建議您聯繫客服人員，我們將協助您透過其他方式完成檔案傳輸。
+            </div>
+            <div class="modal-actions">
+                <button class="portal-btn portal-btn-secondary" onclick="closeContactModal()">稍後再試</button>
+                <button class="portal-btn portal-btn-primary" onclick="contactSupport()"><i class="bi bi-headset"></i> 聯繫客服</button>
+            </div>
+        </div>
+    </div>
+    
     <script>
         const token = '<?php echo htmlspecialchars($token, ENT_QUOTES, 'UTF-8'); ?>';
         const API_BASE = '/api';
@@ -548,6 +666,7 @@ $token = trim($_GET['token'] ?? '');
         let linkInfo = null;
         let verifiedPassword = '';
         let selectedFiles = [];
+        let consecutiveFailures = 0; // 连续失败计数
         
         // 初始化
         document.addEventListener('DOMContentLoaded', () => {
@@ -821,6 +940,7 @@ $token = trim($_GET['token'] ?? '');
                     progressBar.style.width = '100%';
                     statusDiv.innerHTML = '<i class="bi bi-check-circle-fill" style="color: var(--portal-success); font-size: 20px;"></i>';
                     successCount++;
+                    consecutiveFailures = 0; // 成功后重置连续失败计数
                     
                     console.log(`%c[檔案 ${i + 1}/${totalFiles}] ✓ 上傳成功: ${file.name}`, 'color: #10b981; font-weight: bold;');
                     
@@ -831,9 +951,18 @@ $token = trim($_GET['token'] ?? '');
                     chunkInfo.textContent = '上傳失敗';
                     statusDiv.innerHTML = `<i class="bi bi-x-circle-fill" style="color: var(--portal-error); font-size: 20px;" title="${escapeHtml(error.message)}"></i>`;
                     failCount++;
+                    consecutiveFailures++;
                     
                     console.error(`%c[檔案 ${i + 1}/${totalFiles}] ✗ 上傳失敗: ${file.name}`, 'color: #ef4444; font-weight: bold;');
                     console.error('  錯誤詳情:', error.message);
+                    console.log(`  連續失敗次數: ${consecutiveFailures}`);
+                    
+                    // 连续失败3次，弹出联系客服提示
+                    if (consecutiveFailures >= 3) {
+                        console.warn('%c[警告] 連續失敗3次，建議聯繫客服', 'color: #f59e0b; font-weight: bold;');
+                        showContactModal();
+                        break; // 停止继续上传
+                    }
                 }
                 
                 // 更新总体进度（文件完成）
@@ -1033,6 +1162,33 @@ $token = trim($_GET['token'] ?? '');
             setTimeout(() => {
                 toast.remove();
             }, 5000);
+        }
+        
+        // 显示联系客服弹框
+        function showContactModal() {
+            document.getElementById('contactModal').style.display = 'flex';
+        }
+        
+        // 关闭联系客服弹框
+        function closeContactModal() {
+            document.getElementById('contactModal').style.display = 'none';
+            consecutiveFailures = 0; // 重置失败计数
+            
+            // 重新启用上传按钮
+            const uploadBtn = document.getElementById('uploadBtn');
+            uploadBtn.disabled = false;
+            uploadBtn.innerHTML = '<i class="bi bi-upload"></i> 重新上傳';
+        }
+        
+        // 联系客服
+        function contactSupport() {
+            // 可以改为实际的客服链接或弹出客服窗口
+            const supportEmail = 'support@example.com';
+            const subject = encodeURIComponent('檔案上傳問題 - ' + (linkInfo?.project_name || ''));
+            const body = encodeURIComponent('您好，我在上傳檔案時遇到問題，請協助處理。\n\n連結: ' + window.location.href);
+            
+            window.open(`mailto:${supportEmail}?subject=${subject}&body=${body}`, '_blank');
+            closeContactModal();
         }
     </script>
 </body>

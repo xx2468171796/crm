@@ -734,20 +734,35 @@ if (empty($token)) {
                     <h4 style="font-size: 16px; font-weight: 600; margin: 0 0 16px;">
                         <i class="bi bi-cloud-upload" style="color: var(--portal-primary);"></i> 上传资料文件
                     </h4>
-                    <p style="color: var(--portal-text-muted); margin-bottom: 20px; font-size: 14px;">
+                    <p style="color: var(--portal-text-muted); margin-bottom: 12px; font-size: 14px;">
                         在此处上传您的资料文件，文件将自动保存到项目的"客户文件"分类中。
                     </p>
+                    
+                    <div style="background: rgba(99, 102, 241, 0.1); border: 1px solid rgba(99, 102, 241, 0.2); border-radius: 8px; padding: 10px 14px; margin-bottom: 16px; font-size: 13px; color: var(--portal-primary); display: flex; align-items: center; gap: 8px;">
+                        <i class="bi bi-info-circle"></i>
+                        单个文件大小上限为 <strong>2GB</strong>，超过此限制的文件将被忽略
+                    </div>
                     
                     <div id="portalUploadZone" class="portal-upload-zone" onclick="document.getElementById('portalFileInput').click()">
                         <div class="portal-upload-icon">
                             <i class="bi bi-cloud-arrow-up"></i>
                         </div>
                         <div class="portal-upload-text">拖拽文件到此处或点击选择文件</div>
-                        <div class="portal-upload-hint">支持批量上传多个文件</div>
+                        <div class="portal-upload-hint">支持批量上传（单檔上限 2GB）</div>
                         <input type="file" id="portalFileInput" multiple style="display: none;" onchange="handlePortalFileSelect(event)">
                     </div>
                     
                     <div id="portalUploadList" style="margin-top: 16px;"></div>
+                    
+                    <div id="portalOverallProgress" style="display: none; background: var(--portal-bg); border-radius: 8px; padding: 14px; margin-top: 12px;">
+                        <div style="display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 8px;">
+                            <span style="font-weight: 600;">总体上传进度</span>
+                            <span id="portalOverallStats">0 / 0 文件</span>
+                        </div>
+                        <div style="height: 6px; background: var(--portal-border); border-radius: 3px; overflow: hidden;">
+                            <div id="portalOverallFill" style="height: 100%; background: var(--portal-gradient); width: 0%; transition: width 0.3s;"></div>
+                        </div>
+                    </div>
                     
                     <button id="portalUploadBtn" class="portal-btn portal-btn-primary" style="display: none; margin-top: 16px; width: 100%;" onclick="startPortalUpload()">
                         <i class="bi bi-upload"></i> 开始上传 (<span id="portalFileCount">0</span> 个文件)
@@ -1930,15 +1945,26 @@ if (empty($token)) {
     }
 
     // ========== 门户文件上传 ==========
+    const PORTAL_CHUNK_SIZE = 90 * 1024 * 1024; // 90MB
+    const PORTAL_MAX_FILE_SIZE = 2 * 1024 * 1024 * 1024; // 2GB
     let portalSelectedFiles = [];
+    let portalConsecutiveFailures = 0;
     
     function handlePortalFileSelect(event) {
         const files = Array.from(event.target.files);
+        let oversizedFiles = [];
         files.forEach(file => {
+            if (file.size > PORTAL_MAX_FILE_SIZE) {
+                oversizedFiles.push(file.name);
+                return;
+            }
             if (!portalSelectedFiles.find(f => f.name === file.name && f.size === file.size)) {
                 portalSelectedFiles.push(file);
             }
         });
+        if (oversizedFiles.length > 0) {
+            PortalUI.Toast.error(`以下文件超过2GB限制: ${oversizedFiles.join(', ')}`);
+        }
         renderPortalUploadList();
     }
     
@@ -1956,18 +1982,31 @@ if (empty($token)) {
         uploadBtn.style.display = 'block';
         fileCount.textContent = portalSelectedFiles.length;
         
-        listContainer.innerHTML = portalSelectedFiles.map((file, idx) => `
+        listContainer.innerHTML = portalSelectedFiles.map((file, idx) => {
+            const totalChunks = Math.ceil(file.size / PORTAL_CHUNK_SIZE);
+            return `
             <div class="portal-file-item" id="portal-file-${idx}">
                 <div class="portal-file-icon"><i class="bi bi-file-earmark"></i></div>
                 <div class="portal-file-info">
                     <div class="portal-file-name">${escapeHtml(file.name)}</div>
-                    <div class="portal-file-size">${formatFileSize(file.size)}</div>
+                    <div class="portal-file-size">${formatFileSize(file.size)} · ${totalChunks} 个分片</div>
+                    <div id="portal-progress-${idx}" style="display: none; margin-top: 8px;">
+                        <div style="display: flex; justify-content: space-between; font-size: 11px; color: var(--portal-text-muted); margin-bottom: 4px;">
+                            <span id="portal-chunk-${idx}">准备中...</span>
+                            <span id="portal-percent-${idx}">0%</span>
+                        </div>
+                        <div style="height: 4px; background: var(--portal-border); border-radius: 2px; overflow: hidden;">
+                            <div id="portal-bar-${idx}" style="height: 100%; background: var(--portal-gradient); width: 0%; transition: width 0.2s;"></div>
+                        </div>
+                    </div>
                 </div>
-                <button class="portal-file-remove" onclick="removePortalFile(${idx})">
-                    <i class="bi bi-x"></i>
-                </button>
+                <div id="portal-status-${idx}">
+                    <button class="portal-file-remove" onclick="removePortalFile(${idx})">
+                        <i class="bi bi-x"></i>
+                    </button>
+                </div>
             </div>
-        `).join('');
+        `}).join('');
     }
     
     function removePortalFile(idx) {
@@ -1996,59 +2035,209 @@ if (empty($token)) {
         uploadBtn.disabled = true;
         uploadBtn.innerHTML = '<i class="bi bi-arrow-repeat spin"></i> 上传中...';
         
+        // 显示总体进度
+        document.getElementById('portalOverallProgress').style.display = 'block';
+        
         let successCount = 0;
         let failCount = 0;
+        const totalFiles = portalSelectedFiles.length;
+        
+        console.log('%c[门户上传开始] 共 ' + totalFiles + ' 个文件待上传', 'color: #6366f1; font-weight: bold;');
         
         for (let i = 0; i < portalSelectedFiles.length; i++) {
             const file = portalSelectedFiles[i];
+            const progressDiv = document.getElementById(`portal-progress-${i}`);
+            const chunkSpan = document.getElementById(`portal-chunk-${i}`);
+            const percentSpan = document.getElementById(`portal-percent-${i}`);
+            const barDiv = document.getElementById(`portal-bar-${i}`);
+            const statusDiv = document.getElementById(`portal-status-${i}`);
             const fileItem = document.getElementById(`portal-file-${i}`);
             
+            // 显示进度
+            progressDiv.style.display = 'block';
+            statusDiv.innerHTML = '<i class="bi bi-arrow-repeat spin" style="color: var(--portal-primary);"></i>';
+            
+            // 更新总体进度
+            updatePortalOverallProgress(i, totalFiles, 0);
+            
+            console.log(`%c[文件 ${i + 1}/${totalFiles}] 开始上传: ${file.name} (${formatFileSize(file.size)})`, 'color: #0891b2;');
+            
             try {
-                const formData = new FormData();
-                formData.append('token', TOKEN);
-                formData.append('project_id', currentProjectId);
-                formData.append('file', file);
-                
-                const res = await fetch(`${API_URL}/portal_file_upload.php`, {
-                    method: 'POST',
-                    body: formData
+                await uploadPortalFileChunked(file, i, {
+                    onChunkProgress: (chunkIndex, totalChunks, chunkPercent) => {
+                        chunkSpan.textContent = `分片 ${chunkIndex + 1}/${totalChunks}`;
+                        const overallPercent = ((chunkIndex + chunkPercent / 100) / totalChunks) * 100;
+                        barDiv.style.width = `${overallPercent}%`;
+                        percentSpan.textContent = `${Math.round(overallPercent)}%`;
+                        updatePortalOverallProgress(i, totalFiles, overallPercent);
+                    },
+                    onChunkComplete: (chunkIndex, totalChunks) => {
+                        console.log(`  ✓ 分片 ${chunkIndex + 1}/${totalChunks} 完成`);
+                    }
                 });
-                const data = await res.json();
                 
-                if (data.success) {
-                    fileItem.innerHTML = `
-                        <div class="portal-file-icon" style="color: #10b981;"><i class="bi bi-check-circle-fill"></i></div>
-                        <div class="portal-file-info">
-                            <div class="portal-file-name">${escapeHtml(file.name)}</div>
-                            <div class="portal-file-size" style="color: #10b981;">上传成功</div>
-                        </div>
-                    `;
-                    successCount++;
-                } else {
-                    throw new Error(data.error || '上传失败');
-                }
+                // 成功
+                chunkSpan.textContent = '上传完成';
+                percentSpan.textContent = '100%';
+                barDiv.style.width = '100%';
+                statusDiv.innerHTML = '<i class="bi bi-check-circle-fill" style="color: #10b981; font-size: 18px;"></i>';
+                successCount++;
+                portalConsecutiveFailures = 0;
+                
+                console.log(`%c[文件 ${i + 1}/${totalFiles}] ✓ 上传成功: ${file.name}`, 'color: #10b981; font-weight: bold;');
+                
             } catch (err) {
-                fileItem.innerHTML = `
-                    <div class="portal-file-icon" style="color: #ef4444;"><i class="bi bi-x-circle-fill"></i></div>
-                    <div class="portal-file-info">
-                        <div class="portal-file-name">${escapeHtml(file.name)}</div>
-                        <div class="portal-file-size" style="color: #ef4444;">${err.message}</div>
-                    </div>
-                `;
+                // 失败
+                chunkSpan.textContent = '上传失败';
+                statusDiv.innerHTML = `<i class="bi bi-x-circle-fill" style="color: #ef4444; font-size: 18px;" title="${escapeHtml(err.message)}"></i>`;
                 failCount++;
+                portalConsecutiveFailures++;
+                
+                console.error(`%c[文件 ${i + 1}/${totalFiles}] ✗ 上传失败: ${file.name}`, 'color: #ef4444; font-weight: bold;');
+                console.error('  错误详情:', err.message);
+                console.log(`  连续失败次数: ${portalConsecutiveFailures}`);
+                
+                // 连续失败3次
+                if (portalConsecutiveFailures >= 3) {
+                    console.warn('%c[警告] 连续失败3次，建议联系客服', 'color: #f59e0b; font-weight: bold;');
+                    showPortalContactModal();
+                    break;
+                }
             }
+            
+            updatePortalOverallProgress(i + 1, totalFiles, 0);
         }
+        
+        console.log('%c[上传完成] 成功: ' + successCount + ', 失败: ' + failCount, 
+            failCount === 0 ? 'color: #10b981; font-weight: bold;' : 'color: #f59e0b; font-weight: bold;');
         
         uploadBtn.disabled = false;
-        uploadBtn.style.display = 'none';
-        portalSelectedFiles = [];
         
-        if (successCount > 0) {
-            PortalUI.Toast.success(`成功上传 ${successCount} 个文件` + (failCount > 0 ? `，${failCount} 个失败` : ''));
+        if (successCount > 0 && failCount === 0) {
+            PortalUI.Toast.success(`成功上传 ${successCount} 个文件！`);
+            uploadBtn.style.display = 'none';
+            portalSelectedFiles = [];
             loadPortalUploadedFiles(currentProjectId);
-        } else if (failCount > 0) {
+        } else if (successCount > 0) {
+            PortalUI.Toast.warning(`成功 ${successCount} 个，失败 ${failCount} 个`);
+            loadPortalUploadedFiles(currentProjectId);
+        } else if (failCount > 0 && portalConsecutiveFailures < 3) {
+            uploadBtn.innerHTML = '<i class="bi bi-upload"></i> 重新上传';
             PortalUI.Toast.error(`上传失败: ${failCount} 个文件`);
         }
+    }
+    
+    function updatePortalOverallProgress(completed, total, currentPercent) {
+        const percent = ((completed + currentPercent / 100) / total) * 100;
+        document.getElementById('portalOverallFill').style.width = `${percent}%`;
+        document.getElementById('portalOverallStats').textContent = `${Math.min(completed + 1, total)} / ${total} 文件 (${Math.round(percent)}%)`;
+    }
+    
+    async function uploadPortalFileChunked(file, fileIndex, callbacks) {
+        const totalChunks = Math.ceil(file.size / PORTAL_CHUNK_SIZE);
+        
+        console.log(`  文件大小: ${formatFileSize(file.size)}, 分片数: ${totalChunks}`);
+        
+        // 1. 初始化
+        const initRes = await fetch(`${API_URL}/portal_chunk_upload.php`, {
+            method: 'POST',
+            body: new URLSearchParams({
+                action: 'init',
+                token: TOKEN,
+                project_id: currentProjectId,
+                file_name: file.name,
+                file_size: file.size,
+                file_type: file.type || 'application/octet-stream',
+                total_chunks: totalChunks
+            })
+        });
+        const initData = await initRes.json();
+        if (!initData.success) throw new Error(initData.error || '初始化失败');
+        
+        const uploadId = initData.upload_id;
+        console.log(`  ✓ 初始化成功, upload_id: ${uploadId}`);
+        
+        // 2. 上传分片
+        for (let i = 0; i < totalChunks; i++) {
+            const start = i * PORTAL_CHUNK_SIZE;
+            const end = Math.min(start + PORTAL_CHUNK_SIZE, file.size);
+            const chunk = file.slice(start, end);
+            
+            await uploadPortalChunk(uploadId, i, chunk, (percent) => {
+                callbacks.onChunkProgress(i, totalChunks, percent);
+            });
+            callbacks.onChunkComplete(i, totalChunks);
+        }
+        
+        // 3. 完成
+        console.log('  → 合并分片中...');
+        const completeRes = await fetch(`${API_URL}/portal_chunk_upload.php`, {
+            method: 'POST',
+            body: new URLSearchParams({
+                action: 'complete',
+                token: TOKEN,
+                upload_id: uploadId
+            })
+        });
+        const completeData = await completeRes.json();
+        if (!completeData.success) throw new Error(completeData.error || '合并失败');
+        
+        console.log('  ✓ 合并完成');
+        return completeData;
+    }
+    
+    function uploadPortalChunk(uploadId, chunkIndex, chunkBlob, onProgress) {
+        return new Promise((resolve, reject) => {
+            const formData = new FormData();
+            formData.append('action', 'upload_chunk');
+            formData.append('token', TOKEN);
+            formData.append('upload_id', uploadId);
+            formData.append('chunk_index', chunkIndex);
+            formData.append('chunk', chunkBlob, 'chunk');
+            
+            const xhr = new XMLHttpRequest();
+            xhr.upload.addEventListener('progress', (e) => {
+                if (e.lengthComputable) onProgress(Math.round(e.loaded / e.total * 100));
+            });
+            xhr.addEventListener('load', () => {
+                if (xhr.status === 200) {
+                    try {
+                        const res = JSON.parse(xhr.responseText);
+                        if (res.success) resolve(res);
+                        else reject(new Error(res.error || '分片上传失败'));
+                    } catch { reject(new Error('响应解析错误')); }
+                } else {
+                    try {
+                        const res = JSON.parse(xhr.responseText);
+                        reject(new Error(res.error || `HTTP ${xhr.status}`));
+                    } catch { reject(new Error(`HTTP ${xhr.status}`)); }
+                }
+            });
+            xhr.addEventListener('error', () => reject(new Error('网络错误')));
+            xhr.open('POST', `${API_URL}/portal_chunk_upload.php`);
+            xhr.send(formData);
+        });
+    }
+    
+    function showPortalContactModal() {
+        PortalUI.Modal.show({
+            title: '上传遇到问题',
+            content: `
+                <div style="text-align: center; padding: 20px 0;">
+                    <div style="width: 64px; height: 64px; background: rgba(245, 158, 11, 0.1); border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 20px;">
+                        <i class="bi bi-exclamation-triangle" style="font-size: 32px; color: #f59e0b;"></i>
+                    </div>
+                    <p style="color: var(--portal-text-muted); line-height: 1.6;">
+                        您的文件已连续上传失败多次，可能是网络不稳定或文件过大导致。<br><br>
+                        建议您联系客服人员，我们将协助您通过其他方式完成文件传输。
+                    </p>
+                </div>
+            `,
+            buttons: [
+                { text: '稍后再试', type: 'secondary', onClick: () => { portalConsecutiveFailures = 0; PortalUI.Modal.hide(); } },
+                { text: '联系客服', type: 'primary', onClick: () => { window.open('mailto:support@example.com?subject=文件上传问题', '_blank'); PortalUI.Modal.hide(); } }
+            ]
+        });
     }
     
     function loadPortalUploadedFiles(projectId) {
