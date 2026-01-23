@@ -588,7 +588,7 @@ $token = trim($_GET['token'] ?? '');
                     <div id="uploadSection" style="display: none;">
                         <div class="upload-limit-notice">
                             <i class="bi bi-info-circle"></i>
-                            單個檔案大小上限為 <strong>2GB</strong>，超過此限制的檔案將被忽略
+                            單次上傳檔案總大小上限為 <strong>3GB</strong>
                         </div>
                         
                         <div class="portal-upload-zone" id="dropZone">
@@ -596,7 +596,7 @@ $token = trim($_GET['token'] ?? '');
                                 <i class="bi bi-cloud-arrow-up"></i>
                             </div>
                             <div class="portal-upload-text">拖曳檔案到此處上傳</div>
-                            <div class="portal-upload-hint">或點擊選擇檔案，支援批量上傳（單檔上限 2GB）</div>
+                            <div class="portal-upload-hint">或點擊選擇檔案，支援批量上傳（單次總計上限 3GB）</div>
                             <input type="file" id="fileInput" multiple style="display: none;">
                             <input type="file" id="folderInput" webkitdirectory style="display: none;">
                         </div>
@@ -661,7 +661,7 @@ $token = trim($_GET['token'] ?? '');
         const token = '<?php echo htmlspecialchars($token, ENT_QUOTES, 'UTF-8'); ?>';
         const API_BASE = '/api';
         const CHUNK_SIZE = 90 * 1024 * 1024; // 90MB 分片大小
-        const MAX_FILE_SIZE = 2 * 1024 * 1024 * 1024; // 2GB 最大文件大小
+        const MAX_TOTAL_SIZE = 3 * 1024 * 1024 * 1024; // 3GB 单次上传总大小限制
         
         let linkInfo = null;
         let verifiedPassword = '';
@@ -817,18 +817,15 @@ $token = trim($_GET['token'] ?? '');
         
         // 处理选择的文件
         function handleFiles(files) {
-            let oversizedFiles = [];
             for (const file of files) {
-                if (file.size > MAX_FILE_SIZE) {
-                    oversizedFiles.push(file.name);
-                    continue;
-                }
                 if (!selectedFiles.find(f => f.name === file.name && f.size === file.size)) {
                     selectedFiles.push(file);
                 }
             }
-            if (oversizedFiles.length > 0) {
-                showToast(`以下檔案超過2GB限制: ${oversizedFiles.join(', ')}`, 'error');
+            // 检查总大小
+            const totalSize = selectedFiles.reduce((sum, f) => sum + f.size, 0);
+            if (totalSize > MAX_TOTAL_SIZE) {
+                showToast(`單次上傳總大小超過3GB限制！當前: ${formatFileSize(totalSize)}`, 'error');
             }
             renderFileList();
         }
@@ -884,6 +881,13 @@ $token = trim($_GET['token'] ?? '');
         
         // 开始上传
         async function startUpload() {
+            // 检查总大小限制
+            const totalSize = selectedFiles.reduce((sum, f) => sum + f.size, 0);
+            if (totalSize > MAX_TOTAL_SIZE) {
+                showToast(`單次上傳總大小超過3GB限制！當前: ${formatFileSize(totalSize)}，請移除部分檔案`, 'error');
+                return;
+            }
+            
             const uploadBtn = document.getElementById('uploadBtn');
             uploadBtn.disabled = true;
             uploadBtn.innerHTML = '<i class="bi bi-arrow-repeat spin"></i> 上傳中...';

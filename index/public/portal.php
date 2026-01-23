@@ -740,7 +740,7 @@ if (empty($token)) {
                     
                     <div style="background: rgba(99, 102, 241, 0.1); border: 1px solid rgba(99, 102, 241, 0.2); border-radius: 8px; padding: 10px 14px; margin-bottom: 16px; font-size: 13px; color: var(--portal-primary); display: flex; align-items: center; gap: 8px;">
                         <i class="bi bi-info-circle"></i>
-                        单个文件大小上限为 <strong>2GB</strong>，超过此限制的文件将被忽略
+                        单次上传文件总大小上限为 <strong>3GB</strong>
                     </div>
                     
                     <div id="portalUploadZone" class="portal-upload-zone" onclick="document.getElementById('portalFileInput').click()">
@@ -748,7 +748,7 @@ if (empty($token)) {
                             <i class="bi bi-cloud-arrow-up"></i>
                         </div>
                         <div class="portal-upload-text">拖拽文件到此处或点击选择文件</div>
-                        <div class="portal-upload-hint">支持批量上传（单檔上限 2GB）</div>
+                        <div class="portal-upload-hint">支持批量上传（单次总计上限 3GB）</div>
                         <input type="file" id="portalFileInput" multiple style="display: none;" onchange="handlePortalFileSelect(event)">
                     </div>
                     
@@ -1946,24 +1946,21 @@ if (empty($token)) {
 
     // ========== 门户文件上传 ==========
     const PORTAL_CHUNK_SIZE = 90 * 1024 * 1024; // 90MB
-    const PORTAL_MAX_FILE_SIZE = 2 * 1024 * 1024 * 1024; // 2GB
+    const PORTAL_MAX_TOTAL_SIZE = 3 * 1024 * 1024 * 1024; // 3GB 单次上传总大小限制
     let portalSelectedFiles = [];
     let portalConsecutiveFailures = 0;
     
     function handlePortalFileSelect(event) {
         const files = Array.from(event.target.files);
-        let oversizedFiles = [];
         files.forEach(file => {
-            if (file.size > PORTAL_MAX_FILE_SIZE) {
-                oversizedFiles.push(file.name);
-                return;
-            }
             if (!portalSelectedFiles.find(f => f.name === file.name && f.size === file.size)) {
                 portalSelectedFiles.push(file);
             }
         });
-        if (oversizedFiles.length > 0) {
-            PortalUI.Toast.error(`以下文件超过2GB限制: ${oversizedFiles.join(', ')}`);
+        // 检查总大小
+        const totalSize = portalSelectedFiles.reduce((sum, f) => sum + f.size, 0);
+        if (totalSize > PORTAL_MAX_TOTAL_SIZE) {
+            PortalUI.Toast.error(`单次上传总大小超过3GB限制！当前: ${formatFileSize(totalSize)}`);
         }
         renderPortalUploadList();
     }
@@ -2030,6 +2027,13 @@ if (empty($token)) {
     
     async function startPortalUpload() {
         if (!currentProjectId || portalSelectedFiles.length === 0) return;
+        
+        // 检查总大小限制
+        const totalSize = portalSelectedFiles.reduce((sum, f) => sum + f.size, 0);
+        if (totalSize > PORTAL_MAX_TOTAL_SIZE) {
+            PortalUI.Toast.error(`单次上传总大小超过3GB限制！当前: ${formatFileSize(totalSize)}，请移除部分文件`);
+            return;
+        }
         
         const uploadBtn = document.getElementById('portalUploadBtn');
         uploadBtn.disabled = true;
