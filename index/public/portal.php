@@ -764,6 +764,11 @@ if (empty($token)) {
                         </div>
                     </div>
                     
+                    <div id="portalTotalSizeNotice" style="display: none; background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.2); border-radius: 8px; padding: 10px 14px; margin-top: 12px; font-size: 13px; color: #10b981; display: flex; align-items: center; gap: 8px;">
+                        <i class="bi bi-hdd"></i>
+                        已选文件总大小: <strong id="portalTotalSizeText">0 MB</strong> / 3GB
+                    </div>
+                    
                     <button id="portalUploadBtn" class="portal-btn portal-btn-primary" style="display: none; margin-top: 16px; width: 100%;" onclick="startPortalUpload()">
                         <i class="bi bi-upload"></i> 开始上传 (<span id="portalFileCount">0</span> 个文件)
                     </button>
@@ -1969,11 +1974,30 @@ if (empty($token)) {
         const listContainer = document.getElementById('portalUploadList');
         const uploadBtn = document.getElementById('portalUploadBtn');
         const fileCount = document.getElementById('portalFileCount');
+        const totalSizeNotice = document.getElementById('portalTotalSizeNotice');
+        const totalSizeText = document.getElementById('portalTotalSizeText');
         
         if (portalSelectedFiles.length === 0) {
             listContainer.innerHTML = '';
             uploadBtn.style.display = 'none';
+            totalSizeNotice.style.display = 'none';
             return;
+        }
+        
+        // 显示总大小提示
+        const totalSize = portalSelectedFiles.reduce((sum, f) => sum + f.size, 0);
+        totalSizeNotice.style.display = 'flex';
+        totalSizeText.textContent = formatFileSize(totalSize);
+        
+        // 超过3GB时显示红色警告
+        if (totalSize > PORTAL_MAX_TOTAL_SIZE) {
+            totalSizeNotice.style.background = 'rgba(239, 68, 68, 0.1)';
+            totalSizeNotice.style.borderColor = 'rgba(239, 68, 68, 0.2)';
+            totalSizeNotice.style.color = '#ef4444';
+        } else {
+            totalSizeNotice.style.background = 'rgba(16, 185, 129, 0.1)';
+            totalSizeNotice.style.borderColor = 'rgba(16, 185, 129, 0.2)';
+            totalSizeNotice.style.color = '#10b981';
         }
         
         uploadBtn.style.display = 'block';
