@@ -19,14 +19,26 @@ if (empty($token) || $projectId <= 0) {
 try {
     $pdo = Db::pdo();
     
-    // 验证token
-    $stmt = $pdo->prepare("SELECT id FROM customers WHERE portal_token = ?");
-    $stmt->execute([$token]);
+    // 验证门户token (使用portal_links表)
+    $portalStmt = $pdo->prepare("SELECT * FROM portal_links WHERE token = ? AND enabled = 1");
+    $portalStmt->execute([$token]);
+    $portal = $portalStmt->fetch(PDO::FETCH_ASSOC);
+    
+    if (!$portal) {
+        http_response_code(401);
+        echo json_encode(['error' => '无效的访问令牌']);
+        exit;
+    }
+    
+    // 获取客户信息
+    $customerId = $portal['customer_id'];
+    $stmt = $pdo->prepare("SELECT id FROM customers WHERE id = ?");
+    $stmt->execute([$customerId]);
     $customer = $stmt->fetch(PDO::FETCH_ASSOC);
     
     if (!$customer) {
         http_response_code(401);
-        echo json_encode(['error' => '无效的访问令牌']);
+        echo json_encode(['error' => '客户不存在']);
         exit;
     }
     
