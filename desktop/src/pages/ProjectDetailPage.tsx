@@ -1923,276 +1923,312 @@ export default function ProjectDetailPage() {
         {tabLoading ? (
           <div className="flex items-center justify-center h-32 text-gray-400">加载中...</div>
         ) : activeTab === 'overview' ? (
-          /* 概览 - 三列布局 */
+          /* 概览 - 左右分栏布局 */
           <div className="space-y-4">
-            {/* 三列布局：项目信息 + 客户信息 + 设计负责人 */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-              {/* 项目信息 */}
-              <div className="bg-white rounded-xl p-5 border">
-                <h3 className="text-sm font-semibold text-gray-800 mb-3 flex items-center gap-2">
-                  <FileText className="w-4 h-4 text-indigo-600" />
-                  项目信息
-                </h3>
-                <div className="grid grid-cols-2 gap-x-6 gap-y-3">
-                  <div>
-                    <label className="text-xs text-gray-400">项目编号</label>
-                    <p className="text-sm font-mono text-gray-800">{project.project_code}</p>
+            {/* 左右分栏：左侧项目核心信息 + 右侧客户&负责人 */}
+            <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
+              {/* 左侧：项目核心信息 + 快捷操作 (占3列) */}
+              <div className="lg:col-span-3 space-y-4">
+                {/* 项目状态卡片 */}
+                <div className="bg-white rounded-xl p-5 border">
+                  <div className="flex items-start justify-between mb-4">
+                    <div>
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className={`px-3 py-1 rounded-full text-sm font-medium ${
+                          project.days_info?.is_completed 
+                            ? 'bg-green-100 text-green-700'
+                            : project.days_info?.is_overdue
+                            ? 'bg-red-100 text-red-700'
+                            : 'bg-indigo-100 text-indigo-700'
+                        }`}>
+                          {project.current_status}
+                        </span>
+                        {project.days_info?.is_overdue && (
+                          <span className="text-xs text-red-500 font-medium">超期 {project.days_info?.overdue_days} 天</span>
+                        )}
+                      </div>
+                      <p className="text-xs text-gray-400 font-mono">{project.project_code}</p>
+                    </div>
+                    {/* 进度指示器 */}
+                    <div className="text-right">
+                      <p className="text-2xl font-bold text-gray-800">
+                        {project.days_info?.is_completed 
+                          ? '100%'
+                          : project.days_info?.total_days 
+                            ? `${Math.round((project.days_info?.elapsed_days || 0) / project.days_info?.total_days * 100)}%`
+                            : '-'
+                        }
+                      </p>
+                      <p className="text-xs text-gray-400">
+                        {project.days_info?.is_completed 
+                          ? `已完工 (${project.days_info?.actual_days || 0}天)`
+                          : project.days_info?.total_days 
+                            ? `${project.days_info?.elapsed_days || 0} / ${project.days_info?.total_days} 天`
+                            : '未设置周期'
+                        }
+                      </p>
+                    </div>
                   </div>
-                  <div>
-                    <label className="text-xs text-gray-400">当前状态</label>
-                    <p className="text-sm">
-                      <span className="px-2 py-0.5 bg-indigo-100 text-indigo-700 rounded text-xs">
-                        {project.current_status}
-                      </span>
-                    </p>
+                  
+                  {/* 进度条 */}
+                  {project.days_info?.total_days && (
+                    <div className="mb-4">
+                      <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                        <div 
+                          className={`h-full rounded-full transition-all ${
+                            project.days_info?.is_completed 
+                              ? 'bg-green-500'
+                              : project.days_info?.is_overdue
+                              ? 'bg-red-500'
+                              : 'bg-indigo-500'
+                          }`}
+                          style={{ 
+                            width: `${Math.min(100, project.days_info?.is_completed 
+                              ? 100 
+                              : (project.days_info?.elapsed_days || 0) / project.days_info?.total_days * 100
+                            )}%` 
+                          }}
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {/* 项目信息网格 */}
+                  <div className="grid grid-cols-3 gap-4 text-sm">
+                    <div>
+                      <label className="text-xs text-gray-400 block">项目周期</label>
+                      <p className="text-gray-800">{project.days_info?.date_range || '-'}</p>
+                    </div>
+                    <div>
+                      <label className="text-xs text-gray-400 block">更新时间</label>
+                      <p className="text-gray-800">{project.update_time}</p>
+                    </div>
+                    <div>
+                      <label className="text-xs text-gray-400 block">剩余天数</label>
+                      <p className={project.days_info?.is_overdue ? 'text-red-600 font-medium' : 'text-gray-800'}>
+                        {project.days_info?.is_completed 
+                          ? '已完工'
+                          : project.days_info?.remaining_days !== undefined
+                            ? `${project.days_info.remaining_days} 天`
+                            : '-'
+                        }
+                      </p>
+                    </div>
                   </div>
-                  <div>
-                    <label className="text-xs text-gray-400">项目周期</label>
-                    <p className="text-sm text-gray-800">
-                      {project.days_info?.date_range || '-'}
-                    </p>
-                  </div>
-                  <div>
-                    <label className="text-xs text-gray-400">进度</label>
-                    <p className={`text-sm ${
-                      project.days_info?.is_overdue
-                        ? 'text-red-600 font-medium'
-                        : 'text-gray-800'
-                    }`}>
-                      {project.days_info?.is_completed 
-                        ? `已完工 (${project.days_info?.actual_days || 0}天)`
-                        : project.days_info?.total_days 
-                          ? `${project.days_info?.elapsed_days || 0}/${project.days_info?.total_days}天`
-                          : '-'
-                      }
-                      {project.days_info?.is_overdue && ` (超${project.days_info?.overdue_days}天)`}
-                    </p>
-                  </div>
-                  <div>
-                    <label className="text-xs text-gray-400">更新时间</label>
-                    <p className="text-sm text-gray-800">{project.update_time}</p>
-                  </div>
+                  
                   {project.remark && (
-                    <div className="col-span-2">
+                    <div className="mt-3 pt-3 border-t">
                       <label className="text-xs text-gray-400">备注</label>
                       <p className="text-sm text-gray-600">{project.remark}</p>
                     </div>
                   )}
                 </div>
-              </div>
 
-              {/* 客户信息 */}
-              <div className="bg-white rounded-xl p-5 border">
-                <h3 className="text-sm font-semibold text-gray-800 mb-3 flex items-center gap-2">
-                  <User className="w-4 h-4 text-indigo-600" />
-                  客户信息
-                </h3>
-                <div className="grid grid-cols-2 gap-x-6 gap-y-3">
-                  <div>
-                    <label className="text-xs text-gray-400">客户名称</label>
-                    <div className="flex items-center gap-1.5">
-                      <p className="text-sm font-medium text-gray-800">{customer?.name}</p>
-                      {customer?.name && (
-                        <button
-                          onClick={() => {
-                            navigator.clipboard.writeText(customer.name || '');
-                            toast({ title: '已复制', description: '客户名称已复制到剪贴板' });
-                          }}
-                          className="text-gray-300 hover:text-indigo-600 transition-colors"
-                          title="复制客户名称"
-                        >
-                          <Copy className="w-3.5 h-3.5" />
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                  <div>
-                    <label className="text-xs text-gray-400">群码</label>
-                    <div className="flex items-center gap-1.5">
-                      <p className="text-sm font-mono text-gray-800">{customer?.group_code || '-'}</p>
-                      {customer?.group_code && (
-                        <button
-                          onClick={() => {
-                            navigator.clipboard.writeText(customer.group_code || '');
-                            toast({ title: '已复制', description: '群码已复制到剪贴板' });
-                          }}
-                          className="text-gray-300 hover:text-indigo-600 transition-colors"
-                          title="复制群码"
-                        >
-                          <Copy className="w-3.5 h-3.5" />
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                  <div>
-                    <label className="text-xs text-gray-400">客户群名称</label>
-                    <div className="flex items-center gap-1.5">
-                      <p className="text-sm text-gray-800">{customer?.customer_group_name || '-'}</p>
-                      {customer?.customer_group_name && (
-                        <button
-                          onClick={() => {
-                            navigator.clipboard.writeText(customer.customer_group_name || '');
-                            toast({ title: '已复制', description: '客户群名称已复制到剪贴板' });
-                          }}
-                          className="text-gray-300 hover:text-indigo-600 transition-colors"
-                          title="复制客户群名称"
-                        >
-                          <Copy className="w-3.5 h-3.5" />
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                  <div>
-                    <label className="text-xs text-gray-400">客户别名</label>
-                    <div className="flex items-center gap-1.5">
-                      <p className="text-sm text-gray-800">{customer?.alias || '-'}</p>
+                {/* 快捷操作卡片 */}
+                <div className="bg-white rounded-xl p-4 border">
+                  <h3 className="text-xs font-semibold text-gray-500 uppercase mb-3">快捷操作</h3>
+                  <div className="flex flex-wrap gap-2">
+                    {customer?.group_code && (
                       <button
                         onClick={() => {
-                          setAliasValue(customer?.alias || '');
-                          setShowAliasEditor(true);
+                          navigator.clipboard.writeText(customer.group_code || '');
+                          toast({ title: '已复制', description: '群码已复制到剪贴板' });
                         }}
-                        className="text-xs text-indigo-600 hover:text-indigo-700"
+                        className="inline-flex items-center gap-1.5 px-3 py-2 bg-gray-50 hover:bg-gray-100 text-gray-700 text-sm rounded-lg transition-colors"
                       >
-                        编辑
+                        <Copy className="w-4 h-4" />
+                        复制群码
+                        <span className="font-mono text-xs bg-white px-1.5 py-0.5 rounded">{customer.group_code}</span>
                       </button>
-                    </div>
-                  </div>
-                  {customer?.phone && (
-                    <div className="col-span-2">
-                      <label className="text-xs text-gray-400">联系电话</label>
-                      <p className="text-sm text-gray-800">{customer.phone}</p>
-                    </div>
-                  )}
-                {/* 门户信息 */}
-                {customer?.portal_token && (
-                  <div className="col-span-2 pt-3 border-t mt-3">
-                    <label className="text-xs text-gray-400 uppercase mb-2 block">客户门户</label>
-                    {/* 密码显示 */}
-                    {customer.portal_password && (
-                      <div className="flex items-center gap-2 mb-2 text-sm">
-                        <span className="text-gray-500">密码:</span>
-                        <span className="font-mono bg-gray-100 px-2 py-0.5 rounded">{customer.portal_password}</span>
+                    )}
+                    {customer?.customer_group_name && (
+                      <button
+                        onClick={() => {
+                          navigator.clipboard.writeText(customer.customer_group_name || '');
+                          toast({ title: '已复制', description: '群名称已复制到剪贴板' });
+                        }}
+                        className="inline-flex items-center gap-1.5 px-3 py-2 bg-gray-50 hover:bg-gray-100 text-gray-700 text-sm rounded-lg transition-colors"
+                      >
+                        <Copy className="w-4 h-4" />
+                        复制群名称
+                      </button>
+                    )}
+                    {customer?.portal_token && (
+                      <>
+                        <a
+                          href={`${serverUrl}/portal.php?token=${customer.portal_token}&project_id=${project.id}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1.5 px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm rounded-lg transition-colors"
+                        >
+                          <ExternalLink className="w-4 h-4" />
+                          打开门户
+                        </a>
                         <button
                           onClick={() => {
-                            navigator.clipboard.writeText(customer.portal_password || '');
-                            toast({ title: '已复制', description: '密码已复制到剪贴板' });
+                            const url = `${serverUrl}/portal.php?token=${customer.portal_token}&project_id=${project.id}`;
+                            navigator.clipboard.writeText(url);
+                            toast({ title: '成功', description: '门户链接已复制' });
                           }}
-                          className="text-gray-400 hover:text-indigo-600 transition-colors"
-                          title="复制密码"
+                          className="inline-flex items-center gap-1.5 px-3 py-2 bg-gray-50 hover:bg-gray-100 text-gray-700 text-sm rounded-lg transition-colors"
                         >
-                          <Copy className="w-3.5 h-3.5" />
+                          <Link2 className="w-4 h-4" />
+                          复制门户链接
+                        </button>
+                      </>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* 右侧：客户信息 + 设计负责人 (占2列) */}
+              <div className="lg:col-span-2 space-y-4">
+                {/* 客户信息卡片 */}
+                <div className="bg-white rounded-xl p-5 border">
+                  <h3 className="text-sm font-semibold text-gray-800 mb-3 flex items-center gap-2">
+                    <User className="w-4 h-4 text-indigo-600" />
+                    客户信息
+                  </h3>
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-gray-400">客户名称</span>
+                      <span className="text-sm font-medium text-gray-800">{customer?.name}</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-gray-400">群码</span>
+                      <span className="text-sm font-mono text-gray-800">{customer?.group_code || '-'}</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-gray-400">客户群</span>
+                      <span className="text-sm text-gray-800 truncate max-w-[180px]">{customer?.customer_group_name || '-'}</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-gray-400">别名</span>
+                      <div className="flex items-center gap-1">
+                        <span className="text-sm text-gray-800">{customer?.alias || '-'}</span>
+                        <button
+                          onClick={() => {
+                            setAliasValue(customer?.alias || '');
+                            setShowAliasEditor(true);
+                          }}
+                          className="text-xs text-indigo-600 hover:text-indigo-700"
+                        >
+                          编辑
+                        </button>
+                      </div>
+                    </div>
+                    {customer?.phone && (
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs text-gray-400">电话</span>
+                        <span className="text-sm text-gray-800">{customer.phone}</span>
+                      </div>
+                    )}
+                    {/* 门户密码 */}
+                    {customer?.portal_token && customer?.portal_password && (
+                      <div className="flex items-center justify-between pt-2 border-t">
+                        <span className="text-xs text-gray-400">门户密码</span>
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono text-sm bg-gray-100 px-2 py-0.5 rounded">{customer.portal_password}</span>
+                          <button
+                            onClick={() => {
+                              navigator.clipboard.writeText(customer.portal_password || '');
+                              toast({ title: '已复制', description: '密码已复制' });
+                            }}
+                            className="text-gray-400 hover:text-indigo-600"
+                          >
+                            <Copy className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                    {customer?.portal_token && !customer?.portal_password && (
+                      <div className="pt-2 border-t">
+                        <button
+                          onClick={async () => {
+                            try {
+                              const res = await fetch(`${serverUrl}/api/portal_password.php?customer_id=${customer.id}`, {
+                                headers: { 'Authorization': `Bearer ${token}` },
+                              });
+                              const data = await res.json();
+                              if (data.success && data.data) {
+                                setPortalPassword(data.data.current_password || '');
+                              } else {
+                                setPortalPassword('');
+                              }
+                            } catch (e) {
+                              setPortalPassword('');
+                            }
+                            setShowPassword(false);
+                            setShowPasswordEditor(true);
+                          }}
+                          className="text-xs text-indigo-600 hover:text-indigo-700"
+                        >
+                          <Lock className="w-3 h-3 inline mr-1" />
+                          设置门户密码
                         </button>
                       </div>
                     )}
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <a
-                        href={`${serverUrl}/portal.php?token=${customer.portal_token}&project_id=${project.id}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1 px-3 py-1.5 bg-indigo-600 text-white text-xs rounded-lg hover:bg-indigo-700 transition-colors"
-                      >
-                        <ExternalLink className="w-3.5 h-3.5" />
-                        打开门户
-                      </a>
+                  </div>
+                </div>
+
+                {/* 设计负责人卡片 */}
+                <div className="bg-white rounded-xl p-5 border">
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="text-sm font-semibold text-gray-800 flex items-center gap-2">
+                      <UserPlus className="w-4 h-4 text-indigo-600" />
+                      设计负责人
+                    </h3>
+                    {canAssignProject() && (
                       <button
                         onClick={() => {
-                          const url = `${serverUrl}/portal.php?token=${customer.portal_token}&project_id=${project.id}`;
-                          navigator.clipboard.writeText(url);
-                          toast({ title: '成功', description: '链接已复制' });
+                          setSelectedTechIds((techUsers || []).map(t => t.id));
+                          setShowUserSelector(true);
                         }}
-                        className="inline-flex items-center gap-1 px-3 py-1.5 bg-gray-100 text-gray-700 text-xs rounded-lg hover:bg-gray-200 transition-colors"
+                        className="flex items-center gap-1 px-2 py-1 text-xs text-indigo-600 hover:bg-indigo-50 rounded transition-colors"
                       >
-                        <Link2 className="w-3.5 h-3.5" />
-                        复制链接
+                        <UserPlus className="w-3.5 h-3.5" />
+                        分配
                       </button>
-                      <button
-                        onClick={async () => {
-                          // 从 portal_password.php API 获取当前密码
-                          try {
-                            const res = await fetch(`${serverUrl}/api/portal_password.php?customer_id=${customer.id}`, {
-                              headers: { 'Authorization': `Bearer ${token}` },
-                            });
-                            const data = await res.json();
-                            if (data.success && data.data) {
-                              setPortalPassword(data.data.current_password || '');
-                            } else {
-                              setPortalPassword('');
-                            }
-                          } catch (e) {
-                            console.error('获取密码失败:', e);
-                            setPortalPassword('');
-                          }
-                          setShowPassword(false);
-                          setShowPasswordEditor(true);
-                        }}
-                        className="inline-flex items-center gap-1 px-3 py-1.5 bg-gray-100 text-gray-700 text-xs rounded-lg hover:bg-gray-200 transition-colors"
-                      >
-                        <Lock className="w-3.5 h-3.5" />
-                        {customer.portal_password ? '修改密码' : '设置密码'}
-                      </button>
-                    </div>
+                    )}
                   </div>
-                )}
-                </div>
-              </div>
-
-              {/* 设计负责人（第三列） */}
-              <div className="bg-white rounded-xl p-5 border">
-                <div className="flex items-center justify-between mb-3">
-                  <h3 className="text-sm font-semibold text-gray-800 flex items-center gap-2">
-                    <UserPlus className="w-4 h-4 text-indigo-600" />
-                    设计负责人
-                  </h3>
-                  {canAssignProject() && (
-                    <button
-                      onClick={() => {
-                        setSelectedTechIds((techUsers || []).map(t => t.id));
-                        setShowUserSelector(true);
-                      }}
-                      className="flex items-center gap-1 px-2 py-1 text-xs text-indigo-600 hover:bg-indigo-50 rounded transition-colors"
-                    >
-                      <UserPlus className="w-3.5 h-3.5" />
-                      分配
-                    </button>
+                  {techUsers.length === 0 ? (
+                    <p className="text-sm text-gray-400">暂无分配</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {(techUsers || []).map((tech) => {
+                        const canSeeCommission = isManager || tech.id === user?.id;
+                        return (
+                          <div key={tech.id} className="flex items-center gap-3 bg-gray-50 rounded-lg px-3 py-2">
+                            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 text-white flex items-center justify-center font-semibold text-xs">
+                              {tech.name.charAt(0)}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-medium text-gray-800 truncate">{tech.name}</p>
+                              {canSeeCommission && tech.commission !== null ? (
+                                <p className="text-xs text-green-600">¥{tech.commission}</p>
+                              ) : canSeeCommission ? (
+                                <p className="text-xs text-gray-400">未设置提成</p>
+                              ) : null}
+                            </div>
+                            {canAssignProject() && (
+                              <button
+                                onClick={() => {
+                                  setEditingTech(tech);
+                                  setCommissionAmount(tech.commission?.toString() || '');
+                                  setCommissionNote(tech.commission_note || '');
+                                  setShowCommissionEditor(true);
+                                }}
+                                className="text-indigo-600 hover:text-indigo-800"
+                              >
+                                <DollarSign className="w-4 h-4" />
+                              </button>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
                   )}
                 </div>
-                {techUsers.length === 0 ? (
-                  <p className="text-sm text-gray-400">暂无分配</p>
-                ) : (
-                  <div className="space-y-2">
-                    {(techUsers || []).map((tech) => {
-                      const canSeeCommission = isManager || tech.id === user?.id;
-                      return (
-                        <div key={tech.id} className="flex items-center gap-3 bg-gray-50 rounded-lg px-3 py-2">
-                          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 text-white flex items-center justify-center font-semibold text-xs">
-                            {tech.name.charAt(0)}
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm font-medium text-gray-800 truncate">{tech.name}</p>
-                            {canSeeCommission && tech.commission !== null ? (
-                              <p className="text-xs text-green-600">¥{tech.commission}</p>
-                            ) : canSeeCommission ? (
-                              <p className="text-xs text-gray-400">未设置提成</p>
-                            ) : null}
-                          </div>
-                          {canAssignProject() && (
-                            <button
-                              onClick={() => {
-                                setEditingTech(tech);
-                                setCommissionAmount(tech.commission?.toString() || '');
-                                setCommissionNote(tech.commission_note || '');
-                                setShowCommissionEditor(true);
-                              }}
-                              className="text-indigo-600 hover:text-indigo-800"
-                            >
-                              <DollarSign className="w-4 h-4" />
-                            </button>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
               </div>
             </div>
             
