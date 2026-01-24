@@ -30,8 +30,8 @@ const FILE_CATEGORY_COLORS: Record<string, { bg: string; header: string }> = {
 // 项目详情侧边栏Tab配置
 const PROJECT_SIDEBAR_TABS: SidebarTab[] = [
   { key: 'overview', label: '概览', icon: <FileText className="w-4 h-4" /> },
-  { key: 'forms', label: '动态表单', icon: <Clipboard className="w-4 h-4" /> },
   { key: 'files', label: '交付物', icon: <Download className="w-4 h-4" /> },
+  { key: 'forms', label: '动态表单', icon: <Clipboard className="w-4 h-4" /> },
   { key: 'messages', label: '沟通记录', icon: <MessageSquare className="w-4 h-4" /> },
   { key: 'timeline', label: '项目记录', icon: <History className="w-4 h-4" /> },
   { key: 'finance', label: '财务', icon: <DollarSign className="w-4 h-4" /> },
@@ -1733,7 +1733,8 @@ export default function ProjectDetailPage() {
         </div>
       </div>
 
-      {/* 状态步骤条（可折叠） */}
+      {/* 状态步骤条（可折叠，仅在概览Tab显示） */}
+      {activeTab === 'overview' && (
       <div className="bg-white border-b">
         <button
           onClick={() => setProgressCollapsed(!progressCollapsed)}
@@ -1915,6 +1916,7 @@ export default function ProjectDetailPage() {
         </div>
         )}
       </div>
+      )}
 
       {/* 主体内容区 */}
       <div className="flex-1 overflow-auto p-6">
