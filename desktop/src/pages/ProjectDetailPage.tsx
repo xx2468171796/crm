@@ -296,15 +296,72 @@ export default function ProjectDetailPage() {
 
   const { queueUpload } = useUploader();
 
+  const normalizeApprovalStatus = (raw: any): 'pending' | 'approved' | 'rejected' => {
+    if (raw === 1 || raw === '1' || raw === 'approved') return 'approved';
+    if (raw === 2 || raw === '2' || raw === 'rejected') return 'rejected';
+    return 'pending';
+  };
+
   const canManageFile = (file: any) => {
     const uploaderId = Number(file?.uploader_id || 0);
-    const approvalStatus = String(file?.approval_status || 'pending');
+    const approvalStatus = normalizeApprovalStatus(file?.approval_status);
     const isUploader = uploaderId > 0 && uploaderId === (user?.id || 0);
     const manager = checkIsManager(user?.role);
 
     if (manager) return true;
     if (isUploader && (approvalStatus === 'pending' || approvalStatus === 'rejected')) return true;
     return false;
+  };
+
+  const handleBatchApprove = async (filesToApprove: any[]) => {
+    const ids = filesToApprove.map((f: any) => Number(f.id)).filter((x: number) => x > 0);
+    if (ids.length === 0) {
+      toast({ title: '批量通过', description: '请选择待审核的文件', variant: 'destructive' });
+      return;
+    }
+    try {
+      const res = await fetch(`${serverUrl}/api/desktop_approval.php?action=batch_approve`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ file_ids: ids }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        toast({ title: '批量通过成功', description: `已通过 ${ids.length} 个文件` });
+        clearSelection();
+        await loadProject('files');
+      } else {
+        toast({ title: '批量通过失败', description: data.error || '未知错误', variant: 'destructive' });
+      }
+    } catch (err: any) {
+      toast({ title: '批量通过失败', description: err.message, variant: 'destructive' });
+    }
+  };
+
+  const handleBatchReject = async (filesToReject: any[]) => {
+    const ids = filesToReject.map((f: any) => Number(f.id)).filter((x: number) => x > 0);
+    if (ids.length === 0) {
+      toast({ title: '批量驳回', description: '请选择待审核的文件', variant: 'destructive' });
+      return;
+    }
+    const reason = prompt('请输入批量驳回原因（可选）：') || '';
+    try {
+      const res = await fetch(`${serverUrl}/api/desktop_approval.php?action=batch_reject`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ file_ids: ids, reason }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        toast({ title: '批量驳回成功', description: `已驳回 ${ids.length} 个文件` });
+        clearSelection();
+        await loadProject('files');
+      } else {
+        toast({ title: '批量驳回失败', description: data.error || '未知错误', variant: 'destructive' });
+      }
+    } catch (err: any) {
+      toast({ title: '批量驳回失败', description: err.message, variant: 'destructive' });
+    }
   };
 
   // 通用文件预览函数
@@ -2344,6 +2401,9 @@ export default function ProjectDetailPage() {
               const deletableSelected = categoryFiles
                 .filter((f: any) => selectedFileIds.has(Number(f.id)) && Number(f.id) > 0)
                 .filter((f: any) => canManageFile(f));
+              const pendingSelected = categoryFiles
+                .filter((f: any) => selectedFileIds.has(Number(f.id)) && Number(f.id) > 0)
+                .filter((f: any) => normalizeApprovalStatus(f.approval_status) === 'pending');
               return (
                 <div 
                   key={categoryName} 
@@ -2413,9 +2473,29 @@ export default function ProjectDetailPage() {
                             批量删除({deletableSelected.length})
                           </button>
                         )}
+                        {isManager && pendingSelected.length > 0 && (
+                          <>
+                            <button
+                              type="button"
+                              className="px-2 py-1 text-xs bg-green-500 text-white rounded hover:bg-green-600"
+                              onClick={() => handleBatchApprove(pendingSelected)}
+                              title="批量通过"
+                            >
+                              批量通过({pendingSelected.length})
+                            </button>
+                            <button
+                              type="button"
+                              className="px-2 py-1 text-xs bg-orange-500 text-white rounded hover:bg-orange-600"
+                              onClick={() => handleBatchReject(pendingSelected)}
+                              title="批量驳回"
+                            >
+                              批量驳回({pendingSelected.length})
+                            </button>
+                          </>
+                        )}
                         {(() => {
                           const rejectedSelected = categoryFiles
-                            .filter((f: any) => selectedFileIds.has(Number(f.id)) && f.approval_status === 'rejected');
+                            .filter((f: any) => selectedFileIds.has(Number(f.id)) && normalizeApprovalStatus(f.approval_status) === 'rejected');
                           return rejectedSelected.length > 0 ? (
                             <button
                               type="button"
@@ -2561,7 +2641,7 @@ export default function ProjectDetailPage() {
                           ) as any;
                           if (!originalFile) return false;
                           const uploaderId = Number(originalFile?.uploader_id || 0);
-                          const approvalStatus = String(originalFile?.approval_status || 'pending');
+                          const approvalStatus = normalizeApprovalStatus(originalFile?.approval_status);
                           const isUploader = uploaderId > 0 && uploaderId === (user?.id || 0);
                           return isUploader && (approvalStatus === 'pending' || approvalStatus === 'rejected');
                         }}
@@ -2650,7 +2730,7 @@ export default function ProjectDetailPage() {
                           </div>
                         </div>
                         <div className="flex items-center gap-2">
-                          {file.approval_status === 'pending' && (
+                          {normalizeApprovalStatus(file.approval_status) === 'pending' && (
                             <>
                               <span className="px-2 py-0.5 bg-yellow-100 text-yellow-700 rounded text-xs">待审核</span>
                               {isManager && (
@@ -2710,10 +2790,10 @@ export default function ProjectDetailPage() {
                               )}
                             </>
                           )}
-                          {file.approval_status === 'approved' && (
+                          {normalizeApprovalStatus(file.approval_status) === 'approved' && (
                             <span className="px-2 py-0.5 bg-green-100 text-green-700 rounded text-xs">已通过</span>
                           )}
-                          {file.approval_status === 'rejected' && (
+                          {normalizeApprovalStatus(file.approval_status) === 'rejected' && (
                             <>
                               <span className="px-2 py-0.5 bg-red-100 text-red-700 rounded text-xs">已驳回</span>
                               <button
