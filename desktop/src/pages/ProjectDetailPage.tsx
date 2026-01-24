@@ -1962,15 +1962,41 @@ export default function ProjectDetailPage() {
               <div className="space-y-4">
                 <div>
                   <label className="text-xs text-gray-400 uppercase">客户名称</label>
-                  <p className="text-sm text-gray-800">{customer?.name}</p>
+                  <div className="flex items-center gap-2">
+                    <p className="text-sm text-gray-800">{customer?.name}</p>
+                    {customer?.name && (
+                      <button
+                        onClick={() => {
+                          navigator.clipboard.writeText(customer.name || '');
+                          toast({ title: '已复制', description: '客户名称已复制到剪贴板' });
+                        }}
+                        className="text-gray-400 hover:text-indigo-600"
+                        title="复制客户名称"
+                      >
+                        <Copy className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
                 </div>
                 {customer?.group_code && (
                   <div>
                     <label className="text-xs text-gray-400 uppercase">群码</label>
-                    <p className="text-sm font-mono text-gray-800">{customer.group_code}</p>
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm font-mono text-gray-800">{customer.group_code}</p>
+                      <button
+                        onClick={() => {
+                          navigator.clipboard.writeText(customer.group_code || '');
+                          toast({ title: '已复制', description: '群码已复制到剪贴板' });
+                        }}
+                        className="text-gray-400 hover:text-indigo-600"
+                        title="复制群码"
+                      >
+                        <Copy className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
                   </div>
                 )}
-                {(customer?.customer_group_name || customer?.group_code) && (
+                {customer?.customer_group_name && (
                   <div>
                     <label className="text-xs text-gray-400 uppercase">客户群名称</label>
                     <div className="flex items-center gap-2">
