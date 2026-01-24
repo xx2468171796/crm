@@ -586,11 +586,14 @@ function getProjects($pdo, $user, $customerId = 0) {
             $params[] = $user['id'];
             $params[] = $user['id'];
         } elseif ($user['role'] === 'tech') {
-            // 技术只看分配给自己的项目
-            $sql .= " AND EXISTS (
-                SELECT 1 FROM project_tech_assignments pta 
-                WHERE pta.project_id = p.id AND pta.tech_user_id = ?
+            // 技术看分配给自己的项目 或 自己创建的项目
+            $sql .= " AND (
+                p.created_by = ? OR EXISTS (
+                    SELECT 1 FROM project_tech_assignments pta 
+                    WHERE pta.project_id = p.id AND pta.tech_user_id = ?
+                )
             )";
+            $params[] = $user['id'];
             $params[] = $user['id'];
         } elseif ($user['role'] === 'dept_leader') {
             // 部门主管看部门及下级项目
