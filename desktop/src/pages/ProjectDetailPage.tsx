@@ -355,6 +355,96 @@ export default function ProjectDetailPage() {
     }
   };
 
+  // 重新提交被驳回的文件
+  const handleResubmitFile = async (file: any, categoryName: string) => {
+    if (!file || !project || !customer) return;
+    
+    // 打开文件选择对话框
+    const selectedFiles = await open({
+      multiple: false,
+      filters: [{ name: '所有文件', extensions: ['*'] }],
+      title: `重新提交: ${file.filename}`,
+    });
+    
+    if (!selectedFiles || typeof selectedFiles !== 'string') return;
+    
+    const localPath = selectedFiles;
+    const fileName = localPath.split(/[/\\]/).pop() || file.filename;
+    
+    try {
+      // 先删除旧文件
+      const deleteRes = await fetch(`${serverUrl}/api/desktop_file_manage.php`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ action: 'delete', id: file.id }),
+      });
+      const deleteData = await deleteRes.json();
+      if (!deleteData.success) {
+        toast({ title: '重新提交失败', description: '无法删除旧文件: ' + (deleteData.error || ''), variant: 'destructive' });
+        return;
+      }
+      
+      // 上传新文件
+      const groupCode = customer.group_code || `P${project.id}`;
+      const assetType = categoryName === '客户文件' ? 'customer' : categoryName === '模型文件' ? 'models' : 'works';
+      await queueUpload(groupCode, assetType, localPath, fileName, project.id);
+      toast({ title: '重新提交', description: `${fileName} 已添加到上传队列` });
+    } catch (err: any) {
+      toast({ title: '重新提交失败', description: err.message, variant: 'destructive' });
+    }
+  };
+
+  // 批量重新提交被驳回的文件
+  const handleBatchResubmit = async (rejectedFiles: any[], categoryName: string) => {
+    if (rejectedFiles.length === 0 || !project || !customer) return;
+    
+    // 打开文件选择对话框（多选）
+    const selectedFiles = await open({
+      multiple: true,
+      filters: [{ name: '所有文件', extensions: ['*'] }],
+      title: `批量重新提交 ${rejectedFiles.length} 个被驳回的文件`,
+    });
+    
+    if (!selectedFiles || (Array.isArray(selectedFiles) && selectedFiles.length === 0)) return;
+    
+    const filePaths = Array.isArray(selectedFiles) ? selectedFiles : [selectedFiles];
+    
+    try {
+      // 先批量删除旧文件
+      const ids = rejectedFiles.map((f: any) => f.id);
+      const deleteRes = await fetch(`${serverUrl}/api/desktop_file_manage.php`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ action: 'batch_delete', ids }),
+      });
+      const deleteData = await deleteRes.json();
+      if (!deleteData.success) {
+        toast({ title: '批量重新提交失败', description: '无法删除旧文件: ' + (deleteData.error || ''), variant: 'destructive' });
+        return;
+      }
+      
+      // 批量上传新文件
+      const groupCode = customer.group_code || `P${project.id}`;
+      const assetType = categoryName === '客户文件' ? 'customer' : categoryName === '模型文件' ? 'models' : 'works';
+      
+      for (const localPath of filePaths) {
+        const fileName = localPath.split(/[/\\]/).pop() || 'file';
+        await queueUpload(groupCode, assetType, localPath, fileName, project.id);
+      }
+      
+      toast({ title: '批量重新提交', description: `已添加 ${filePaths.length} 个文件到上传队列` });
+      clearSelection();
+    } catch (err: any) {
+      toast({ title: '批量重新提交失败', description: err.message, variant: 'destructive' });
+    }
+  };
+
   const toggleSelectFile = (id: number) => {
     setSelectedFileIds((prev) => {
       const next = new Set(prev);
@@ -2323,6 +2413,20 @@ export default function ProjectDetailPage() {
                             批量删除({deletableSelected.length})
                           </button>
                         )}
+                        {(() => {
+                          const rejectedSelected = categoryFiles
+                            .filter((f: any) => selectedFileIds.has(Number(f.id)) && f.approval_status === 'rejected');
+                          return rejectedSelected.length > 0 ? (
+                            <button
+                              type="button"
+                              className="px-2 py-1 text-xs bg-blue-500 text-white rounded hover:bg-blue-600"
+                              onClick={() => handleBatchResubmit(rejectedSelected, categoryName)}
+                              title="批量重新提交"
+                            >
+                              批量重新提交({rejectedSelected.length})
+                            </button>
+                          ) : null;
+                        })()}
                         <button
                           onClick={() => openLocalFolder(categoryName)}
                           className="p-1 hover:bg-white/50 rounded"
@@ -2610,7 +2714,17 @@ export default function ProjectDetailPage() {
                             <span className="px-2 py-0.5 bg-green-100 text-green-700 rounded text-xs">已通过</span>
                           )}
                           {file.approval_status === 'rejected' && (
-                            <span className="px-2 py-0.5 bg-red-100 text-red-700 rounded text-xs">已驳回</span>
+                            <>
+                              <span className="px-2 py-0.5 bg-red-100 text-red-700 rounded text-xs">已驳回</span>
+                              <button
+                                type="button"
+                                onClick={() => handleResubmitFile(file, categoryName)}
+                                className="px-2 py-0.5 bg-blue-500 hover:bg-blue-600 text-white rounded text-xs"
+                                title="重新提交"
+                              >
+                                重新提交
+                              </button>
+                            </>
                           )}
                           <button 
                             type="button"
