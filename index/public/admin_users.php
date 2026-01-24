@@ -116,6 +116,8 @@ layout_header('员工管理');
                                 'sales' => 'bg-primary',
                                 'service' => 'bg-info',
                                 'tech' => 'bg-success',
+                                'tech_manager' => 'bg-success',
+                                'design_manager' => 'bg-indigo',
                                 'finance' => 'bg-purple',
                                 'viewer' => 'bg-secondary',
                             ];
