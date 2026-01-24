@@ -1,10 +1,14 @@
-# 桌面端打包规范
+# 桌面端打包规范 - Linux 环境（交叉编译）
+
+> ⚠️ **本文档适用于 Linux 环境**，用于交叉编译生成 Windows 可执行文件
+> 
+> 如果在 **Windows 环境** 下打包，请参考 `BUILD-WINDOWS.md`
 
 ## 快速打包（推荐）
 
 ```bash
-# 在 desktop 目录下执行
-cd /opt/1panel/www/sites/192.168.110.2519923/desktop
+# 进入当前项目的 desktop 目录
+cd <项目根目录>/desktop
 
 # ⚠️ 重要：每次打包前必须更新版本号！
 # 修改 package.json 和 src-tauri/tauri.conf.json 中的 version 字段
@@ -21,15 +25,15 @@ VERSION=$(node -p "require('./package.json').version")
 cp src-tauri/target/x86_64-pc-windows-gnu/release/tech-resource-sync.exe ../output/tech-resource-sync-v${VERSION}.exe
 
 # 输出文件位置
-# 免安装exe: output/tech-resource-sync-v{版本号}.exe
-# 安装包:    desktop/src-tauri/target/x86_64-pc-windows-gnu/release/bundle/nsis/项目管理工具_{版本号}_x64-setup.exe
+# 免安装exe: <项目根目录>/output/tech-resource-sync-v{版本号}.exe
+# 安装包:    <项目根目录>/desktop/src-tauri/target/x86_64-pc-windows-gnu/release/bundle/nsis/项目管理工具_{版本号}_x64-setup.exe
 ```
 
 ## 输出位置
 
-所有打包文件复制到：
+所有打包文件复制到项目根目录下的 output 文件夹：
 ```
-/opt/1panel/www/sites/192.168.110.2519923/output/
+<项目根目录>/output/
 ```
 
 文件命名规则：
@@ -64,8 +68,8 @@ ar = "x86_64-w64-mingw32-ar"
 ### 3. 构建步骤
 
 ```bash
-# 进入桌面端目录
-cd /opt/1panel/www/sites/192.168.110.2519923/desktop
+# 进入当前项目的桌面端目录
+cd <项目根目录>/desktop
 
 # 安装 npm 依赖
 npm install
