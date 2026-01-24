@@ -86,8 +86,8 @@ export function parseGroupFolder(folderName: string): { groupCode: string; group
   return { groupCode: match[1], groupName: match[2] };
 }
 
-// 管理员角色列表
-export const MANAGER_ROLES = ['admin', 'super_admin', 'manager', 'tech_manager'] as const;
+// 管理员角色列表（可管理项目、审批、设置提成）
+export const MANAGER_ROLES = ['admin', 'super_admin', 'manager', 'tech_manager', 'design_manager'] as const;
 
 // 判断用户是否为管理员
 export function isManager(role: string | undefined | null): boolean {
@@ -97,4 +97,14 @@ export function isManager(role: string | undefined | null): boolean {
 // 判断用户是否为设计师
 export function isTechUser(role: string | undefined | null): boolean {
   return role === 'tech' || role === 'tech_manager';
+}
+
+// 判断用户是否为设计师主管
+export function isDesignManager(role: string | undefined | null): boolean {
+  return role === 'design_manager';
+}
+
+// 判断用户是否可以查看财务（design_manager不能）
+export function canViewFinance(role: string | undefined | null): boolean {
+  return ['admin', 'super_admin', 'manager', 'tech_manager'].includes(role || '');
 }

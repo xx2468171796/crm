@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { DollarSign, TrendingUp, Calendar, Users, ExternalLink } from 'lucide-react';
 import { useAuthStore } from '@/stores/auth';
 import { useSettingsStore } from '@/stores/settings';
-import { isManager as checkIsManager } from '@/lib/utils';
+import { isManager as checkIsManager, canViewFinance } from '@/lib/utils';
 
 interface CommissionItem {
   id: number;
@@ -50,6 +50,13 @@ export default function FinancePage() {
   const [customEndDate, setCustomEndDate] = useState<string>('');
 
   const isManager = checkIsManager(user?.role);
+  
+  // 权限检查：design_manager 不能访问财务页面
+  useEffect(() => {
+    if (!canViewFinance(user?.role)) {
+      navigate('/dashboard');
+    }
+  }, [user?.role, navigate]);
 
   useEffect(() => {
     // 自定义时间范围需要选择日期后才加载

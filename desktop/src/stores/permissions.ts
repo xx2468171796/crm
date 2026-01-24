@@ -190,6 +190,7 @@ export const RoleCode = {
   SERVICE: 'service',
   TECH: 'tech',
   TECH_MANAGER: 'tech_manager',
+  DESIGN_MANAGER: 'design_manager',
   FINANCE: 'finance',
   VIEWER: 'viewer',
 } as const;
@@ -212,7 +213,7 @@ export const PermissionCode = {
 
 // 管理员角色列表
 export const ADMIN_ROLES = [RoleCode.SUPER_ADMIN, RoleCode.ADMIN];
-export const MANAGER_ROLES = [RoleCode.SUPER_ADMIN, RoleCode.ADMIN, RoleCode.TECH_MANAGER, 'manager'];
+export const MANAGER_ROLES = [RoleCode.SUPER_ADMIN, RoleCode.ADMIN, RoleCode.TECH_MANAGER, RoleCode.DESIGN_MANAGER, 'manager'];
 
 // 辅助函数
 export const isAdminRole = (role: string) => ADMIN_ROLES.includes(role as any);

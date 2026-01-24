@@ -19,6 +19,7 @@ class RoleCode {
     const TECH = 'tech';
     const FINANCE = 'finance';
     const VIEWER = 'viewer';
+    const DESIGN_MANAGER = 'design_manager'; // 设计师主管
     
     // 管理员级别角色
     public static function isAdminRole(string $role): bool {
@@ -32,7 +33,17 @@ class RoleCode {
     
     // 技术角色（可访问所有技术资源）
     public static function isTechRole(string $role): bool {
-        return in_array($role, [self::SUPER_ADMIN, self::ADMIN, self::TECH, self::DEPT_LEADER]);
+        return in_array($role, [self::SUPER_ADMIN, self::ADMIN, self::TECH, self::DEPT_LEADER, self::DESIGN_MANAGER]);
+    }
+    
+    // 设计师主管角色（可管理项目、审批、设置提成，但无财务权限）
+    public static function isDesignManagerRole(string $role): bool {
+        return $role === self::DESIGN_MANAGER;
+    }
+    
+    // 项目管理角色（可分配项目、设置提成、审批文件）
+    public static function isProjectManagerRole(string $role): bool {
+        return in_array($role, [self::SUPER_ADMIN, self::ADMIN, 'tech_manager', 'manager', self::DESIGN_MANAGER]);
     }
 }
 

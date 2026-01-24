@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
 import { LayoutDashboard, Kanban, ListTodo, FileCheck, FolderSync, DollarSign, Settings, LogOut, User, ClipboardList, PanelRightOpen, Users, FolderKanban, Pin, PinOff, HardDrive } from 'lucide-react';
 import { useAuthStore } from '@/stores/auth';
-import { cn } from '@/lib/utils';
+import { cn, canViewFinance } from '@/lib/utils';
 import { onEvent, EVENTS } from '@/lib/windowEvents';
 import { useAutoSync } from '@/hooks/use-auto-sync';
 
@@ -21,7 +21,7 @@ const navItems = [
   { to: '/file-logs', icon: FolderSync, label: '文件日志' },
   { to: '/file-sync', icon: FolderSync, label: '文件同步' },
   { to: '/personal-drive', icon: HardDrive, label: '我的网盘' },
-  { to: '/finance', icon: DollarSign, label: '我的财务' },
+  { to: '/finance', icon: DollarSign, label: '我的财务', financeOnly: true },
   { to: '/settings', icon: Settings, label: '设置' },
 ];
 
@@ -31,7 +31,8 @@ export default function Layout() {
   const navigate = useNavigate();
   const [isAlwaysOnTop, setIsAlwaysOnTop] = useState(false);
   
-  const isManager = ['admin', 'super_admin', 'manager', 'tech_manager'].includes(user?.role || '');
+  const isManager = ['admin', 'super_admin', 'manager', 'tech_manager', 'design_manager'].includes(user?.role || '');
+  const showFinance = canViewFinance(user?.role);
   
   // 启动自动同步（后台扫描和上传）
   useAutoSync();
@@ -142,7 +143,13 @@ export default function Layout() {
         {/* Nav */}
         <nav className="flex-1 py-4">
           {navItems
-            .filter((item) => !('managerOnly' in item) || (item.managerOnly && isManager))
+            .filter((item) => {
+              // 管理员专属菜单
+              if ('managerOnly' in item && item.managerOnly && !isManager) return false;
+              // 财务菜单（design_manager不可见）
+              if ('financeOnly' in item && item.financeOnly && !showFinance) return false;
+              return true;
+            })
             .map((item) => (
             <NavLink
               key={item.to}

@@ -54,16 +54,20 @@ function handleList($user) {
     // 调试日志
     error_log("[desktop_permissions] user_id={$user['id']}, role={$user['role']}, isAdmin=" . ($isAdmin ? 'true' : 'false'));
     $isTechManager = $user['role'] === 'tech_manager';
+    $isDesignManager = $user['role'] === 'design_manager'; // 设计师主管
     $isTech = $user['role'] === 'tech';
     $isDeptManager = RoleCode::isDeptManagerRole($user['role']);
     
-    // 项目相关权限
-    $canViewProject = $isAdmin || Permission::hasPermission($user['id'], PermissionCode::PROJECT_VIEW);
-    $canEditProject = $isAdmin || Permission::hasPermission($user['id'], PermissionCode::PROJECT_EDIT);
-    $canCreateProject = $isAdmin || Permission::hasPermission($user['id'], PermissionCode::PROJECT_CREATE);
-    $canDeleteProject = $isAdmin || Permission::hasPermission($user['id'], PermissionCode::PROJECT_DELETE);
-    $canEditProjectStatus = $isAdmin || Permission::hasPermission($user['id'], PermissionCode::PROJECT_STATUS_EDIT);
-    $canAssignProject = $isAdmin || Permission::hasPermission($user['id'], PermissionCode::PROJECT_ASSIGN);
+    // 项目管理角色（可分配项目、设置提成、审批文件）
+    $isProjectManager = $isAdmin || $isTechManager || $isDesignManager;
+    
+    // 项目相关权限（design_manager拥有项目管理权限）
+    $canViewProject = $isProjectManager || Permission::hasPermission($user['id'], PermissionCode::PROJECT_VIEW);
+    $canEditProject = $isProjectManager || Permission::hasPermission($user['id'], PermissionCode::PROJECT_EDIT);
+    $canCreateProject = $isProjectManager || Permission::hasPermission($user['id'], PermissionCode::PROJECT_CREATE);
+    $canDeleteProject = $isAdmin || Permission::hasPermission($user['id'], PermissionCode::PROJECT_DELETE); // 删除仍需管理员
+    $canEditProjectStatus = $isProjectManager || Permission::hasPermission($user['id'], PermissionCode::PROJECT_STATUS_EDIT);
+    $canAssignProject = $isProjectManager || Permission::hasPermission($user['id'], PermissionCode::PROJECT_ASSIGN);
     
     // 文件相关权限
     $canUploadFile = $isAdmin || Permission::hasPermission($user['id'], PermissionCode::FILE_UPLOAD);
@@ -75,13 +79,13 @@ function handleList($user) {
     $canViewPortalPassword = $isAdmin || Permission::hasPermission($user['id'], PermissionCode::PORTAL_VIEW_PASSWORD);
     $canEditPortalPassword = $isAdmin || Permission::hasPermission($user['id'], PermissionCode::PORTAL_EDIT_PASSWORD);
     
-    // 审批权限（管理员或技术主管可审批）
-    $canApproveFiles = $isAdmin || $isTechManager;
+    // 审批权限（管理员、技术主管、设计师主管可审批）
+    $canApproveFiles = $isProjectManager;
     
-    // 客户相关权限
-    $canEditCustomer = $isAdmin || Permission::hasPermission($user['id'], PermissionCode::CUSTOMER_EDIT);
-    $canDeleteCustomer = $isAdmin || Permission::hasPermission($user['id'], PermissionCode::CUSTOMER_DELETE);
-    $canTransferCustomer = $isAdmin || Permission::hasPermission($user['id'], PermissionCode::CUSTOMER_TRANSFER);
+    // 客户相关权限（design_manager可编辑客户）
+    $canEditCustomer = $isProjectManager || Permission::hasPermission($user['id'], PermissionCode::CUSTOMER_EDIT);
+    $canDeleteCustomer = $isAdmin || Permission::hasPermission($user['id'], PermissionCode::CUSTOMER_DELETE); // 删除仍需管理员
+    $canTransferCustomer = $isProjectManager || Permission::hasPermission($user['id'], PermissionCode::CUSTOMER_TRANSFER);
     
     echo json_encode([
         'success' => true,
@@ -94,10 +98,13 @@ function handleList($user) {
             'abilities' => [
                 'is_admin' => $isAdmin,
                 'is_tech_manager' => $isTechManager,
+                'is_design_manager' => $isDesignManager,
+                'is_project_manager' => $isProjectManager,
                 'is_tech' => $isTech,
                 'is_dept_manager' => $isDeptManager,
-                'can_manage_all_projects' => $isAdmin || $isTechManager,
+                'can_manage_all_projects' => $isProjectManager,
                 'can_approve_files' => $canApproveFiles,
+                'can_view_finance' => $isAdmin || $isTechManager, // design_manager无财务权限
             ],
             'project' => [
                 'view' => $canViewProject,
@@ -165,6 +172,7 @@ function handleRoles() {
             'FINANCE' => RoleCode::FINANCE,
             'VIEWER' => RoleCode::VIEWER,
             'TECH_MANAGER' => 'tech_manager',
+            'DESIGN_MANAGER' => RoleCode::DESIGN_MANAGER,
         ]
     ]);
 }
