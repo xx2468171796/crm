@@ -1,11 +1,11 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef, DragEvent } from 'react';
 import { useAuthStore } from '@/stores/auth';
 import { useSettingsStore } from '@/stores/settings';
 import { useToast } from '@/hooks/use-toast';
 import {
   HardDrive, Upload, Trash2, Share2, Folder, RefreshCw,
   ChevronRight, Copy, Lock, Clock, Check, X, ArrowLeft,
-  FolderPlus, Edit3, Move
+  FolderPlus, Edit3, Move, FileUp, FolderUp, Pause, Play, XCircle
 } from 'lucide-react';
 
 interface DriveFile {
@@ -37,6 +37,29 @@ interface ShareLink {
   has_password: boolean;
 }
 
+// 上传任务接口
+interface UploadTask {
+  id: string;
+  file: File;
+  filename: string;
+  fileSize: number;
+  relativePath: string; // 文件夹上传时的相对路径
+  status: 'pending' | 'uploading' | 'paused' | 'completed' | 'error';
+  progress: number; // 0-100
+  uploadedBytes: number;
+  speed: number; // bytes/s
+  remainingTime: number; // seconds
+  error?: string;
+  uploadId?: string; // 分片上传ID
+  currentChunk?: number;
+  totalChunks?: number;
+}
+
+// 分片大小：90MB
+const CHUNK_SIZE = 90 * 1024 * 1024;
+// 小文件阈值：90MB以下直接上传
+const SMALL_FILE_THRESHOLD = 90 * 1024 * 1024;
+
 export default function PersonalDrivePage() {
   const { token } = useAuthStore();
   const { serverUrl } = useSettingsStore();
@@ -50,8 +73,23 @@ export default function PersonalDrivePage() {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [_driveId, setDriveId] = useState<number | null>(null);
 
-  const [uploading, setUploading] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState<{ current: number; total: number; filename: string } | null>(null);
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const [_uploading, _setUploading] = useState(false);
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const [_uploadProgress, _setUploadProgress] = useState<{ current: number; total: number; filename: string } | null>(null);
+
+  // 拖拽上传状态
+  const [isDragging, setIsDragging] = useState(false);
+  const dragCounter = useRef(0);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const folderInputRef = useRef<HTMLInputElement>(null);
+
+  // 上传队列
+  const [uploadQueue, setUploadQueue] = useState<UploadTask[]>([]);
+  const [isProcessingQueue, setIsProcessingQueue] = useState(false);
+  const abortControllerRef = useRef<AbortController | null>(null);
+  const uploadStartTimeRef = useRef<number>(0);
+  const uploadedBytesRef = useRef<number>(0);
 
   const [showShareModal, setShowShareModal] = useState(false);
   const [sharePassword, setSharePassword] = useState('');
@@ -127,52 +165,430 @@ export default function PersonalDrivePage() {
     loadFiles(newPath);
   };
 
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const fileList = e.target.files;
-    if (!fileList || fileList.length === 0) return;
 
-    setUploading(true);
-    let successCount = 0;
-    let failCount = 0;
+  // ==================== 拖拽上传相关函数 ====================
 
-    for (let i = 0; i < fileList.length; i++) {
-      const file = fileList[i];
-      setUploadProgress({ current: i + 1, total: fileList.length, filename: file.name });
+  // 处理拖拽进入
+  const handleDragEnter = (e: DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragCounter.current++;
+    if (e.dataTransfer.items && e.dataTransfer.items.length > 0) {
+      setIsDragging(true);
+    }
+  };
 
-      try {
-        const formData = new FormData();
-        formData.append('file', file);
-        formData.append('folder_path', currentPath);
+  // 处理拖拽离开
+  const handleDragLeave = (e: DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragCounter.current--;
+    if (dragCounter.current === 0) {
+      setIsDragging(false);
+    }
+  };
 
-        const res = await fetch(`${serverUrl}/api/personal_drive_upload.php`, {
-          method: 'POST',
-          headers: { 'Authorization': `Bearer ${token}` },
-          body: formData,
-        });
-        const data = await res.json();
-        if (data.success) {
-          successCount++;
-        } else {
-          failCount++;
-          console.error('上传失败:', data.error);
+  // 处理拖拽悬停
+  const handleDragOver = (e: DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+  };
+
+  // 处理拖拽放下
+  const handleDrop = async (e: DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+    dragCounter.current = 0;
+
+    const items = e.dataTransfer.items;
+    if (!items || items.length === 0) return;
+
+    const filesToUpload: { file: File; relativePath: string }[] = [];
+
+    // 递归读取文件夹
+    const readDirectory = async (entry: FileSystemDirectoryEntry, path: string): Promise<void> => {
+      return new Promise((resolve) => {
+        const reader = entry.createReader();
+        const readEntries = () => {
+          reader.readEntries(async (entries) => {
+            if (entries.length === 0) {
+              resolve();
+              return;
+            }
+            for (const ent of entries) {
+              if (ent.isFile) {
+                const fileEntry = ent as FileSystemFileEntry;
+                const file = await new Promise<File>((res) => fileEntry.file(res));
+                filesToUpload.push({ file, relativePath: path + '/' + file.name });
+              } else if (ent.isDirectory) {
+                await readDirectory(ent as FileSystemDirectoryEntry, path + '/' + ent.name);
+              }
+            }
+            readEntries(); // 继续读取（可能有多批）
+          });
+        };
+        readEntries();
+      });
+    };
+
+    // 处理拖入的项目
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      const entry = item.webkitGetAsEntry?.();
+      if (entry) {
+        if (entry.isFile) {
+          const file = item.getAsFile();
+          if (file) {
+            filesToUpload.push({ file, relativePath: file.name });
+          }
+        } else if (entry.isDirectory) {
+          await readDirectory(entry as FileSystemDirectoryEntry, entry.name);
         }
-      } catch (err) {
-        failCount++;
-        console.error('上传错误:', err);
+      } else {
+        // 降级处理
+        const file = item.getAsFile();
+        if (file) {
+          filesToUpload.push({ file, relativePath: file.name });
+        }
       }
     }
 
-    setUploading(false);
-    setUploadProgress(null);
-    e.target.value = '';
-
-    if (successCount > 0) {
-      toast({ title: '上传完成', description: `成功 ${successCount} 个${failCount > 0 ? `，失败 ${failCount} 个` : ''}` });
-      loadFiles(currentPath);
-    } else if (failCount > 0) {
-      toast({ title: '上传失败', description: `${failCount} 个文件上传失败`, variant: 'destructive' });
+    if (filesToUpload.length > 0) {
+      addFilesToQueue(filesToUpload);
     }
   };
+
+  // 添加文件到上传队列
+  const addFilesToQueue = (filesToUpload: { file: File; relativePath: string }[]) => {
+    const newTasks: UploadTask[] = filesToUpload.map(({ file, relativePath }) => ({
+      id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      file,
+      filename: file.name,
+      fileSize: file.size,
+      relativePath,
+      status: 'pending' as const,
+      progress: 0,
+      uploadedBytes: 0,
+      speed: 0,
+      remainingTime: 0,
+      totalChunks: file.size > SMALL_FILE_THRESHOLD ? Math.ceil(file.size / CHUNK_SIZE) : 1,
+      currentChunk: 0,
+    }));
+
+    setUploadQueue(prev => [...prev, ...newTasks]);
+    toast({ title: '已添加到上传队列', description: `${filesToUpload.length} 个文件` });
+  };
+
+  // 处理文件选择（普通文件）
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const fileList = e.target.files;
+    if (!fileList || fileList.length === 0) return;
+
+    const filesToUpload: { file: File; relativePath: string }[] = [];
+    for (let i = 0; i < fileList.length; i++) {
+      const file = fileList[i];
+      filesToUpload.push({ file, relativePath: file.name });
+    }
+    addFilesToQueue(filesToUpload);
+    e.target.value = '';
+  };
+
+  // 处理文件夹选择
+  const handleFolderSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const fileList = e.target.files;
+    if (!fileList || fileList.length === 0) return;
+
+    const filesToUpload: { file: File; relativePath: string }[] = [];
+    for (let i = 0; i < fileList.length; i++) {
+      const file = fileList[i];
+      // webkitRelativePath 包含文件夹路径
+      const relativePath = (file as any).webkitRelativePath || file.name;
+      filesToUpload.push({ file, relativePath });
+    }
+    addFilesToQueue(filesToUpload);
+    e.target.value = '';
+  };
+
+  // 处理上传队列
+  useEffect(() => {
+    const processQueue = async () => {
+      if (isProcessingQueue) return;
+      
+      const pendingTask = uploadQueue.find(t => t.status === 'pending');
+      if (!pendingTask) return;
+
+      setIsProcessingQueue(true);
+      await uploadFile(pendingTask);
+      setIsProcessingQueue(false);
+    };
+
+    processQueue();
+  }, [uploadQueue, isProcessingQueue]);
+
+  // 上传单个文件
+  const uploadFile = async (task: UploadTask) => {
+    // 更新状态为上传中
+    setUploadQueue(prev => prev.map(t => 
+      t.id === task.id ? { ...t, status: 'uploading' as const } : t
+    ));
+
+    uploadStartTimeRef.current = Date.now();
+    uploadedBytesRef.current = 0;
+    abortControllerRef.current = new AbortController();
+
+    try {
+      if (task.fileSize <= SMALL_FILE_THRESHOLD) {
+        // 小文件直接上传
+        await uploadSmallFile(task);
+      } else {
+        // 大文件分片上传
+        await uploadLargeFile(task);
+      }
+
+      // 上传成功
+      setUploadQueue(prev => prev.map(t => 
+        t.id === task.id ? { ...t, status: 'completed' as const, progress: 100 } : t
+      ));
+      loadFiles(currentPath);
+    } catch (error: any) {
+      if (error.name === 'AbortError') {
+        // 用户取消
+        setUploadQueue(prev => prev.map(t => 
+          t.id === task.id ? { ...t, status: 'paused' as const } : t
+        ));
+      } else {
+        // 上传失败
+        setUploadQueue(prev => prev.map(t => 
+          t.id === task.id ? { ...t, status: 'error' as const, error: error.message } : t
+        ));
+      }
+    }
+  };
+
+  // 小文件直接上传（带进度）
+  const uploadSmallFile = async (task: UploadTask) => {
+    return new Promise<void>((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable) {
+          const progress = Math.round((e.loaded / e.total) * 100);
+          const elapsed = (Date.now() - uploadStartTimeRef.current) / 1000;
+          const speed = e.loaded / elapsed;
+          const remaining = (e.total - e.loaded) / speed;
+
+          setUploadQueue(prev => prev.map(t => 
+            t.id === task.id ? {
+              ...t,
+              progress,
+              uploadedBytes: e.loaded,
+              speed,
+              remainingTime: remaining,
+            } : t
+          ));
+        }
+      };
+
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          try {
+            const data = JSON.parse(xhr.responseText);
+            if (data.success) {
+              resolve();
+            } else {
+              reject(new Error(data.error || '上传失败'));
+            }
+          } catch {
+            reject(new Error('解析响应失败'));
+          }
+        } else {
+          reject(new Error(`HTTP ${xhr.status}`));
+        }
+      };
+
+      xhr.onerror = () => reject(new Error('网络错误'));
+      xhr.onabort = () => reject(new DOMException('Aborted', 'AbortError'));
+
+      // 监听取消
+      abortControllerRef.current?.signal.addEventListener('abort', () => xhr.abort());
+
+      const formData = new FormData();
+      formData.append('file', task.file);
+      formData.append('folder_path', currentPath);
+      formData.append('relative_path', task.relativePath);
+
+      xhr.open('POST', `${serverUrl}/api/personal_drive_chunk_upload.php?action=direct`);
+      xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+      xhr.send(formData);
+    });
+  };
+
+  // 大文件分片上传
+  const uploadLargeFile = async (task: UploadTask) => {
+    const totalChunks = Math.ceil(task.fileSize / CHUNK_SIZE);
+
+    // 1. 初始化上传
+    const initRes = await fetch(`${serverUrl}/api/personal_drive_chunk_upload.php?action=init`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        filename: task.filename,
+        file_size: task.fileSize,
+        folder_path: currentPath,
+        total_chunks: totalChunks,
+        relative_path: task.relativePath,
+      }),
+      signal: abortControllerRef.current?.signal,
+    });
+    const initData = await initRes.json();
+    if (!initData.success) {
+      throw new Error(initData.error || '初始化上传失败');
+    }
+
+    const uploadId = initData.data.upload_id;
+    setUploadQueue(prev => prev.map(t => 
+      t.id === task.id ? { ...t, uploadId, totalChunks } : t
+    ));
+
+    // 2. 上传分片
+    let uploadedBytes = 0;
+    for (let i = 0; i < totalChunks; i++) {
+      if (abortControllerRef.current?.signal.aborted) {
+        throw new DOMException('Aborted', 'AbortError');
+      }
+
+      const start = i * CHUNK_SIZE;
+      const end = Math.min(start + CHUNK_SIZE, task.fileSize);
+      const chunk = task.file.slice(start, end);
+
+      await uploadChunk(task.id, uploadId, i, chunk, task.fileSize, uploadedBytes);
+      uploadedBytes += chunk.size;
+    }
+
+    // 3. 完成上传
+    const completeRes = await fetch(`${serverUrl}/api/personal_drive_chunk_upload.php?action=complete`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ upload_id: uploadId }),
+      signal: abortControllerRef.current?.signal,
+    });
+    const completeData = await completeRes.json();
+    if (!completeData.success) {
+      throw new Error(completeData.error || '完成上传失败');
+    }
+  };
+
+  // 上传单个分片
+  const uploadChunk = (taskId: string, uploadId: string, chunkIndex: number, chunk: Blob, totalSize: number, previousBytes: number): Promise<void> => {
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable) {
+          const totalUploaded = previousBytes + e.loaded;
+          const progress = Math.round((totalUploaded / totalSize) * 100);
+          const elapsed = (Date.now() - uploadStartTimeRef.current) / 1000;
+          const speed = totalUploaded / elapsed;
+          const remaining = (totalSize - totalUploaded) / speed;
+
+          setUploadQueue(prev => prev.map(t => 
+            t.id === taskId ? {
+              ...t,
+              progress,
+              uploadedBytes: totalUploaded,
+              speed,
+              remainingTime: remaining,
+              currentChunk: chunkIndex + 1,
+            } : t
+          ));
+        }
+      };
+
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          try {
+            const data = JSON.parse(xhr.responseText);
+            if (data.success) {
+              resolve();
+            } else {
+              reject(new Error(data.error || '分片上传失败'));
+            }
+          } catch {
+            reject(new Error('解析响应失败'));
+          }
+        } else {
+          reject(new Error(`HTTP ${xhr.status}`));
+        }
+      };
+
+      xhr.onerror = () => reject(new Error('网络错误'));
+      xhr.onabort = () => reject(new DOMException('Aborted', 'AbortError'));
+
+      abortControllerRef.current?.signal.addEventListener('abort', () => xhr.abort());
+
+      const formData = new FormData();
+      formData.append('upload_id', uploadId);
+      formData.append('chunk_index', String(chunkIndex));
+      formData.append('chunk', chunk);
+
+      xhr.open('POST', `${serverUrl}/api/personal_drive_chunk_upload.php?action=upload_chunk`);
+      xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+      xhr.send(formData);
+    });
+  };
+
+  // 暂停/继续上传
+  const togglePauseUpload = (taskId: string) => {
+    const task = uploadQueue.find(t => t.id === taskId);
+    if (!task) return;
+
+    if (task.status === 'uploading') {
+      // 暂停
+      abortControllerRef.current?.abort();
+    } else if (task.status === 'paused' || task.status === 'error') {
+      // 继续/重试
+      setUploadQueue(prev => prev.map(t => 
+        t.id === taskId ? { ...t, status: 'pending' as const, error: undefined } : t
+      ));
+    }
+  };
+
+  // 取消上传
+  const cancelUpload = (taskId: string) => {
+    const task = uploadQueue.find(t => t.id === taskId);
+    if (task?.status === 'uploading') {
+      abortControllerRef.current?.abort();
+    }
+    setUploadQueue(prev => prev.filter(t => t.id !== taskId));
+  };
+
+  // 清除已完成的上传
+  const clearCompletedUploads = () => {
+    setUploadQueue(prev => prev.filter(t => t.status !== 'completed'));
+  };
+
+  // 格式化速度
+  const formatSpeed = (bytesPerSecond: number) => {
+    if (bytesPerSecond < 1024) return `${bytesPerSecond.toFixed(0)} B/s`;
+    if (bytesPerSecond < 1024 * 1024) return `${(bytesPerSecond / 1024).toFixed(1)} KB/s`;
+    return `${(bytesPerSecond / 1024 / 1024).toFixed(1)} MB/s`;
+  };
+
+  // 格式化剩余时间
+  const formatRemainingTime = (seconds: number) => {
+    if (seconds < 60) return `${Math.ceil(seconds)}秒`;
+    if (seconds < 3600) return `${Math.floor(seconds / 60)}分${Math.ceil(seconds % 60)}秒`;
+    return `${Math.floor(seconds / 3600)}时${Math.floor((seconds % 3600) / 60)}分`;
+  };
+
+  // ==================== 拖拽上传相关函数结束 ====================
 
   const handleDelete = async (fileId: number) => {
     if (!confirm('确定要删除此文件吗？')) return;
@@ -464,16 +880,37 @@ export default function PersonalDrivePage() {
           </div>
           <div className="flex items-center gap-2">
             <label className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-white/20 hover:bg-white/30 rounded-lg cursor-pointer transition-colors">
-              <Upload className="w-4 h-4" />
+              <FileUp className="w-4 h-4" />
               上传文件
-              <input type="file" multiple onChange={handleFileUpload} className="hidden" disabled={uploading} />
+              <input 
+                ref={fileInputRef}
+                type="file" 
+                multiple 
+                onChange={handleFileSelect} 
+                className="hidden" 
+              />
+            </label>
+            <label className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-white/20 hover:bg-white/30 rounded-lg cursor-pointer transition-colors">
+              <FolderUp className="w-4 h-4" />
+              上传文件夹
+              <input 
+                ref={folderInputRef}
+                type="file" 
+                // @ts-ignore - webkitdirectory is not in types
+                webkitdirectory=""
+                // @ts-ignore
+                directory=""
+                multiple 
+                onChange={handleFolderSelect} 
+                className="hidden" 
+              />
             </label>
             <button
               onClick={openFolderShareModal}
               className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-green-500/80 hover:bg-green-600 rounded-lg transition-colors"
             >
               <Share2 className="w-4 h-4" />
-              生成分享链接
+              分享链接
             </button>
             <button
               onClick={() => loadFiles(currentPath)}
@@ -497,14 +934,127 @@ export default function PersonalDrivePage() {
         )}
       </div>
 
-      {/* 上传进度 */}
-      {uploadProgress && (
-        <div className="bg-blue-50 border-b border-blue-100 px-6 py-3">
-          <div className="flex items-center gap-3">
-            <RefreshCw className="w-4 h-4 text-blue-600 animate-spin" />
-            <span className="text-sm text-blue-700">
-              正在上传 ({uploadProgress.current}/{uploadProgress.total}): {uploadProgress.filename}
-            </span>
+      {/* 上传队列 */}
+      {uploadQueue.length > 0 && (
+        <div className="bg-white border-b shadow-sm">
+          <div className="px-6 py-2 bg-gradient-to-r from-blue-50 to-cyan-50 border-b flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Upload className="w-4 h-4 text-blue-600" />
+              <span className="text-sm font-medium text-blue-800">
+                上传队列 ({uploadQueue.filter(t => t.status === 'completed').length}/{uploadQueue.length})
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              {uploadQueue.some(t => t.status === 'completed') && (
+                <button
+                  onClick={clearCompletedUploads}
+                  className="text-xs text-gray-500 hover:text-gray-700 px-2 py-1 rounded hover:bg-white/50"
+                >
+                  清除已完成
+                </button>
+              )}
+            </div>
+          </div>
+          <div className="max-h-64 overflow-y-auto">
+            {uploadQueue.map((task) => (
+              <div key={task.id} className="px-6 py-3 border-b last:border-b-0 hover:bg-gray-50">
+                <div className="flex items-center gap-3">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium text-gray-800 truncate" title={task.relativePath}>
+                        {task.filename}
+                      </span>
+                      {task.relativePath !== task.filename && (
+                        <span className="text-xs text-gray-400 truncate" title={task.relativePath}>
+                          ({task.relativePath})
+                        </span>
+                      )}
+                      <span className="text-xs text-gray-400">
+                        {formatFileSize(task.fileSize)}
+                      </span>
+                      {task.totalChunks && task.totalChunks > 1 && (
+                        <span className="text-xs text-blue-500">
+                          分片 {task.currentChunk || 0}/{task.totalChunks}
+                        </span>
+                      )}
+                    </div>
+                    <div className="mt-1.5 flex items-center gap-3">
+                      {/* 进度条 */}
+                      <div className="flex-1 h-2 bg-gray-200 rounded-full overflow-hidden">
+                        <div
+                          className={`h-full transition-all duration-300 ${
+                            task.status === 'completed' ? 'bg-green-500' :
+                            task.status === 'error' ? 'bg-red-500' :
+                            task.status === 'paused' ? 'bg-yellow-500' :
+                            'bg-blue-500'
+                          }`}
+                          style={{ width: `${task.progress}%` }}
+                        />
+                      </div>
+                      <span className="text-xs text-gray-500 w-12 text-right">{task.progress}%</span>
+                    </div>
+                    {/* 状态信息 */}
+                    <div className="mt-1 flex items-center gap-3 text-xs">
+                      {task.status === 'uploading' && (
+                        <>
+                          <span className="text-blue-600">{formatSpeed(task.speed)}</span>
+                          <span className="text-gray-400">剩余 {formatRemainingTime(task.remainingTime)}</span>
+                          <span className="text-gray-400">{formatFileSize(task.uploadedBytes)} / {formatFileSize(task.fileSize)}</span>
+                        </>
+                      )}
+                      {task.status === 'completed' && (
+                        <span className="text-green-600 flex items-center gap-1">
+                          <Check className="w-3 h-3" /> 上传完成
+                        </span>
+                      )}
+                      {task.status === 'error' && (
+                        <span className="text-red-600">{task.error || '上传失败'}</span>
+                      )}
+                      {task.status === 'paused' && (
+                        <span className="text-yellow-600">已暂停</span>
+                      )}
+                      {task.status === 'pending' && (
+                        <span className="text-gray-400">等待中...</span>
+                      )}
+                    </div>
+                  </div>
+                  {/* 操作按钮 */}
+                  <div className="flex items-center gap-1">
+                    {(task.status === 'uploading' || task.status === 'paused' || task.status === 'error') && (
+                      <button
+                        onClick={() => togglePauseUpload(task.id)}
+                        className={`p-1.5 rounded-lg transition-colors ${
+                          task.status === 'uploading' 
+                            ? 'text-yellow-600 hover:bg-yellow-50' 
+                            : 'text-blue-600 hover:bg-blue-50'
+                        }`}
+                        title={task.status === 'uploading' ? '暂停' : '继续'}
+                      >
+                        {task.status === 'uploading' ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
+                      </button>
+                    )}
+                    {task.status !== 'completed' && (
+                      <button
+                        onClick={() => cancelUpload(task.id)}
+                        className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                        title="取消"
+                      >
+                        <XCircle className="w-4 h-4" />
+                      </button>
+                    )}
+                    {task.status === 'completed' && (
+                      <button
+                        onClick={() => cancelUpload(task.id)}
+                        className="p-1.5 text-gray-400 hover:bg-gray-100 rounded-lg transition-colors"
+                        title="移除"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ))}
           </div>
         </div>
       )}
@@ -582,8 +1132,25 @@ export default function PersonalDrivePage() {
         </div>
       )}
 
-      {/* 文件列表 */}
-      <div className="p-6">
+      {/* 文件列表 - 支持拖拽上传 */}
+      <div 
+        className={`p-6 min-h-[400px] relative transition-colors ${isDragging ? 'bg-cyan-50' : ''}`}
+        onDragEnter={handleDragEnter}
+        onDragLeave={handleDragLeave}
+        onDragOver={handleDragOver}
+        onDrop={handleDrop}
+      >
+        {/* 拖拽提示遮罩 */}
+        {isDragging && (
+          <div className="absolute inset-0 bg-cyan-100/80 border-4 border-dashed border-cyan-400 rounded-xl flex items-center justify-center z-10 pointer-events-none">
+            <div className="text-center">
+              <Upload className="w-16 h-16 text-cyan-500 mx-auto mb-4" />
+              <p className="text-xl font-semibold text-cyan-700">释放鼠标上传文件</p>
+              <p className="text-sm text-cyan-600 mt-2">支持文件和文件夹</p>
+            </div>
+          </div>
+        )}
+
         {loading ? (
           <div className="text-center py-12 text-gray-400">
             <RefreshCw className="w-8 h-8 mx-auto animate-spin mb-2" />
@@ -664,10 +1231,25 @@ export default function PersonalDrivePage() {
 
             {/* 空状态 */}
             {folders.length === 0 && files.length === 0 && (
-              <div className="text-center py-12 text-gray-400">
-                <HardDrive className="w-12 h-12 mx-auto mb-3 opacity-50" />
-                <div>暂无文件</div>
-                <div className="text-sm mt-1">上传文件或通过分享链接接收文件</div>
+              <div className="text-center py-16 text-gray-400">
+                <div className="w-24 h-24 mx-auto mb-4 bg-gray-100 rounded-full flex items-center justify-center">
+                  <Upload className="w-10 h-10 text-gray-300" />
+                </div>
+                <div className="text-lg font-medium text-gray-500">暂无文件</div>
+                <div className="text-sm mt-2 text-gray-400">
+                  拖拽文件或文件夹到此处上传
+                </div>
+                <div className="text-sm text-gray-400">
+                  或点击上方按钮选择文件
+                </div>
+                <div className="mt-4 flex items-center justify-center gap-4 text-xs text-gray-400">
+                  <span className="flex items-center gap-1">
+                    <FileUp className="w-4 h-4" /> 支持任意文件
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <FolderUp className="w-4 h-4" /> 支持文件夹
+                  </span>
+                </div>
               </div>
             )}
           </div>

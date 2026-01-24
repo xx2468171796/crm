@@ -190,6 +190,9 @@ export default function ProjectDetailPage() {
   // 判断是否为管理员（可以设置提成）
   const isManager = checkIsManager(user?.role);
   
+  // 调试：打印角色和管理员状态
+  console.log('[ProjectDetailPage] user.role:', user?.role, 'isManager:', isManager);
+  
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<TabType>('overview');
   const [project, setProject] = useState<ProjectData | null>(null);
