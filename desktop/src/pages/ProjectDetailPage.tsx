@@ -696,6 +696,12 @@ export default function ProjectDetailPage() {
       });
       const data = await response.json();
       
+      if (!response.ok || !data.success) {
+        console.error('[ProjectDetail] API错误:', data.error || response.statusText);
+        // 不要在这里抛出错误，让页面显示"项目不存在"
+        return;
+      }
+      
       if (data.success) {
         setProject(data.data.project);
         setCustomer(data.data.customer);
