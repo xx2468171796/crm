@@ -2015,7 +2015,7 @@ if (empty($token)) {
         
         listContainer.innerHTML = portalSelectedFiles.map((file, idx) => {
             const totalChunks = Math.ceil(file.size / PORTAL_CHUNK_SIZE);
-            const isSmallFile = file.size <= 10 * 1024 * 1024; // 10MB
+            const isSmallFile = file.size <= 90 * 1024 * 1024; // 90MB
             const sizeInfo = isSmallFile ? formatFileSize(file.size) : `${formatFileSize(file.size)} · ${totalChunks} 个分片`;
             return `
             <div class="portal-file-item" id="portal-file-${idx}">
@@ -2183,8 +2183,8 @@ if (empty($token)) {
         document.getElementById('portalOverallStats').textContent = `${Math.min(completed + 1, total)} / ${total} 文件 (${Math.round(percent)}%)`;
     }
     
-    // 小文件阈值：10MB以下直接上传，不分片
-    const PORTAL_SMALL_FILE_THRESHOLD = 10 * 1024 * 1024;
+    // 小文件阈值：90MB以下直接上传，不分片
+    const PORTAL_SMALL_FILE_THRESHOLD = 90 * 1024 * 1024;
     
     async function uploadPortalFileChunked(file, fileIndex, callbacks) {
         const totalChunks = Math.ceil(file.size / PORTAL_CHUNK_SIZE);

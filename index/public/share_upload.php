@@ -668,7 +668,7 @@ $token = trim($_GET['token'] ?? '');
         const API_BASE = '/api';
         const CHUNK_SIZE = 90 * 1024 * 1024; // 90MB 分片大小
         const MAX_TOTAL_SIZE = 3 * 1024 * 1024 * 1024; // 3GB 单次上传总大小限制
-        const SMALL_FILE_THRESHOLD = 10 * 1024 * 1024; // 10MB 小文件阈值
+        const SMALL_FILE_THRESHOLD = 90 * 1024 * 1024; // 90MB 小文件阈值（与分片大小相同）
         
         let linkInfo = null;
         let verifiedPassword = '';
