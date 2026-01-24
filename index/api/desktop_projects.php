@@ -122,25 +122,23 @@ function handleKanban($user, $isManager, $statusList) {
         $params[] = $endDate;
     }
     
-    // 搜索 - 支持多字段：群名称、项目编号、客户名称、客户别名
+    // 搜索 - 支持多字段：群名称、项目编号、客户名称、客户别名、客户群
     if ($search) {
         $conditions[] = "(
             p.project_name LIKE ? 
             OR p.project_code LIKE ? 
             OR c.name LIKE ? 
-            OR c.alias LIKE ? 
-            OR c.group_code LIKE ? 
-            OR c.group_name LIKE ?
-            OR c.customer_group LIKE ?
+            OR COALESCE(c.alias, '') LIKE ? 
+            OR COALESCE(c.group_code, '') LIKE ? 
+            OR COALESCE(c.customer_group, '') LIKE ?
         )";
         $searchTerm = "%{$search}%";
-        $params[] = $searchTerm; // project_name
-        $params[] = $searchTerm; // project_code
-        $params[] = $searchTerm; // customer name
-        $params[] = $searchTerm; // customer alias
+        $params[] = $searchTerm; // project_name (项目名称)
+        $params[] = $searchTerm; // project_code (项目编号)
+        $params[] = $searchTerm; // customer name (客户名称)
+        $params[] = $searchTerm; // customer alias (客户别名)
         $params[] = $searchTerm; // group_code (群号)
-        $params[] = $searchTerm; // group_name (群名称-新字段)
-        $params[] = $searchTerm; // customer_group (群名称-旧字段)
+        $params[] = $searchTerm; // customer_group (客户群-首通里的字段)
     }
     
     $whereClause = implode(' AND ', $conditions);
