@@ -109,6 +109,11 @@ try {
             handleAbort($pdo, $s3);
             break;
             
+        case 'direct':
+            // 小文件直接上传
+            handleDirectUpload($pdo, $link, $s3, $storageConfig);
+            break;
+            
         default:
             http_response_code(400);
             echo json_encode(['error' => '无效的操作']);
@@ -477,5 +482,114 @@ function handleAbort($pdo, $s3) {
     echo json_encode([
         'success' => true,
         'message' => '上传已取消'
+    ]);
+}
+
+/**
+ * 小文件直接上传（不分片）
+ */
+function handleDirectUpload($pdo, $link, $s3, $storageConfig) {
+    // 检查文件
+    if (!isset($_FILES['file']) || $_FILES['file']['error'] !== UPLOAD_ERR_OK) {
+        $errorMsg = '文件上传失败';
+        if (isset($_FILES['file'])) {
+            switch ($_FILES['file']['error']) {
+                case UPLOAD_ERR_INI_SIZE:
+                case UPLOAD_ERR_FORM_SIZE:
+                    $errorMsg = '文件过大';
+                    break;
+                case UPLOAD_ERR_NO_FILE:
+                    $errorMsg = '没有选择文件';
+                    break;
+            }
+        }
+        http_response_code(400);
+        echo json_encode(['error' => $errorMsg]);
+        exit;
+    }
+    
+    $file = $_FILES['file'];
+    $originalName = $file['name'];
+    $fileSize = $file['size'];
+    $tmpPath = $file['tmp_name'];
+    $fileType = $file['type'] ?: 'application/octet-stream';
+    
+    // 获取客户文件夹路径
+    $groupCode = $link['group_code'] ?? '';
+    $customerName = $link['customer_name'] ?? '未知客户';
+    $projectName = $link['project_name'] ?? '未知项目';
+    
+    $folderName = $groupCode ? "{$groupCode} {$customerName}" : $customerName;
+    $basePath = "customers/{$folderName}/{$projectName}/客户文件";
+    
+    // 文件重命名
+    $storedName = '分享+' . $originalName;
+    
+    // 生成存储路径
+    $ext = pathinfo($storedName, PATHINFO_EXTENSION);
+    $uniqueName = date('Ymd_His') . '_' . uniqid() . ($ext ? ".{$ext}" : '');
+    $storageKey = trim($storageConfig['prefix'] ?? '', '/') . '/' . $basePath . '/' . $uniqueName;
+    $storageKey = ltrim($storageKey, '/');
+    
+    // 上传到S3
+    $uploadResult = $s3->putObject($storageKey, $tmpPath, [
+        'mime_type' => $fileType
+    ]);
+    
+    if (!$uploadResult || empty($uploadResult['storage_key'])) {
+        http_response_code(500);
+        echo json_encode(['error' => '文件上传到存储失败']);
+        exit;
+    }
+    
+    // 记录到deliverables表
+    $now = time();
+    $stmt = $pdo->prepare("
+        INSERT INTO deliverables 
+        (project_id, deliverable_name, deliverable_type, file_category, file_path, file_size, 
+         visibility_level, approval_status, submitted_by, submitted_at, create_time, update_time)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ");
+    $stmt->execute([
+        $link['project_id'],
+        $storedName,
+        'share_upload',
+        'customer_file',
+        $storageKey,
+        $fileSize,
+        'client',
+        'approved',
+        $link['customer_id'] ?? 0,
+        $now,
+        $now,
+        $now
+    ]);
+    
+    // 记录到file_share_uploads表
+    try {
+        $stmt = $pdo->prepare("
+            INSERT INTO file_share_uploads (link_id, original_name, stored_name, file_size, storage_key, upload_time)
+            VALUES (?, ?, ?, ?, ?, ?)
+        ");
+        $stmt->execute([
+            $link['id'],
+            $originalName,
+            $storedName,
+            $fileSize,
+            $storageKey,
+            $now
+        ]);
+    } catch (Exception $e) {
+        // 忽略file_share_uploads表的错误
+    }
+    
+    echo json_encode([
+        'success' => true,
+        'data' => [
+            'original_name' => $originalName,
+            'stored_name' => $storedName,
+            'file_size' => $fileSize
+        ],
+        'message' => '文件上传成功'
     ]);
 }

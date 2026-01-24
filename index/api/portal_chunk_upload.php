@@ -75,6 +75,9 @@ try {
         case 'abort':
             handleAbort($pdo, $customer);
             break;
+        case 'direct':
+            handleDirectUpload($pdo, $customer, $projectId);
+            break;
         default:
             http_response_code(400);
             echo json_encode(['error' => '无效的操作']);
@@ -436,5 +439,127 @@ function handleAbort($pdo, $customer) {
     echo json_encode([
         'success' => true,
         'message' => '上传已中止'
+    ]);
+}
+
+/**
+ * 小文件直接上传（不分片）
+ */
+function handleDirectUpload($pdo, $customer, $projectId) {
+    if ($projectId <= 0) {
+        http_response_code(400);
+        echo json_encode(['error' => '缺少项目ID']);
+        exit;
+    }
+    
+    // 验证项目属于该客户
+    $stmt = $pdo->prepare("
+        SELECT p.id, p.project_name, c.name as customer_name, c.group_code
+        FROM projects p
+        JOIN customers c ON p.customer_id = c.id
+        WHERE p.id = ? AND p.customer_id = ?
+    ");
+    $stmt->execute([$projectId, $customer['id']]);
+    $project = $stmt->fetch(PDO::FETCH_ASSOC);
+    
+    if (!$project) {
+        http_response_code(403);
+        echo json_encode(['error' => '无权访问此项目']);
+        exit;
+    }
+    
+    // 检查文件
+    if (!isset($_FILES['file']) || $_FILES['file']['error'] !== UPLOAD_ERR_OK) {
+        $errorMsg = '文件上传失败';
+        if (isset($_FILES['file'])) {
+            switch ($_FILES['file']['error']) {
+                case UPLOAD_ERR_INI_SIZE:
+                case UPLOAD_ERR_FORM_SIZE:
+                    $errorMsg = '文件过大';
+                    break;
+                case UPLOAD_ERR_NO_FILE:
+                    $errorMsg = '没有选择文件';
+                    break;
+            }
+        }
+        http_response_code(400);
+        echo json_encode(['error' => $errorMsg]);
+        exit;
+    }
+    
+    $file = $_FILES['file'];
+    $originalName = $file['name'];
+    $fileSize = $file['size'];
+    $tmpPath = $file['tmp_name'];
+    $fileType = $file['type'] ?: 'application/octet-stream';
+    
+    // 获取客户文件夹路径
+    $groupCode = $project['group_code'] ?? '';
+    $customerName = $project['customer_name'] ?? '未知客户';
+    $projectName = $project['project_name'] ?? '未知项目';
+    
+    $folderName = $groupCode ? "{$groupCode} {$customerName}" : $customerName;
+    $basePath = "customers/{$folderName}/{$projectName}/客户文件";
+    
+    // 文件重命名
+    $storedName = '客户上传+' . $originalName;
+    
+    // 上传到S3
+    $config = require __DIR__ . '/../config/storage.php';
+    $storageConfig = $config['s3'] ?? [];
+    
+    if (empty($storageConfig)) {
+        http_response_code(500);
+        echo json_encode(['error' => '存储配置错误']);
+        exit;
+    }
+    
+    $ext = pathinfo($storedName, PATHINFO_EXTENSION);
+    $uniqueName = date('Ymd_His') . '_' . uniqid() . ($ext ? ".{$ext}" : '');
+    $storageKey = trim($storageConfig['prefix'] ?? '', '/') . '/' . $basePath . '/' . $uniqueName;
+    $storageKey = ltrim($storageKey, '/');
+    
+    $s3 = new S3StorageProvider($storageConfig, []);
+    $uploadResult = $s3->putObject($storageKey, $tmpPath, [
+        'mime_type' => $fileType
+    ]);
+    
+    if (!$uploadResult || empty($uploadResult['storage_key'])) {
+        http_response_code(500);
+        echo json_encode(['error' => '文件上传到存储失败']);
+        exit;
+    }
+    
+    // 记录到deliverables表
+    $now = time();
+    $stmt = $pdo->prepare("
+        INSERT INTO deliverables 
+        (project_id, deliverable_name, deliverable_type, file_category, file_path, file_size, 
+         visibility_level, approval_status, submitted_by, submitted_at, create_time, update_time)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ");
+    $stmt->execute([
+        $projectId,
+        $storedName,
+        'portal_upload',
+        'customer_file',
+        $storageKey,
+        $fileSize,
+        'client',
+        'approved',
+        $customer['id'],
+        $now,
+        $now,
+        $now
+    ]);
+    
+    echo json_encode([
+        'success' => true,
+        'data' => [
+            'original_name' => $originalName,
+            'stored_name' => $storedName,
+            'file_size' => $fileSize
+        ],
+        'message' => '文件上传成功'
     ]);
 }

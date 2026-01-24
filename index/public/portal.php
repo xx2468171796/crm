@@ -2015,12 +2015,14 @@ if (empty($token)) {
         
         listContainer.innerHTML = portalSelectedFiles.map((file, idx) => {
             const totalChunks = Math.ceil(file.size / PORTAL_CHUNK_SIZE);
+            const isSmallFile = file.size <= 10 * 1024 * 1024; // 10MB
+            const sizeInfo = isSmallFile ? formatFileSize(file.size) : `${formatFileSize(file.size)} · ${totalChunks} 个分片`;
             return `
             <div class="portal-file-item" id="portal-file-${idx}">
                 <div class="portal-file-icon"><i class="bi bi-file-earmark"></i></div>
                 <div class="portal-file-info">
                     <div class="portal-file-name">${escapeHtml(file.name)}</div>
-                    <div class="portal-file-size">${formatFileSize(file.size)} · ${totalChunks} 个分片</div>
+                    <div class="portal-file-size">${sizeInfo}</div>
                     <div id="portal-progress-${idx}" style="display: none; margin-top: 8px;">
                         <div style="display: flex; justify-content: space-between; font-size: 11px; color: var(--portal-text-muted); margin-bottom: 4px;">
                             <span id="portal-chunk-${idx}">准备中...</span>
@@ -2103,7 +2105,11 @@ if (empty($token)) {
             try {
                 await uploadPortalFileChunked(file, i, {
                     onChunkProgress: (chunkIndex, totalChunks, chunkPercent) => {
-                        chunkSpan.textContent = `分片 ${chunkIndex + 1}/${totalChunks}`;
+                        if (totalChunks === 1) {
+                            chunkSpan.textContent = '上传中...';
+                        } else {
+                            chunkSpan.textContent = `分片 ${chunkIndex + 1}/${totalChunks}`;
+                        }
                         const overallPercent = ((chunkIndex + chunkPercent / 100) / totalChunks) * 100;
                         barDiv.style.width = `${overallPercent}%`;
                         percentSpan.textContent = `${Math.round(overallPercent)}%`;
@@ -2111,11 +2117,17 @@ if (empty($token)) {
                     },
                     onChunkComplete: (chunkIndex, totalChunks) => {
                         console.log(`  ✓ 分片 ${chunkIndex + 1}/${totalChunks} 完成`);
+                    },
+                    onMerging: () => {
+                        chunkSpan.textContent = '正在处理中，请勿关闭页面...';
+                        chunkSpan.style.color = '#f59e0b';
+                        statusDiv.innerHTML = '<i class="bi bi-hourglass-split spin" style="color: #f59e0b; font-size: 18px;"></i>';
                     }
                 });
                 
                 // 成功
                 chunkSpan.textContent = '上传完成';
+                chunkSpan.style.color = '';
                 percentSpan.textContent = '100%';
                 barDiv.style.width = '100%';
                 statusDiv.innerHTML = '<i class="bi bi-check-circle-fill" style="color: #10b981; font-size: 18px;"></i>';
@@ -2171,10 +2183,19 @@ if (empty($token)) {
         document.getElementById('portalOverallStats').textContent = `${Math.min(completed + 1, total)} / ${total} 文件 (${Math.round(percent)}%)`;
     }
     
+    // 小文件阈值：10MB以下直接上传，不分片
+    const PORTAL_SMALL_FILE_THRESHOLD = 10 * 1024 * 1024;
+    
     async function uploadPortalFileChunked(file, fileIndex, callbacks) {
         const totalChunks = Math.ceil(file.size / PORTAL_CHUNK_SIZE);
+        const isSmallFile = file.size <= PORTAL_SMALL_FILE_THRESHOLD;
         
-        console.log(`  文件大小: ${formatFileSize(file.size)}, 分片数: ${totalChunks}`);
+        console.log(`  文件大小: ${formatFileSize(file.size)}, 分片数: ${totalChunks}, 小文件模式: ${isSmallFile}`);
+        
+        // 小文件直接上传，不分片
+        if (isSmallFile) {
+            return await uploadPortalFileDirectly(file, fileIndex, callbacks);
+        }
         
         // 1. 初始化
         const initRes = await fetch(`${API_URL}/portal_chunk_upload.php`, {
@@ -2207,8 +2228,10 @@ if (empty($token)) {
             callbacks.onChunkComplete(i, totalChunks);
         }
         
-        // 3. 完成
+        // 3. 完成 - 显示合并提示
         console.log('  → 合并分片中...');
+        callbacks.onMerging && callbacks.onMerging();
+        
         const completeRes = await fetch(`${API_URL}/portal_chunk_upload.php`, {
             method: 'POST',
             body: new URLSearchParams({
@@ -2222,6 +2245,48 @@ if (empty($token)) {
         
         console.log('  ✓ 合并完成');
         return completeData;
+    }
+    
+    // 小文件直接上传（不分片）
+    async function uploadPortalFileDirectly(file, fileIndex, callbacks) {
+        console.log('  → 使用直接上传模式（小文件）');
+        
+        return new Promise((resolve, reject) => {
+            const formData = new FormData();
+            formData.append('action', 'direct');
+            formData.append('token', TOKEN);
+            formData.append('project_id', currentProjectId);
+            formData.append('file', file);
+            
+            const xhr = new XMLHttpRequest();
+            xhr.upload.addEventListener('progress', (e) => {
+                if (e.lengthComputable) {
+                    const percent = Math.round(e.loaded / e.total * 100);
+                    callbacks.onChunkProgress(0, 1, percent);
+                }
+            });
+            xhr.addEventListener('load', () => {
+                if (xhr.status === 200) {
+                    try {
+                        const res = JSON.parse(xhr.responseText);
+                        if (res.success) {
+                            callbacks.onChunkComplete(0, 1);
+                            resolve(res);
+                        } else {
+                            reject(new Error(res.error || '上传失败'));
+                        }
+                    } catch { reject(new Error('响应解析错误')); }
+                } else {
+                    try {
+                        const res = JSON.parse(xhr.responseText);
+                        reject(new Error(res.error || `HTTP ${xhr.status}`));
+                    } catch { reject(new Error(`HTTP ${xhr.status}`)); }
+                }
+            });
+            xhr.addEventListener('error', () => reject(new Error('网络错误')));
+            xhr.open('POST', `${API_URL}/portal_chunk_upload.php`);
+            xhr.send(formData);
+        });
     }
     
     function uploadPortalChunk(uploadId, chunkIndex, chunkBlob, onProgress) {

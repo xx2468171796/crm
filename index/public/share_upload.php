@@ -668,6 +668,7 @@ $token = trim($_GET['token'] ?? '');
         const API_BASE = '/api';
         const CHUNK_SIZE = 90 * 1024 * 1024; // 90MB 分片大小
         const MAX_TOTAL_SIZE = 3 * 1024 * 1024 * 1024; // 3GB 单次上传总大小限制
+        const SMALL_FILE_THRESHOLD = 10 * 1024 * 1024; // 10MB 小文件阈值
         
         let linkInfo = null;
         let verifiedPassword = '';
@@ -871,6 +872,8 @@ $token = trim($_GET['token'] ?? '');
             
             fileList.innerHTML = selectedFiles.map((file, index) => {
                 const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
+                const isSmallFile = file.size <= SMALL_FILE_THRESHOLD;
+                const sizeInfo = isSmallFile ? formatFileSize(file.size) : `${formatFileSize(file.size)} · ${totalChunks} 個分片`;
                 return `
                 <div class="file-item" id="file-${index}">
                     <div class="file-icon">
@@ -878,7 +881,7 @@ $token = trim($_GET['token'] ?? '');
                     </div>
                     <div class="file-info">
                         <div class="file-name">${escapeHtml(file.name)}</div>
-                        <div class="file-size">${formatFileSize(file.size)} · ${totalChunks} 個分片</div>
+                        <div class="file-size">${sizeInfo}</div>
                         <div class="file-progress-area" id="progress-area-${index}">
                             <div class="progress-label">
                                 <span class="chunk-info" id="chunk-info-${index}">準備中...</span>
@@ -948,7 +951,11 @@ $token = trim($_GET['token'] ?? '');
                 try {
                     await uploadFileChunked(file, i, {
                         onChunkProgress: (chunkIndex, totalChunks, chunkPercent) => {
-                            chunkInfo.textContent = `分片 ${chunkIndex + 1}/${totalChunks}`;
+                            if (totalChunks === 1) {
+                                chunkInfo.textContent = '上傳中...';
+                            } else {
+                                chunkInfo.textContent = `分片 ${chunkIndex + 1}/${totalChunks}`;
+                            }
                             const overallFilePercent = ((chunkIndex + chunkPercent / 100) / totalChunks) * 100;
                             progressBar.style.width = `${overallFilePercent}%`;
                             progressPercent.textContent = `${Math.round(overallFilePercent)}%`;
@@ -958,6 +965,11 @@ $token = trim($_GET['token'] ?? '');
                         },
                         onChunkComplete: (chunkIndex, totalChunks) => {
                             console.log(`  ✓ 分片 ${chunkIndex + 1}/${totalChunks} 上傳完成`);
+                        },
+                        onMerging: () => {
+                            chunkInfo.textContent = '正在處理中，請勿關閉頁面...';
+                            chunkInfo.style.color = '#f59e0b';
+                            statusDiv.innerHTML = '<i class="bi bi-hourglass-split spin" style="color: #f59e0b; font-size: 20px;"></i>';
                         }
                     });
                     
@@ -965,6 +977,7 @@ $token = trim($_GET['token'] ?? '');
                     fileItem.classList.remove('uploading');
                     fileItem.classList.add('success');
                     chunkInfo.textContent = '上傳完成';
+                    chunkInfo.style.color = '';
                     progressPercent.textContent = '100%';
                     progressBar.style.width = '100%';
                     statusDiv.innerHTML = '<i class="bi bi-check-circle-fill" style="color: var(--portal-success); font-size: 20px;"></i>';
@@ -1030,8 +1043,14 @@ $token = trim($_GET['token'] ?? '');
         // 分片上传单个文件
         async function uploadFileChunked(file, fileIndex, callbacks) {
             const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
+            const isSmallFile = file.size <= SMALL_FILE_THRESHOLD;
             
-            console.log(`  檔案大小: ${formatFileSize(file.size)}, 分片數: ${totalChunks}, 分片大小: ${formatFileSize(CHUNK_SIZE)}`);
+            console.log(`  檔案大小: ${formatFileSize(file.size)}, 分片數: ${totalChunks}, 小檔案模式: ${isSmallFile}`);
+            
+            // 小文件直接上传
+            if (isSmallFile) {
+                return await uploadFileDirectly(file, fileIndex, callbacks);
+            }
             
             // 1. 初始化上传
             console.log('  → 初始化分片上傳...');
@@ -1072,8 +1091,10 @@ $token = trim($_GET['token'] ?? '');
                 callbacks.onChunkComplete(chunkIndex, totalChunks);
             }
             
-            // 3. 完成上传（合并分片）
+            // 3. 完成上传（合并分片）- 显示处理提示
             console.log('  → 合併分片中...');
+            callbacks.onMerging && callbacks.onMerging();
+            
             const completeResponse = await fetch(`${API_BASE}/file_share_chunk_upload.php`, {
                 method: 'POST',
                 body: new URLSearchParams({
@@ -1091,6 +1112,48 @@ $token = trim($_GET['token'] ?? '');
             
             console.log('  ✓ 合併完成');
             return completeData;
+        }
+        
+        // 小文件直接上传（不分片）
+        async function uploadFileDirectly(file, fileIndex, callbacks) {
+            console.log('  → 使用直接上傳模式（小檔案）');
+            
+            return new Promise((resolve, reject) => {
+                const formData = new FormData();
+                formData.append('action', 'direct');
+                formData.append('token', token);
+                formData.append('password', verifiedPassword);
+                formData.append('file', file);
+                
+                const xhr = new XMLHttpRequest();
+                xhr.upload.addEventListener('progress', (e) => {
+                    if (e.lengthComputable) {
+                        const percent = Math.round(e.loaded / e.total * 100);
+                        callbacks.onChunkProgress(0, 1, percent);
+                    }
+                });
+                xhr.addEventListener('load', () => {
+                    if (xhr.status === 200) {
+                        try {
+                            const res = JSON.parse(xhr.responseText);
+                            if (res.success) {
+                                callbacks.onChunkComplete(0, 1);
+                                resolve(res);
+                            } else {
+                                reject(new Error(res.error || '上傳失敗'));
+                            }
+                        } catch { reject(new Error('響應解析錯誤')); }
+                    } else {
+                        try {
+                            const res = JSON.parse(xhr.responseText);
+                            reject(new Error(res.error || `HTTP ${xhr.status}`));
+                        } catch { reject(new Error(`HTTP ${xhr.status}`)); }
+                    }
+                });
+                xhr.addEventListener('error', () => reject(new Error('網絡錯誤')));
+                xhr.open('POST', `${API_BASE}/file_share_chunk_upload.php`);
+                xhr.send(formData);
+            });
         }
         
         // 上传单个分片
