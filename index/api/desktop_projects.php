@@ -620,6 +620,7 @@ function createProjectAssignNotification($userId, $projectId, $projectCode, $pro
 
 /**
  * 获取客户列表（含项目统计）
+ * 非管理员只能看到分配给自己的客户（有项目分配给自己的客户）
  */
 function handleCustomers($user, $isManager) {
     $search = $_GET['search'] ?? '';
@@ -629,6 +630,16 @@ function handleCustomers($user, $isManager) {
     
     $conditions = ["c.deleted_at IS NULL"];
     $params = [];
+    
+    // 非管理员只能看到分配给自己的客户
+    if (!$isManager) {
+        $conditions[] = "EXISTS (
+            SELECT 1 FROM projects p 
+            JOIN project_tech_assignments pta ON pta.project_id = p.id 
+            WHERE p.customer_id = c.id AND p.deleted_at IS NULL AND pta.tech_user_id = ?
+        )";
+        $params[] = $user['id'];
+    }
     
     if ($search) {
         $conditions[] = "(c.name LIKE ? OR c.group_code LIKE ? OR c.customer_group LIKE ?)";
@@ -646,6 +657,15 @@ function handleCustomers($user, $isManager) {
     $total = (int)($countResult['total'] ?? 0);
     
     // 客户列表（含项目统计）
+    // 非管理员只统计分配给自己的项目数量
+    if ($isManager) {
+        $projectCountSubquery = "(SELECT COUNT(*) FROM projects p WHERE p.customer_id = c.id AND p.deleted_at IS NULL)";
+        $lastProjectTimeSubquery = "(SELECT MAX(p.update_time) FROM projects p WHERE p.customer_id = c.id AND p.deleted_at IS NULL)";
+    } else {
+        $projectCountSubquery = "(SELECT COUNT(*) FROM projects p JOIN project_tech_assignments pta ON pta.project_id = p.id WHERE p.customer_id = c.id AND p.deleted_at IS NULL AND pta.tech_user_id = {$user['id']})";
+        $lastProjectTimeSubquery = "(SELECT MAX(p.update_time) FROM projects p JOIN project_tech_assignments pta ON pta.project_id = p.id WHERE p.customer_id = c.id AND p.deleted_at IS NULL AND pta.tech_user_id = {$user['id']})";
+    }
+    
     $sql = "
         SELECT 
             c.id,
@@ -655,8 +675,8 @@ function handleCustomers($user, $isManager) {
             c.alias,
             c.mobile,
             c.create_time,
-            (SELECT COUNT(*) FROM projects p WHERE p.customer_id = c.id AND p.deleted_at IS NULL) as project_count,
-            (SELECT MAX(p.update_time) FROM projects p WHERE p.customer_id = c.id AND p.deleted_at IS NULL) as last_project_time
+            {$projectCountSubquery} as project_count,
+            {$lastProjectTimeSubquery} as last_project_time
         FROM customers c
         WHERE {$whereClause}
         ORDER BY last_project_time DESC, c.create_time DESC

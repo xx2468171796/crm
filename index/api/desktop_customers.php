@@ -17,6 +17,9 @@ require_once __DIR__ . '/../core/constants.php';
 // 认证
 $user = desktop_auth_require();
 
+// 角色判断
+$isManager = in_array($user['role'], ['admin', 'super_admin', 'manager', 'tech_manager']);
+
 // 处理 POST 请求
 $action = $_GET['action'] ?? '';
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action === 'update_alias') {
@@ -50,15 +53,29 @@ try {
     }
     
     // 获取客户的项目列表
-    $projects = Db::query("
-        SELECT 
-            p.id, p.project_code, p.project_name, p.current_status,
-            p.create_time, p.update_time
-        FROM projects p
-        WHERE p.customer_id = ? AND p.deleted_at IS NULL
-        ORDER BY p.update_time DESC
-        LIMIT 50
-    ", [$customerId]);
+    // 非管理员只能看到分配给自己的项目
+    if ($isManager) {
+        $projects = Db::query("
+            SELECT 
+                p.id, p.project_code, p.project_name, p.current_status,
+                p.create_time, p.update_time
+            FROM projects p
+            WHERE p.customer_id = ? AND p.deleted_at IS NULL
+            ORDER BY p.update_time DESC
+            LIMIT 50
+        ", [$customerId]);
+    } else {
+        $projects = Db::query("
+            SELECT 
+                p.id, p.project_code, p.project_name, p.current_status,
+                p.create_time, p.update_time
+            FROM projects p
+            JOIN project_tech_assignments pta ON pta.project_id = p.id
+            WHERE p.customer_id = ? AND p.deleted_at IS NULL AND pta.tech_user_id = ?
+            ORDER BY p.update_time DESC
+            LIMIT 50
+        ", [$customerId, $user['id']]);
+    }
     
     $projectList = [];
     foreach ($projects as $project) {
