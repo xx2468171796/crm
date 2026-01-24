@@ -131,6 +131,7 @@ function handleKanban($user, $isManager, $statusList) {
             OR c.alias LIKE ? 
             OR c.group_code LIKE ? 
             OR c.group_name LIKE ?
+            OR c.customer_group LIKE ?
         )";
         $searchTerm = "%{$search}%";
         $params[] = $searchTerm; // project_name
@@ -138,7 +139,8 @@ function handleKanban($user, $isManager, $statusList) {
         $params[] = $searchTerm; // customer name
         $params[] = $searchTerm; // customer alias
         $params[] = $searchTerm; // group_code (群号)
-        $params[] = $searchTerm; // group_name (群名称)
+        $params[] = $searchTerm; // group_name (群名称-新字段)
+        $params[] = $searchTerm; // customer_group (群名称-旧字段)
     }
     
     $whereClause = implode(' AND ', $conditions);
