@@ -66,12 +66,19 @@ try {
     
     // 非管理员需要检查是否有权限访问此项目
     if (!$isManager) {
+        // 检查是否是技术负责人或项目创建者
         $hasAccess = Db::queryOne("
             SELECT 1 FROM project_tech_assignments 
             WHERE project_id = ? AND tech_user_id = ?
         ", [$projectId, $user['id']]);
         
-        if (!$hasAccess) {
+        // 也检查是否是项目创建者
+        $isCreator = Db::queryOne("
+            SELECT 1 FROM projects 
+            WHERE id = ? AND created_by = ?
+        ", [$projectId, $user['id']]);
+        
+        if (!$hasAccess && !$isCreator) {
             http_response_code(403);
             echo json_encode(['success' => false, 'error' => '无权访问此项目'], JSON_UNESCAPED_UNICODE);
             exit;
