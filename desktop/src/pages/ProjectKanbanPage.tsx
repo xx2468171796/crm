@@ -517,10 +517,10 @@ export default function ProjectKanbanPage() {
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
               <input
                 type="text"
-                placeholder="搜索项目/客户..."
+                placeholder="搜索群名/项目号/客户名/别名..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                className="pl-9 pr-3 py-1.5 w-48 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="pl-9 pr-3 py-1.5 w-56 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
             
