@@ -25,7 +25,7 @@ require_once __DIR__ . '/../services/S3Service.php';
 $user = desktop_auth_require();
 
 // 判断是否为管理员
-$isManager = in_array($user['role'] ?? '', ['super_admin', 'admin', 'manager', 'tech_manager', 'dept_leader']);
+$isManager = in_array($user['role'] ?? '', ['super_admin', 'admin', 'manager', 'tech_manager', 'design_manager', 'dept_leader']);
 
 $projectId = (int)($_GET['id'] ?? 0);
 $tab = $_GET['tab'] ?? 'overview';
