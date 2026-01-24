@@ -1928,54 +1928,57 @@ export default function ProjectDetailPage() {
             {/* 左右分栏：左侧项目核心信息 + 右侧客户&负责人 */}
             <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
               {/* 左侧：项目核心信息 + 快捷操作 (占3列) */}
-              <div className="lg:col-span-3 space-y-4">
-                {/* 项目状态卡片 */}
-                <div className="bg-white rounded-xl p-5 border">
-                  <div className="flex items-start justify-between mb-4">
-                    <div>
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className={`px-3 py-1 rounded-full text-sm font-medium ${
-                          project.days_info?.is_completed 
-                            ? 'bg-green-100 text-green-700'
-                            : project.days_info?.is_overdue
-                            ? 'bg-red-100 text-red-700'
-                            : 'bg-indigo-100 text-indigo-700'
-                        }`}>
-                          {project.current_status}
-                        </span>
-                        {project.days_info?.is_overdue && (
-                          <span className="text-xs text-red-500 font-medium">超期 {project.days_info?.overdue_days} 天</span>
-                        )}
-                      </div>
-                      <p className="text-xs text-gray-400 font-mono">{project.project_code}</p>
-                    </div>
-                    {/* 进度指示器 */}
-                    <div className="text-right">
-                      <p className="text-2xl font-bold text-gray-800">
+              <div className="lg:col-span-3 space-y-3">
+                {/* 项目状态条 - 紧凑单行 */}
+                <div className="bg-white rounded-xl px-4 py-3 border flex items-center gap-4 flex-wrap">
+                  {/* 状态标签 */}
+                  <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${
+                    project.days_info?.is_completed 
+                      ? 'bg-green-100 text-green-700'
+                      : project.days_info?.is_overdue
+                      ? 'bg-red-100 text-red-700'
+                      : 'bg-indigo-100 text-indigo-700'
+                  }`}>
+                    {project.current_status}
+                  </span>
+                  
+                  {/* 分隔线 */}
+                  <div className="h-4 w-px bg-gray-200" />
+                  
+                  {/* 项目编号 */}
+                  <span className="text-xs text-gray-400 font-mono">{project.project_code}</span>
+                  
+                  {/* 分隔线 */}
+                  <div className="h-4 w-px bg-gray-200" />
+                  
+                  {/* 周期信息 */}
+                  <div className="flex items-center gap-2 text-xs">
+                    <Clock className="w-3.5 h-3.5 text-gray-400" />
+                    <span className="text-gray-600">{project.days_info?.date_range || '未设置周期'}</span>
+                    {project.days_info?.total_days && (
+                      <span className={`font-medium ${
+                        project.days_info?.is_completed 
+                          ? 'text-green-600'
+                          : project.days_info?.is_overdue
+                          ? 'text-red-600'
+                          : 'text-gray-700'
+                      }`}>
                         {project.days_info?.is_completed 
-                          ? '100%'
-                          : project.days_info?.total_days 
-                            ? `${Math.round((project.days_info?.elapsed_days || 0) / project.days_info?.total_days * 100)}%`
-                            : '-'
+                          ? `已完工(${project.days_info?.actual_days}天)`
+                          : project.days_info?.is_overdue
+                          ? `超${project.days_info?.overdue_days}天`
+                          : `剩${project.days_info?.remaining_days}天`
                         }
-                      </p>
-                      <p className="text-xs text-gray-400">
-                        {project.days_info?.is_completed 
-                          ? `已完工 (${project.days_info?.actual_days || 0}天)`
-                          : project.days_info?.total_days 
-                            ? `${project.days_info?.elapsed_days || 0} / ${project.days_info?.total_days} 天`
-                            : '未设置周期'
-                        }
-                      </p>
-                    </div>
+                      </span>
+                    )}
                   </div>
                   
-                  {/* 进度条 */}
+                  {/* 进度条 - 紧凑版 */}
                   {project.days_info?.total_days && (
-                    <div className="mb-4">
-                      <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                    <div className="flex items-center gap-2 ml-auto">
+                      <div className="w-24 h-1.5 bg-gray-100 rounded-full overflow-hidden">
                         <div 
-                          className={`h-full rounded-full transition-all ${
+                          className={`h-full rounded-full ${
                             project.days_info?.is_completed 
                               ? 'bg-green-500'
                               : project.days_info?.is_overdue
@@ -1990,43 +1993,18 @@ export default function ProjectDetailPage() {
                           }}
                         />
                       </div>
-                    </div>
-                  )}
-
-                  {/* 项目信息网格 */}
-                  <div className="grid grid-cols-3 gap-4 text-sm">
-                    <div>
-                      <label className="text-xs text-gray-400 block">项目周期</label>
-                      <p className="text-gray-800">{project.days_info?.date_range || '-'}</p>
-                    </div>
-                    <div>
-                      <label className="text-xs text-gray-400 block">更新时间</label>
-                      <p className="text-gray-800">{project.update_time}</p>
-                    </div>
-                    <div>
-                      <label className="text-xs text-gray-400 block">剩余天数</label>
-                      <p className={project.days_info?.is_overdue ? 'text-red-600 font-medium' : 'text-gray-800'}>
+                      <span className="text-xs font-medium text-gray-600">
                         {project.days_info?.is_completed 
-                          ? '已完工'
-                          : project.days_info?.remaining_days !== undefined
-                            ? `${project.days_info.remaining_days} 天`
-                            : '-'
+                          ? '100%'
+                          : `${Math.round((project.days_info?.elapsed_days || 0) / project.days_info?.total_days * 100)}%`
                         }
-                      </p>
-                    </div>
-                  </div>
-                  
-                  {project.remark && (
-                    <div className="mt-3 pt-3 border-t">
-                      <label className="text-xs text-gray-400">备注</label>
-                      <p className="text-sm text-gray-600">{project.remark}</p>
+                      </span>
                     </div>
                   )}
                 </div>
 
-                {/* 快捷操作卡片 */}
-                <div className="bg-white rounded-xl p-4 border">
-                  <h3 className="text-xs font-semibold text-gray-500 uppercase mb-3">快捷操作</h3>
+                {/* 快捷操作 */}
+                <div className="bg-white rounded-xl px-4 py-3 border">
                   <div className="flex flex-wrap gap-2">
                     {customer?.group_code && (
                       <button
