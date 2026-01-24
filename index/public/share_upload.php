@@ -598,15 +598,11 @@ $token = trim($_GET['token'] ?? '');
                             <div class="portal-upload-text">拖曳檔案到此處上傳</div>
                             <div class="portal-upload-hint">或點擊選擇檔案，支援批量上傳（單次總計上限 3GB）</div>
                             <input type="file" id="fileInput" multiple style="display: none;">
-                            <input type="file" id="folderInput" webkitdirectory style="display: none;">
                         </div>
                         
                         <div class="upload-actions">
                             <button class="portal-btn portal-btn-secondary" id="selectFilesBtn">
                                 <i class="bi bi-files"></i> 選擇檔案
-                            </button>
-                            <button class="portal-btn portal-btn-ghost" id="selectFolderBtn">
-                                <i class="bi bi-folder"></i> 選擇資料夾
                             </button>
                         </div>
                         
@@ -784,7 +780,6 @@ $token = trim($_GET['token'] ?? '');
         function initUploadHandlers() {
             const dropZone = document.getElementById('dropZone');
             const fileInput = document.getElementById('fileInput');
-            const folderInput = document.getElementById('folderInput');
             
             // 拖拽事件
             dropZone.addEventListener('dragover', (e) => {
@@ -799,7 +794,12 @@ $token = trim($_GET['token'] ?? '');
             dropZone.addEventListener('drop', (e) => {
                 e.preventDefault();
                 dropZone.classList.remove('dragover');
-                handleFiles(e.dataTransfer.files);
+                // 过滤掉文件夹，只接受文件
+                const files = Array.from(e.dataTransfer.files).filter(f => f.size > 0);
+                if (files.length < e.dataTransfer.files.length) {
+                    showToast('不支援上傳資料夾，請選擇具體檔案', 'warning');
+                }
+                handleFiles(files);
             });
             
             dropZone.addEventListener('click', () => fileInput.click());
@@ -810,13 +810,7 @@ $token = trim($_GET['token'] ?? '');
                 fileInput.click();
             });
             
-            document.getElementById('selectFolderBtn').addEventListener('click', (e) => {
-                e.stopPropagation();
-                folderInput.click();
-            });
-            
             fileInput.addEventListener('change', () => handleFiles(fileInput.files));
-            folderInput.addEventListener('change', () => handleFiles(folderInput.files));
             
             // 上传按钮
             document.getElementById('uploadBtn').addEventListener('click', startUpload);
