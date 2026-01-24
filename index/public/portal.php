@@ -775,9 +775,19 @@ if (empty($token)) {
                 </div>
                 
                 <div class="portal-card portal-card-solid" style="margin-top: 16px;">
-                    <h4 style="font-size: 16px; font-weight: 600; margin: 0 0 16px;">
-                        <i class="bi bi-folder" style="color: var(--portal-primary);"></i> 已上传的文件
-                    </h4>
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 12px;">
+                        <h4 style="font-size: 16px; font-weight: 600; margin: 0;">
+                            <i class="bi bi-folder" style="color: var(--portal-primary);"></i> 已上传的文件
+                        </h4>
+                        <div id="portalFileActions" style="display: none; gap: 8px;">
+                            <button class="portal-btn portal-btn-sm portal-btn-ghost" onclick="portalSelectAllFiles()" id="portalSelectAllBtn">
+                                <i class="bi bi-check2-square"></i> 全选
+                            </button>
+                            <button class="portal-btn portal-btn-sm portal-btn-danger" onclick="portalBatchDelete()" id="portalBatchDeleteBtn" disabled>
+                                <i class="bi bi-trash"></i> 删除选中 (<span id="portalSelectedCount">0</span>)
+                            </button>
+                        </div>
+                    </div>
                     <div id="portalUploadedFiles">
                         <div class="portal-loading">
                             <div class="portal-spinner"></div>
@@ -2268,24 +2278,46 @@ if (empty($token)) {
         });
     }
     
+    // 已上传文件选中状态
+    let portalSelectedFileIds = new Set();
+    let portalUploadedFilesData = [];
+    
     function loadPortalUploadedFiles(projectId) {
         const container = document.getElementById('portalUploadedFiles');
+        const actionsDiv = document.getElementById('portalFileActions');
         if (!container) return;
+        
+        portalSelectedFileIds.clear();
         
         fetch(`${API_URL}/portal_customer_files.php?token=${TOKEN}&project_id=${projectId}`)
             .then(r => r.json())
             .then(data => {
                 if (data.success && data.data && data.data.length > 0) {
+                    portalUploadedFilesData = data.data;
+                    if (actionsDiv) actionsDiv.style.display = 'flex';
                     container.innerHTML = data.data.map(f => `
-                        <div class="portal-uploaded-file">
-                            <div class="portal-file-icon"><i class="bi bi-file-earmark"></i></div>
-                            <div class="portal-file-info">
-                                <div class="portal-file-name">${escapeHtml(f.file_name)}</div>
-                                <div class="portal-file-size">${formatFileSize(f.file_size)} · ${formatTime(f.create_time)}</div>
+                        <div class="portal-uploaded-file" data-file-id="${f.id}" style="display: flex; align-items: center; gap: 12px; padding: 12px; background: var(--portal-bg); border-radius: 8px; margin-bottom: 8px;">
+                            <input type="checkbox" class="portal-file-checkbox" data-id="${f.id}" onchange="portalToggleFileSelect(${f.id})" style="width: 18px; height: 18px; cursor: pointer; accent-color: var(--portal-primary);">
+                            <div class="portal-file-icon" style="width: 40px; height: 40px; background: rgba(99, 102, 241, 0.1); border-radius: 8px; display: flex; align-items: center; justify-content: center;">
+                                <i class="bi bi-file-earmark" style="font-size: 18px; color: var(--portal-primary);"></i>
+                            </div>
+                            <div class="portal-file-info" style="flex: 1; min-width: 0;">
+                                <div class="portal-file-name" style="font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${escapeHtml(f.file_name.replace(/^(客户上传\+|分享\+)/, ''))}</div>
+                                <div class="portal-file-size" style="font-size: 12px; color: var(--portal-text-muted);">${formatFileSize(f.file_size)} · ${formatTime(f.create_time)}</div>
+                            </div>
+                            <div class="portal-file-actions" style="display: flex; gap: 4px;">
+                                <button class="portal-btn portal-btn-ghost portal-btn-sm" onclick="portalRenameFile(${f.id}, '${escapeHtml(f.file_name.replace(/^(客户上传\+|分享\+)/, ''))}')" title="重命名">
+                                    <i class="bi bi-pencil"></i>
+                                </button>
+                                <button class="portal-btn portal-btn-ghost portal-btn-sm" onclick="portalDeleteFile(${f.id})" title="删除" style="color: #ef4444;">
+                                    <i class="bi bi-trash"></i>
+                                </button>
                             </div>
                         </div>
                     `).join('');
                 } else {
+                    portalUploadedFilesData = [];
+                    if (actionsDiv) actionsDiv.style.display = 'none';
                     container.innerHTML = `
                         <div class="portal-empty" style="padding: 24px;">
                             <div class="portal-empty-icon"><i class="bi bi-folder2-open"></i></div>
@@ -2293,10 +2325,131 @@ if (empty($token)) {
                         </div>
                     `;
                 }
+                updatePortalSelectedCount();
             })
             .catch(() => {
+                if (actionsDiv) actionsDiv.style.display = 'none';
                 container.innerHTML = '<div style="color: #ef4444; text-align: center; padding: 20px;">加载失败</div>';
             });
+    }
+    
+    function portalToggleFileSelect(fileId) {
+        if (portalSelectedFileIds.has(fileId)) {
+            portalSelectedFileIds.delete(fileId);
+        } else {
+            portalSelectedFileIds.add(fileId);
+        }
+        updatePortalSelectedCount();
+    }
+    
+    function updatePortalSelectedCount() {
+        const countSpan = document.getElementById('portalSelectedCount');
+        const deleteBtn = document.getElementById('portalBatchDeleteBtn');
+        const selectAllBtn = document.getElementById('portalSelectAllBtn');
+        
+        if (countSpan) countSpan.textContent = portalSelectedFileIds.size;
+        if (deleteBtn) deleteBtn.disabled = portalSelectedFileIds.size === 0;
+        
+        if (selectAllBtn) {
+            if (portalSelectedFileIds.size === portalUploadedFilesData.length && portalUploadedFilesData.length > 0) {
+                selectAllBtn.innerHTML = '<i class="bi bi-x-square"></i> 取消全选';
+            } else {
+                selectAllBtn.innerHTML = '<i class="bi bi-check2-square"></i> 全选';
+            }
+        }
+    }
+    
+    function portalSelectAllFiles() {
+        const checkboxes = document.querySelectorAll('.portal-file-checkbox');
+        const allSelected = portalSelectedFileIds.size === portalUploadedFilesData.length;
+        
+        if (allSelected) {
+            portalSelectedFileIds.clear();
+            checkboxes.forEach(cb => cb.checked = false);
+        } else {
+            portalUploadedFilesData.forEach(f => portalSelectedFileIds.add(f.id));
+            checkboxes.forEach(cb => cb.checked = true);
+        }
+        updatePortalSelectedCount();
+    }
+    
+    function portalDeleteFile(fileId) {
+        if (!confirm('确定要删除这个文件吗？')) return;
+        
+        const formData = new FormData();
+        formData.append('action', 'delete');
+        formData.append('token', TOKEN);
+        formData.append('project_id', currentProjectId);
+        formData.append('file_id', fileId);
+        
+        fetch(`${API_URL}/portal_file_manage.php`, {
+            method: 'POST',
+            body: formData
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) {
+                PortalUI.Toast.show('文件已删除', 'success');
+                loadPortalUploadedFiles(currentProjectId);
+            } else {
+                PortalUI.Toast.show(data.error || '删除失败', 'error');
+            }
+        })
+        .catch(() => PortalUI.Toast.show('删除失败', 'error'));
+    }
+    
+    function portalBatchDelete() {
+        if (portalSelectedFileIds.size === 0) return;
+        
+        if (!confirm(`确定要删除选中的 ${portalSelectedFileIds.size} 个文件吗？`)) return;
+        
+        const formData = new FormData();
+        formData.append('action', 'batch_delete');
+        formData.append('token', TOKEN);
+        formData.append('project_id', currentProjectId);
+        formData.append('file_ids', Array.from(portalSelectedFileIds).join(','));
+        
+        fetch(`${API_URL}/portal_file_manage.php`, {
+            method: 'POST',
+            body: formData
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) {
+                PortalUI.Toast.show(`已删除 ${data.deleted_count} 个文件`, 'success');
+                loadPortalUploadedFiles(currentProjectId);
+            } else {
+                PortalUI.Toast.show(data.error || '删除失败', 'error');
+            }
+        })
+        .catch(() => PortalUI.Toast.show('删除失败', 'error'));
+    }
+    
+    function portalRenameFile(fileId, currentName) {
+        const newName = prompt('请输入新的文件名：', currentName);
+        if (!newName || newName === currentName) return;
+        
+        const formData = new FormData();
+        formData.append('action', 'rename');
+        formData.append('token', TOKEN);
+        formData.append('project_id', currentProjectId);
+        formData.append('file_id', fileId);
+        formData.append('new_name', newName);
+        
+        fetch(`${API_URL}/portal_file_manage.php`, {
+            method: 'POST',
+            body: formData
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) {
+                PortalUI.Toast.show('重命名成功', 'success');
+                loadPortalUploadedFiles(currentProjectId);
+            } else {
+                PortalUI.Toast.show(data.error || '重命名失败', 'error');
+            }
+        })
+        .catch(() => PortalUI.Toast.show('重命名失败', 'error'));
     }
     
     // 拖拽上传

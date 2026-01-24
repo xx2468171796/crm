@@ -60,6 +60,7 @@ try {
         WHERE project_id = ? 
         AND file_category = 'customer_file'
         AND (deliverable_name LIKE '客户上传+%' OR deliverable_name LIKE '分享+%')
+        AND (is_deleted = 0 OR is_deleted IS NULL)
         ORDER BY create_time DESC
     ");
     $stmt->execute([$projectId]);
