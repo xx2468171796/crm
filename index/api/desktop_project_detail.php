@@ -51,7 +51,7 @@ try {
             c.id as customer_id, c.name as customer_name, 
             c.group_code as customer_group_code, c.customer_group as customer_group_name,
             c.alias as customer_alias, c.mobile as customer_phone,
-            pl.token as portal_token, pl.password as portal_password
+            pl.token as portal_token, pl.password_plain as portal_password
         FROM projects p
         LEFT JOIN customers c ON p.customer_id = c.id AND c.deleted_at IS NULL
         LEFT JOIN portal_links pl ON pl.customer_id = c.id AND pl.enabled = 1
