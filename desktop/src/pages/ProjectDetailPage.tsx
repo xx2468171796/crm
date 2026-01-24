@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, User, FileText, MessageSquare, Check, Download, ExternalLink, Link2, Lock, RefreshCw, Clipboard, DollarSign, UserPlus, History, Star, CheckCircle, Clock, Phone, Upload, Copy, FolderOpen, Eye, Trash2, AlertTriangle } from 'lucide-react';
+import { ArrowLeft, User, FileText, MessageSquare, Check, Download, ExternalLink, Link2, Lock, RefreshCw, Clipboard, DollarSign, UserPlus, History, Star, CheckCircle, Clock, Phone, Upload, Copy, FolderOpen, Eye, Trash2, AlertTriangle, ChevronDown, ChevronUp } from 'lucide-react';
 import { useAuthStore } from '@/stores/auth';
 import { useSettingsStore } from '@/stores/settings';
 import { usePermissionsStore } from '@/stores/permissions';
-import DetailSidebar, { SidebarTab } from '@/components/DetailSidebar';
+import { SidebarTab } from '@/components/DetailSidebar';
 import { UserSelector } from '@/components/relational-selector';
 import DateEditor from '@/components/DateEditor';
 import ConfirmDialog from '@/components/ConfirmDialog';
@@ -278,6 +278,9 @@ export default function ProjectDetailPage() {
   
   // 文件视图模式：list（列表）或 tree（树状）
   const [fileViewMode, setFileViewMode] = useState<'list' | 'tree'>('tree');
+  
+  // 进度条折叠状态
+  const [progressCollapsed, setProgressCollapsed] = useState(false);
   
   // 本地文件选择状态（用于批量上传）
   const [selectedLocalFiles, setSelectedLocalFiles] = useState<Set<string>>(new Set());
@@ -1593,13 +1596,9 @@ export default function ProjectDetailPage() {
             <ArrowLeft className="w-5 h-5" />
           </button>
           <div className="flex-1">
-            <h1 className="text-2xl font-bold">{project.project_name}</h1>
-            <div className="flex items-center gap-4 mt-2 text-white/80 text-sm">
-              <span className="font-mono">{project.project_code}</span>
-              <span>•</span>
-              <span>{customer?.name}</span>
-              <span>•</span>
-              <span>创建于 {project.create_time}</span>
+            <div className="flex items-center gap-3">
+              <h1 className="text-2xl font-bold">{project.project_name}</h1>
+              <span className="px-2 py-0.5 bg-white/20 rounded text-sm">{project.current_status}</span>
             </div>
           </div>
           
@@ -1714,8 +1713,37 @@ export default function ProjectDetailPage() {
         </div>
       </div>
 
-      {/* 状态步骤条 */}
-      <div className="bg-white border-b px-6 py-4">
+      {/* 顶部Tab导航 */}
+      <div className="bg-white border-b px-6">
+        <div className="flex items-center gap-1">
+          {PROJECT_SIDEBAR_TABS.map((tab) => (
+            <button
+              key={tab.key}
+              onClick={() => handleTabChange(tab.key as TabType)}
+              className={`flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
+                activeTab === tab.key
+                  ? 'border-indigo-600 text-indigo-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              {tab.icon}
+              {tab.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* 状态步骤条（可折叠） */}
+      <div className="bg-white border-b">
+        <button
+          onClick={() => setProgressCollapsed(!progressCollapsed)}
+          className="w-full px-6 py-2 flex items-center justify-between text-sm text-gray-600 hover:bg-gray-50 transition-colors"
+        >
+          <span className="font-medium">项目进度</span>
+          {progressCollapsed ? <ChevronDown className="w-4 h-4" /> : <ChevronUp className="w-4 h-4" />}
+        </button>
+        {!progressCollapsed && (
+        <div className="px-6 pb-4">
         <div className="flex items-center justify-between">
           {(statuses || []).map((status, index) => {
             // 项目完工时，所有阶段都视为已完成
@@ -1884,26 +1912,19 @@ export default function ProjectDetailPage() {
             )}
           </div>
         )}
+        </div>
+        )}
       </div>
 
-      {/* 主体：侧边栏 + 内容 */}
-      <div className="flex-1 flex overflow-hidden">
-        {/* 侧边栏 */}
-        <DetailSidebar
-          tabs={PROJECT_SIDEBAR_TABS}
-          activeTab={activeTab}
-          onTabChange={(key) => handleTabChange(key as TabType)}
-        />
-
-        {/* Tab 内容 */}
-        <div className="flex-1 p-6 overflow-auto">
+      {/* 主体内容区 */}
+      <div className="flex-1 overflow-auto p-6">
         {tabLoading ? (
           <div className="flex items-center justify-center h-32 text-gray-400">加载中...</div>
         ) : activeTab === 'overview' ? (
-          /* 概览 - 优化布局 */
+          /* 概览 - 三列布局 */
           <div className="space-y-4">
-            {/* 第一行：项目信息 + 客户信息 */}
-            <div className="grid grid-cols-2 gap-4">
+            {/* 三列布局：项目信息 + 客户信息 + 设计负责人 */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
               {/* 项目信息 */}
               <div className="bg-white rounded-xl p-5 border">
                 <h3 className="text-sm font-semibold text-gray-800 mb-3 flex items-center gap-2">
@@ -2112,65 +2133,65 @@ export default function ProjectDetailPage() {
                 )}
                 </div>
               </div>
-            </div>
 
-            {/* 第二行：设计负责人 */}
-            <div className="bg-white rounded-xl p-5 border">
-              <div className="flex items-center justify-between mb-3">
-                <h3 className="text-sm font-semibold text-gray-800 flex items-center gap-2">
-                  <User className="w-4 h-4 text-indigo-600" />
-                  设计负责人
-                </h3>
-                {canAssignProject() && (
-                  <button
-                    onClick={() => {
-                      setSelectedTechIds((techUsers || []).map(t => t.id));
-                      setShowUserSelector(true);
-                    }}
-                    className="flex items-center gap-1 px-2 py-1 text-xs text-indigo-600 hover:bg-indigo-50 rounded transition-colors"
-                  >
-                    <UserPlus className="w-3.5 h-3.5" />
-                    分配
-                  </button>
+              {/* 设计负责人（第三列） */}
+              <div className="bg-white rounded-xl p-5 border">
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="text-sm font-semibold text-gray-800 flex items-center gap-2">
+                    <UserPlus className="w-4 h-4 text-indigo-600" />
+                    设计负责人
+                  </h3>
+                  {canAssignProject() && (
+                    <button
+                      onClick={() => {
+                        setSelectedTechIds((techUsers || []).map(t => t.id));
+                        setShowUserSelector(true);
+                      }}
+                      className="flex items-center gap-1 px-2 py-1 text-xs text-indigo-600 hover:bg-indigo-50 rounded transition-colors"
+                    >
+                      <UserPlus className="w-3.5 h-3.5" />
+                      分配
+                    </button>
+                  )}
+                </div>
+                {techUsers.length === 0 ? (
+                  <p className="text-sm text-gray-400">暂无分配</p>
+                ) : (
+                  <div className="space-y-2">
+                    {(techUsers || []).map((tech) => {
+                      const canSeeCommission = isManager || tech.id === user?.id;
+                      return (
+                        <div key={tech.id} className="flex items-center gap-3 bg-gray-50 rounded-lg px-3 py-2">
+                          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 text-white flex items-center justify-center font-semibold text-xs">
+                            {tech.name.charAt(0)}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium text-gray-800 truncate">{tech.name}</p>
+                            {canSeeCommission && tech.commission !== null ? (
+                              <p className="text-xs text-green-600">¥{tech.commission}</p>
+                            ) : canSeeCommission ? (
+                              <p className="text-xs text-gray-400">未设置提成</p>
+                            ) : null}
+                          </div>
+                          {canAssignProject() && (
+                            <button
+                              onClick={() => {
+                                setEditingTech(tech);
+                                setCommissionAmount(tech.commission?.toString() || '');
+                                setCommissionNote(tech.commission_note || '');
+                                setShowCommissionEditor(true);
+                              }}
+                              className="text-indigo-600 hover:text-indigo-800"
+                            >
+                              <DollarSign className="w-4 h-4" />
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
                 )}
               </div>
-              {techUsers.length === 0 ? (
-                <p className="text-sm text-gray-400">暂无分配</p>
-              ) : (
-                <div className="flex flex-wrap gap-4">
-                  {(techUsers || []).map((tech) => {
-                    const canSeeCommission = isManager || tech.id === user?.id;
-                    return (
-                      <div key={tech.id} className="flex items-center gap-3 bg-gray-50 rounded-lg px-4 py-3">
-                        <div className="w-9 h-9 rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 text-white flex items-center justify-center font-semibold text-sm">
-                          {tech.name.charAt(0)}
-                        </div>
-                        <div>
-                          <p className="text-sm font-medium text-gray-800">{tech.name}</p>
-                          {canSeeCommission && tech.commission !== null ? (
-                            <p className="text-xs text-green-600">提成: ¥{tech.commission}</p>
-                          ) : canSeeCommission ? (
-                            <p className="text-xs text-gray-400">未设置提成</p>
-                          ) : null}
-                        </div>
-                        {canAssignProject() && (
-                          <button
-                            onClick={() => {
-                              setEditingTech(tech);
-                              setCommissionAmount(tech.commission?.toString() || '');
-                              setCommissionNote(tech.commission_note || '');
-                              setShowCommissionEditor(true);
-                            }}
-                            className="text-xs text-indigo-600 hover:text-indigo-800"
-                          >
-                            <DollarSign className="w-4 h-4" />
-                          </button>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
             </div>
             
             {/* 客户评价（仅在设计评价阶段或已完工时显示） */}
@@ -3195,7 +3216,6 @@ export default function ProjectDetailPage() {
             )}
           </div>
         ) : null}
-        </div>
       </div>
       
       {/* 状态变更确认弹窗 */}
