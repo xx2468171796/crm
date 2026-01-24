@@ -1894,147 +1894,146 @@ export default function ProjectDetailPage() {
         {tabLoading ? (
           <div className="flex items-center justify-center h-32 text-gray-400">加载中...</div>
         ) : activeTab === 'overview' ? (
-          /* 概览 */
-          <div className="grid grid-cols-3 gap-6">
-            {/* 项目信息 */}
-            <div className="bg-white rounded-xl p-6 border">
-              <h3 className="text-sm font-semibold text-gray-800 mb-4 flex items-center gap-2">
-                <FileText className="w-4 h-4 text-indigo-600" />
-                项目信息
-              </h3>
-              <div className="space-y-4">
-                <div>
-                  <label className="text-xs text-gray-400 uppercase">项目编号</label>
-                  <p className="text-sm font-mono text-gray-800">{project.project_code}</p>
-                </div>
-                <div>
-                  <label className="text-xs text-gray-400 uppercase">当前状态</label>
-                  <p className="text-sm">
-                    <span className="px-2 py-1 bg-indigo-100 text-indigo-700 rounded text-xs">
-                      {project.current_status}
-                    </span>
-                  </p>
-                </div>
-                <div>
-                  <label className="text-xs text-gray-400 uppercase">更新时间</label>
-                  <p className="text-sm text-gray-800">{project.update_time}</p>
-                </div>
-                {/* 项目周期 - 动态计算 */}
-                <div className="grid grid-cols-2 gap-4 pt-3 border-t">
+          /* 概览 - 优化布局 */
+          <div className="space-y-4">
+            {/* 第一行：项目信息 + 客户信息 */}
+            <div className="grid grid-cols-2 gap-4">
+              {/* 项目信息 */}
+              <div className="bg-white rounded-xl p-5 border">
+                <h3 className="text-sm font-semibold text-gray-800 mb-3 flex items-center gap-2">
+                  <FileText className="w-4 h-4 text-indigo-600" />
+                  项目信息
+                </h3>
+                <div className="grid grid-cols-2 gap-x-6 gap-y-3">
                   <div>
-                    <label className="text-xs text-gray-400 uppercase">项目周期</label>
+                    <label className="text-xs text-gray-400">项目编号</label>
+                    <p className="text-sm font-mono text-gray-800">{project.project_code}</p>
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-400">当前状态</label>
+                    <p className="text-sm">
+                      <span className="px-2 py-0.5 bg-indigo-100 text-indigo-700 rounded text-xs">
+                        {project.current_status}
+                      </span>
+                    </p>
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-400">项目周期</label>
                     <p className="text-sm text-gray-800">
                       {project.days_info?.date_range || '-'}
                     </p>
                   </div>
                   <div>
-                    <label className="text-xs text-gray-400 uppercase">进度</label>
+                    <label className="text-xs text-gray-400">进度</label>
                     <p className={`text-sm ${
                       project.days_info?.is_overdue
                         ? 'text-red-600 font-medium'
                         : 'text-gray-800'
                     }`}>
                       {project.days_info?.is_completed 
-                        ? `已完工 (实际${project.days_info?.actual_days || 0}天)`
+                        ? `已完工 (${project.days_info?.actual_days || 0}天)`
                         : project.days_info?.total_days 
                           ? `${project.days_info?.elapsed_days || 0}/${project.days_info?.total_days}天`
                           : '-'
                       }
-                      {project.days_info?.is_overdue && ` (超期${project.days_info?.overdue_days}天)`}
+                      {project.days_info?.is_overdue && ` (超${project.days_info?.overdue_days}天)`}
                     </p>
                   </div>
-                </div>
-                {project.remark && (
                   <div>
-                    <label className="text-xs text-gray-400 uppercase">备注</label>
-                    <p className="text-sm text-gray-600">{project.remark}</p>
+                    <label className="text-xs text-gray-400">更新时间</label>
+                    <p className="text-sm text-gray-800">{project.update_time}</p>
                   </div>
-                )}
+                  {project.remark && (
+                    <div className="col-span-2">
+                      <label className="text-xs text-gray-400">备注</label>
+                      <p className="text-sm text-gray-600">{project.remark}</p>
+                    </div>
+                  )}
+                </div>
               </div>
-            </div>
 
-            {/* 客户信息 */}
-            <div className="bg-white rounded-xl p-6 border">
-              <h3 className="text-sm font-semibold text-gray-800 mb-4 flex items-center gap-2">
-                <User className="w-4 h-4 text-indigo-600" />
-                客户信息
-              </h3>
-              <div className="space-y-4">
-                <div>
-                  <label className="text-xs text-gray-400 uppercase">客户名称</label>
-                  <div className="flex items-center gap-2">
-                    <p className="text-sm text-gray-800">{customer?.name}</p>
-                    {customer?.name && (
-                      <button
-                        onClick={() => {
-                          navigator.clipboard.writeText(customer.name || '');
-                          toast({ title: '已复制', description: '客户名称已复制到剪贴板' });
-                        }}
-                        className="text-gray-400 hover:text-indigo-600"
-                        title="复制客户名称"
-                      >
-                        <Copy className="w-3.5 h-3.5" />
-                      </button>
-                    )}
-                  </div>
-                </div>
-                {customer?.group_code && (
+              {/* 客户信息 */}
+              <div className="bg-white rounded-xl p-5 border">
+                <h3 className="text-sm font-semibold text-gray-800 mb-3 flex items-center gap-2">
+                  <User className="w-4 h-4 text-indigo-600" />
+                  客户信息
+                </h3>
+                <div className="grid grid-cols-2 gap-x-6 gap-y-3">
                   <div>
-                    <label className="text-xs text-gray-400 uppercase">群码</label>
-                    <div className="flex items-center gap-2">
-                      <p className="text-sm font-mono text-gray-800">{customer.group_code}</p>
+                    <label className="text-xs text-gray-400">客户名称</label>
+                    <div className="flex items-center gap-1.5">
+                      <p className="text-sm font-medium text-gray-800">{customer?.name}</p>
+                      {customer?.name && (
+                        <button
+                          onClick={() => {
+                            navigator.clipboard.writeText(customer.name || '');
+                            toast({ title: '已复制', description: '客户名称已复制到剪贴板' });
+                          }}
+                          className="text-gray-300 hover:text-indigo-600 transition-colors"
+                          title="复制客户名称"
+                        >
+                          <Copy className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-400">群码</label>
+                    <div className="flex items-center gap-1.5">
+                      <p className="text-sm font-mono text-gray-800">{customer?.group_code || '-'}</p>
+                      {customer?.group_code && (
+                        <button
+                          onClick={() => {
+                            navigator.clipboard.writeText(customer.group_code || '');
+                            toast({ title: '已复制', description: '群码已复制到剪贴板' });
+                          }}
+                          className="text-gray-300 hover:text-indigo-600 transition-colors"
+                          title="复制群码"
+                        >
+                          <Copy className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-400">客户群名称</label>
+                    <div className="flex items-center gap-1.5">
+                      <p className="text-sm text-gray-800">{customer?.customer_group_name || '-'}</p>
+                      {customer?.customer_group_name && (
+                        <button
+                          onClick={() => {
+                            navigator.clipboard.writeText(customer.customer_group_name || '');
+                            toast({ title: '已复制', description: '客户群名称已复制到剪贴板' });
+                          }}
+                          className="text-gray-300 hover:text-indigo-600 transition-colors"
+                          title="复制客户群名称"
+                        >
+                          <Copy className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-400">客户别名</label>
+                    <div className="flex items-center gap-1.5">
+                      <p className="text-sm text-gray-800">{customer?.alias || '-'}</p>
                       <button
                         onClick={() => {
-                          navigator.clipboard.writeText(customer.group_code || '');
-                          toast({ title: '已复制', description: '群码已复制到剪贴板' });
+                          setAliasValue(customer?.alias || '');
+                          setShowAliasEditor(true);
                         }}
-                        className="text-gray-400 hover:text-indigo-600"
-                        title="复制群码"
+                        className="text-xs text-indigo-600 hover:text-indigo-700"
                       >
-                        <Copy className="w-3.5 h-3.5" />
+                        编辑
                       </button>
                     </div>
                   </div>
-                )}
-                {customer?.customer_group_name && (
-                  <div>
-                    <label className="text-xs text-gray-400 uppercase">客户群名称</label>
-                    <div className="flex items-center gap-2">
-                      <p className="text-sm text-gray-800">{customer.customer_group_name}</p>
-                      <button
-                        onClick={() => {
-                          navigator.clipboard.writeText(customer.customer_group_name || '');
-                          toast({ title: '已复制', description: '客户群名称已复制到剪贴板' });
-                        }}
-                        className="text-gray-400 hover:text-indigo-600"
-                        title="复制客户群名称"
-                      >
-                        <Copy className="w-3.5 h-3.5" />
-                      </button>
+                  {customer?.phone && (
+                    <div className="col-span-2">
+                      <label className="text-xs text-gray-400">联系电话</label>
+                      <p className="text-sm text-gray-800">{customer.phone}</p>
                     </div>
-                  </div>
-                )}
-                <div>
-                  <label className="text-xs text-gray-400 uppercase">客户别名</label>
-                  <div className="flex items-center gap-2">
-                    <p className="text-sm text-gray-800">{customer?.alias || '-'}</p>
-                    <button
-                      onClick={() => {
-                        setAliasValue(customer?.alias || '');
-                        setShowAliasEditor(true);
-                      }}
-                      className="text-xs text-indigo-600 hover:text-indigo-700"
-                    >
-                      编辑
-                    </button>
-                  </div>
-                </div>
-                {customer?.phone && (
-                  <div>
-                    <label className="text-xs text-gray-400 uppercase">联系电话</label>
-                    <p className="text-sm text-gray-800">{customer.phone}</p>
-                  </div>
-                )}
+                  )}
                 {/* 门户信息 */}
                 {customer?.portal_token && (
                   <div className="col-span-2 pt-3 border-t mt-3">
@@ -2088,12 +2087,13 @@ export default function ProjectDetailPage() {
                     </div>
                   </div>
                 )}
+                </div>
               </div>
             </div>
 
-            {/* 设计负责人 */}
-            <div className="bg-white rounded-xl p-6 border">
-              <div className="flex items-center justify-between mb-4">
+            {/* 第二行：设计负责人 */}
+            <div className="bg-white rounded-xl p-5 border">
+              <div className="flex items-center justify-between mb-3">
                 <h3 className="text-sm font-semibold text-gray-800 flex items-center gap-2">
                   <User className="w-4 h-4 text-indigo-600" />
                   设计负责人
@@ -2114,24 +2114,21 @@ export default function ProjectDetailPage() {
               {techUsers.length === 0 ? (
                 <p className="text-sm text-gray-400">暂无分配</p>
               ) : (
-                <div className="space-y-3">
+                <div className="flex flex-wrap gap-4">
                   {(techUsers || []).map((tech) => {
-                    // 只有管理员或本人才能看到提成
                     const canSeeCommission = isManager || tech.id === user?.id;
                     return (
-                      <div key={tech.id} className="flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 text-white flex items-center justify-center font-semibold">
-                            {tech.name.charAt(0)}
-                          </div>
-                          <div>
-                            <p className="text-sm font-medium text-gray-800">{tech.name}</p>
-                            {canSeeCommission && tech.commission !== null ? (
-                              <p className="text-xs text-green-600">提成: ¥{tech.commission}</p>
-                            ) : canSeeCommission ? (
-                              <p className="text-xs text-gray-400">未设置提成</p>
-                            ) : null}
-                          </div>
+                      <div key={tech.id} className="flex items-center gap-3 bg-gray-50 rounded-lg px-4 py-3">
+                        <div className="w-9 h-9 rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 text-white flex items-center justify-center font-semibold text-sm">
+                          {tech.name.charAt(0)}
+                        </div>
+                        <div>
+                          <p className="text-sm font-medium text-gray-800">{tech.name}</p>
+                          {canSeeCommission && tech.commission !== null ? (
+                            <p className="text-xs text-green-600">提成: ¥{tech.commission}</p>
+                          ) : canSeeCommission ? (
+                            <p className="text-xs text-gray-400">未设置提成</p>
+                          ) : null}
                         </div>
                         {canAssignProject() && (
                           <button
@@ -2155,7 +2152,7 @@ export default function ProjectDetailPage() {
             
             {/* 客户评价（仅在设计评价阶段或已完工时显示） */}
             {(project.current_status === '设计评价' || project.completed_at) && (
-              <div className="bg-white rounded-xl p-6 border col-span-3">
+              <div className="bg-white rounded-xl p-5 border">
                 <h3 className="text-sm font-semibold text-gray-800 mb-4 flex items-center gap-2">
                   <Star className="w-4 h-4 text-yellow-500" />
                   客户评价
