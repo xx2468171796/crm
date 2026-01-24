@@ -580,19 +580,21 @@ function getProjects($pdo, $user, $customerId = 0) {
     
     // 数据权限过滤
     if (!isAdmin($user)) {
-        if ($user['role'] === 'sales') {
-            // 销售只看自己创建的或客户归属自己的项目
-            $sql .= " AND (p.created_by = ? OR c.owner_user_id = ?)";
-            $params[] = $user['id'];
-            $params[] = $user['id'];
-        } elseif ($user['role'] === 'tech') {
-            // 技术看分配给自己的项目 或 自己创建的项目
+        // 使用RBAC检查用户角色（用户可能同时拥有多个角色）
+        $hasSalesRole = RoleCode::hasRole($user['id'], 'sales');
+        $hasTechRole = RoleCode::hasRole($user['id'], 'tech') || $user['role'] === 'tech';
+        
+        if ($hasSalesRole || $hasTechRole) {
+            // 销售/技术：看自己创建的、客户归属自己的、或分配给自己的项目
             $sql .= " AND (
-                p.created_by = ? OR EXISTS (
+                p.created_by = ? 
+                OR c.owner_user_id = ?
+                OR EXISTS (
                     SELECT 1 FROM project_tech_assignments pta 
                     WHERE pta.project_id = p.id AND pta.tech_user_id = ?
                 )
             )";
+            $params[] = $user['id'];
             $params[] = $user['id'];
             $params[] = $user['id'];
         } elseif ($user['role'] === 'dept_leader') {
