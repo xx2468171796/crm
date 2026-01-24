@@ -51,7 +51,7 @@ try {
             c.id as customer_id, c.name as customer_name, 
             c.group_code as customer_group_code, c.customer_group as customer_group_name,
             c.alias as customer_alias, c.mobile as customer_phone,
-            pl.token as portal_token
+            pl.token as portal_token, pl.password as portal_password
         FROM projects p
         LEFT JOIN customers c ON p.customer_id = c.id AND c.deleted_at IS NULL
         LEFT JOIN portal_links pl ON pl.customer_id = c.id AND pl.enabled = 1
@@ -189,6 +189,7 @@ try {
                 'phone' => $isManager ? $project['customer_phone'] : null,
                 // 门户信息
                 'portal_token' => $project['portal_token'] ?? null,
+                'portal_password' => $project['portal_password'] ?? null,
             ],
             'tech_users' => $techList,
             'statuses' => $STATUS_LIST,

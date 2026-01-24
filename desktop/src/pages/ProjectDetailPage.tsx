@@ -2038,6 +2038,23 @@ export default function ProjectDetailPage() {
                 {customer?.portal_token && (
                   <div className="col-span-2 pt-3 border-t mt-3">
                     <label className="text-xs text-gray-400 uppercase mb-2 block">客户门户</label>
+                    {/* 密码显示 */}
+                    {customer.portal_password && (
+                      <div className="flex items-center gap-2 mb-2 text-sm">
+                        <span className="text-gray-500">密码:</span>
+                        <span className="font-mono bg-gray-100 px-2 py-0.5 rounded">{customer.portal_password}</span>
+                        <button
+                          onClick={() => {
+                            navigator.clipboard.writeText(customer.portal_password || '');
+                            toast({ title: '已复制', description: '密码已复制到剪贴板' });
+                          }}
+                          className="text-gray-400 hover:text-indigo-600 transition-colors"
+                          title="复制密码"
+                        >
+                          <Copy className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    )}
                     <div className="flex items-center gap-2 flex-wrap">
                       <a
                         href={`${serverUrl}/portal.php?token=${customer.portal_token}&project_id=${project.id}`}
@@ -2082,7 +2099,7 @@ export default function ProjectDetailPage() {
                         className="inline-flex items-center gap-1 px-3 py-1.5 bg-gray-100 text-gray-700 text-xs rounded-lg hover:bg-gray-200 transition-colors"
                       >
                         <Lock className="w-3.5 h-3.5" />
-                        管理密码
+                        {customer.portal_password ? '修改密码' : '设置密码'}
                       </button>
                     </div>
                   </div>
