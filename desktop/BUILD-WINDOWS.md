@@ -1,12 +1,14 @@
 # Windows 环境桌面端打包规范
 
 > 本文档适用于在 **Windows 环境** 下打包桌面端应用
+> 
+> 如果在 **Linux 环境** 下交叉编译，请参考 `BUILD.md`
 
 ## 快速打包命令
 
 ```powershell
-# 1. 进入桌面端目录
-cd d:\aiDDDDDDM\WWW\CRM\desktop
+# 1. 进入当前项目的桌面端目录
+cd <项目根目录>\desktop
 
 # 2. 拉取最新代码
 git pull origin master
@@ -18,8 +20,8 @@ npm install
 npm run tauri build
 
 # 5. 打包产物位置
-# 免安装exe: desktop\src-tauri\target\release\tech-resource-sync.exe
-# 安装包:    desktop\src-tauri\target\release\bundle\nsis\项目管理工具_x.x.x_x64-setup.exe
+# 免安装exe: <项目根目录>\desktop\src-tauri\target\release\tech-resource-sync.exe
+# 安装包:    <项目根目录>\desktop\src-tauri\target\release\bundle\nsis\项目管理工具_x.x.x_x64-setup.exe
 ```
 
 ## 详细打包流程
@@ -27,7 +29,7 @@ npm run tauri build
 ### 第一步：拉取最新代码
 
 ```powershell
-cd d:\aiDDDDDDM\WWW\CRM
+cd <项目根目录>
 git pull origin master
 ```
 
@@ -78,8 +80,8 @@ if ($nsisPath) {
 
 | 类型 | 文件路径 | 说明 |
 |------|----------|------|
-| 免安装exe | `output\tech-resource-sync-v{版本号}.exe` | 直接运行，无需安装 |
-| 安装包 | `output\项目管理工具_{版本号}_x64-setup.exe` | NSIS安装程序 |
+| 免安装exe | `<项目根目录>\output\tech-resource-sync-v{版本号}.exe` | 直接运行，无需安装 |
+| 安装包 | `<项目根目录>\output\项目管理工具_{版本号}_x64-setup.exe` | NSIS安装程序 |
 
 ## 版本号管理
 
@@ -166,7 +168,7 @@ npm install
 
 ## 一键打包脚本
 
-创建 `build-windows.ps1`：
+创建 `build-windows.ps1`（放在项目根目录）：
 
 ```powershell
 # Windows 一键打包脚本
@@ -174,8 +176,11 @@ $ErrorActionPreference = "Stop"
 
 Write-Host "=== 开始打包 ===" -ForegroundColor Green
 
-# 进入目录
-Set-Location "d:\aiDDDDDDM\WWW\CRM\desktop"
+# 获取脚本所在目录作为项目根目录
+$ProjectRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
+
+# 进入桌面端目录
+Set-Location "$ProjectRoot\desktop"
 
 # 拉取代码
 Write-Host "拉取最新代码..." -ForegroundColor Yellow
@@ -194,17 +199,17 @@ $version = (Get-Content package.json | ConvertFrom-Json).version
 
 # 复制到输出目录
 Write-Host "复制到输出目录..." -ForegroundColor Yellow
-if (!(Test-Path "..\output")) { New-Item -ItemType Directory -Path "..\output" }
-Copy-Item "src-tauri\target\release\tech-resource-sync.exe" "..\output\tech-resource-sync-v$version.exe"
+if (!(Test-Path "$ProjectRoot\output")) { New-Item -ItemType Directory -Path "$ProjectRoot\output" }
+Copy-Item "src-tauri\target\release\tech-resource-sync.exe" "$ProjectRoot\output\tech-resource-sync-v$version.exe"
 
 $nsisPath = Get-ChildItem "src-tauri\target\release\bundle\nsis\*.exe" -ErrorAction SilentlyContinue
 if ($nsisPath) {
-    Copy-Item $nsisPath.FullName "..\output\"
+    Copy-Item $nsisPath.FullName "$ProjectRoot\output\"
 }
 
 Write-Host "=== 打包完成 ===" -ForegroundColor Green
 Write-Host "版本: $version" -ForegroundColor Cyan
-Write-Host "输出目录: d:\aiDDDDDDM\WWW\CRM\output\" -ForegroundColor Cyan
+Write-Host "输出目录: $ProjectRoot\output\" -ForegroundColor Cyan
 ```
 
 运行脚本：
