@@ -73,7 +73,7 @@ export default function ProjectKanbanPage() {
   const navigate = useNavigate();
   const { token } = useAuthStore();
   const { serverUrl, rootDir } = useSettingsStore();
-  const { canManageProjects } = usePermissionsStore();
+  const { canManageProjects, canCreateProject } = usePermissionsStore();
   const { toast } = useToast();
   
   // 状态
@@ -133,6 +133,7 @@ export default function ProjectKanbanPage() {
   const [creatingProject, setCreatingProject] = useState(false);
   
   const isManager = canManageProjects();
+  const canCreate = canCreateProject();
 
   // 加载看板数据
   const loadKanban = useCallback(async () => {
@@ -688,7 +689,7 @@ export default function ProjectKanbanPage() {
                           {customer.project_count} 个项目
                         </span>
                       </button>
-                      {isManager && (
+                      {canCreate && (
                         <button
                           onClick={(e) => {
                             e.stopPropagation();

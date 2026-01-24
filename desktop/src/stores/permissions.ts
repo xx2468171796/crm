@@ -65,6 +65,7 @@ interface PermissionsState {
   isAdmin: () => boolean;
   isTechManager: () => boolean;
   canManageProjects: () => boolean;
+  canCreateProject: () => boolean;
   canApproveFiles: () => boolean;
   canEditProjectStatus: () => boolean;
   canAssignProject: () => boolean;
@@ -129,6 +130,12 @@ export const usePermissionsStore = create<PermissionsState>()(
       canManageProjects: () => {
         const { data } = get();
         return data?.abilities.can_manage_all_projects || false;
+      },
+
+      canCreateProject: () => {
+        const { data } = get();
+        // 使用后端返回的 project.create 权限
+        return data?.project?.create || false;
       },
 
       canApproveFiles: () => {
