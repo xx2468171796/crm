@@ -340,6 +340,7 @@ function handlePost($pdo, $user) {
         }
     } else {
         // 兼容旧的JSON方式
+        $asyncUploadFile = null; // 初始化异步上传文件变量
         $data = json_decode(file_get_contents('php://input'), true);
         if ($data) {
             $projectId = intval($data['project_id'] ?? $projectId);
@@ -401,22 +402,29 @@ function handlePost($pdo, $user) {
     ]);
     
     // 如果使用异步上传，先返回响应再执行S3上传
-    if (isset($asyncUploadFile) && file_exists($asyncUploadFile)) {
+    if (isset($asyncUploadFile) && $asyncUploadFile && file_exists($asyncUploadFile)) {
+        error_log("[DELIVERABLES] Async upload mode, returning response immediately");
         $response = json_encode([
             'success' => true,
             'message' => '交付物上传成功',
             'data' => ['id' => $deliverableId, 'async' => true]
         ], JSON_UNESCAPED_UNICODE);
         
+        // 清除所有输出缓冲
+        while (ob_get_level() > 0) {
+            ob_end_clean();
+        }
+        
         header('Content-Type: application/json; charset=utf-8');
         header('Content-Length: ' . strlen($response));
+        header('Connection: close');
+        
         echo $response;
         
         // 立即刷新输出缓冲区并结束请求
         if (function_exists('fastcgi_finish_request')) {
             fastcgi_finish_request();
         } else {
-            ob_end_flush();
             flush();
         }
         
