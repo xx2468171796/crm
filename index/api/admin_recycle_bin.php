@@ -166,7 +166,7 @@ function handleRestore($user) {
 }
 
 /**
- * 真删除文件（含S3）
+ * 真删除文件（含S3，异步删除S3）
  */
 function handleDelete($user) {
     $input = json_decode(file_get_contents('php://input'), true);
@@ -186,31 +186,40 @@ function handleDelete($user) {
         exit;
     }
     
-    // 删除S3文件
-    $s3Deleted = false;
-    if (!empty($file['file_path'])) {
-        try {
-            $s3 = new S3Service();
-            $s3->deleteObject($file['file_path']);
-            $s3Deleted = true;
-        } catch (Exception $e) {
-            error_log('[admin_recycle_bin] S3删除失败: ' . $e->getMessage());
-        }
-    }
+    $filePath = $file['file_path'];
     
-    // 删除数据库记录
+    // 先删除数据库记录
     $stmt = $pdo->prepare("DELETE FROM deliverables WHERE id = ?");
     $stmt->execute([$fileId]);
     
-    echo json_encode([
+    // 先返回响应
+    $response = json_encode([
         'success' => true,
         'message' => '文件已彻底删除',
         'data' => [
             'id' => $fileId,
             'filename' => $file['deliverable_name'],
-            's3_deleted' => $s3Deleted,
         ],
     ], JSON_UNESCAPED_UNICODE);
+    
+    while (ob_get_level() > 0) ob_end_clean();
+    header('Content-Type: application/json; charset=utf-8');
+    header('Content-Length: ' . strlen($response));
+    header('Connection: close');
+    echo $response;
+    if (function_exists('fastcgi_finish_request')) fastcgi_finish_request();
+    else flush();
+    
+    // 后台异步删除S3文件
+    if (!empty($filePath)) {
+        try {
+            $s3 = new S3Service();
+            $s3->deleteObject($filePath);
+            error_log("[admin_recycle_bin] S3删除成功: $filePath");
+        } catch (Exception $e) {
+            error_log('[admin_recycle_bin] S3删除失败: ' . $e->getMessage());
+        }
+    }
 }
 
 /**
