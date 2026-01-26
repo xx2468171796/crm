@@ -528,11 +528,23 @@ function handleDirectUpload($pdo, $customer, $projectId) {
     $storageKey = trim($storageConfig['prefix'] ?? '', '/') . '/' . $basePath . '/' . $uniqueName;
     $storageKey = ltrim($storageKey, '/');
     
-    // 异步上传优化：先保存到SSD队列目录，立即返回成功，后台worker异步上传到S3
+    // 异步上传优化：先保存到SSD缓存目录，立即返回成功，后台worker异步上传到S3
+    // 使用专用的SSD缓存目录（5GB配额）
     if ($useAsyncUpload) {
-        $queueDir = '/tmp/portal_upload_queue';
+        $queueDir = '/opt/portal_upload_cache';
         if (!is_dir($queueDir)) {
             mkdir($queueDir, 0755, true);
+        }
+        
+        // 检查缓存目录大小，超过5GB时回退到同步上传
+        $cacheSize = 0;
+        foreach (glob($queueDir . '/*') as $f) {
+            if (is_file($f) && !str_ends_with($f, '.json')) {
+                $cacheSize += filesize($f);
+            }
+        }
+        if ($cacheSize > 5 * 1024 * 1024 * 1024) { // 5GB
+            $useAsyncUpload = false;
         }
         
         // 保存文件到SSD队列目录
