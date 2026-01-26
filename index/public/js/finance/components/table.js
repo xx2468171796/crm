@@ -22,6 +22,9 @@ const FinanceTableComponent = {
         // 2. 客户信息
         html += `<td>`;
         html += `<div>${utils.escapeHtml(row.customer_name || '')}</div>`;
+        if (row.customer_group_name) {
+            html += `<div class="small"><span class="badge bg-info text-white cursor-pointer" style="cursor:pointer;" onclick="FinanceTableComponent.copyGroupName('${utils.escapeHtml(row.customer_group_name)}')" title="点击复制群名称">${utils.escapeHtml(row.customer_group_name)}</span></div>`;
+        }
         html += `<div class="small text-muted">${utils.escapeHtml(row.customer_code || '')} ${utils.escapeHtml(row.customer_mobile || '')}</div>`;
         html += `</td>`;
         
@@ -126,6 +129,29 @@ const FinanceTableComponent = {
         
         const el4 = document.getElementById('summarySumUnpaid');
         if (el4) el4.textContent = FinanceDashboardUtils.formatMoney(summary.sum_unpaid);
+    },
+
+    /**
+     * 复制群名称到剪贴板
+     */
+    copyGroupName(groupName) {
+        if (!groupName) return;
+        navigator.clipboard.writeText(groupName).then(() => {
+            // 显示复制成功提示
+            const toast = document.createElement('div');
+            toast.className = 'position-fixed top-0 end-0 p-3';
+            toast.style.zIndex = '9999';
+            toast.innerHTML = `<div class="toast show" role="alert">
+                <div class="toast-body bg-success text-white rounded">
+                    已复制: ${groupName}
+                </div>
+            </div>`;
+            document.body.appendChild(toast);
+            setTimeout(() => toast.remove(), 2000);
+        }).catch(err => {
+            console.error('复制失败:', err);
+            alert('复制失败，请手动复制: ' + groupName);
+        });
     }
 };
 

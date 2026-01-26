@@ -256,6 +256,8 @@ class FinanceDashboardService
                 cu.customer_code,
                 cu.owner_user_id,
                 cu.activity_tag,
+                cu.customer_group AS customer_group_name,
+                cu.group_code AS customer_group_code,
                 u.realname AS sales_name,
                 ou.realname AS owner_name,
                 COUNT(i.id) AS installment_count,

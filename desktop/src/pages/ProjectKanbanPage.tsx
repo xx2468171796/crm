@@ -1009,7 +1009,17 @@ export default function ProjectKanbanPage() {
                         <div className="font-semibold text-gray-800 mb-1 pr-6">{project.project_name}</div>
                         <div className="text-sm text-gray-500">{project.customer_name}</div>
                         {project.customer_group_name && (
-                          <div className="text-xs text-gray-400 mb-2">{project.customer_group_name}</div>
+                          <div 
+                            className="text-xs text-blue-500 mb-2 cursor-pointer hover:text-blue-700"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              navigator.clipboard.writeText(project.customer_group_name || '');
+                              toast({ title: '已复制', description: project.customer_group_name });
+                            }}
+                            title="点击复制群名称"
+                          >
+                            {project.customer_group_name}
+                          </div>
                         )}
                         
                         {/* 设计负责人 */}
@@ -1109,7 +1119,21 @@ export default function ProjectKanbanPage() {
                             <div className="text-xs text-gray-400 font-mono">{project.project_code}</div>
                           </td>
                           <td className="px-4 py-3 text-sm text-gray-600">{project.customer_name}</td>
-                          <td className="px-4 py-3 text-sm text-gray-600">{project.customer_group_name || '-'}</td>
+                          <td className="px-4 py-3 text-sm">
+                            {project.customer_group_name ? (
+                              <span 
+                                className="text-blue-500 cursor-pointer hover:text-blue-700"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  navigator.clipboard.writeText(project.customer_group_name || '');
+                                  toast({ title: '已复制', description: project.customer_group_name });
+                                }}
+                                title="点击复制群名称"
+                              >
+                                {project.customer_group_name}
+                              </span>
+                            ) : '-'}
+                          </td>
                           <td className="px-4 py-3">
                             <div className="flex -space-x-1">
                               {project.tech_users.slice(0, 3).map((tech) => (
