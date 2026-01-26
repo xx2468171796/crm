@@ -662,6 +662,7 @@ const ResourceCenter = (function() {
                 }
                 
                 hideUploadProgressModal();
+                showAlertModal(`上传成功: ${file.name}`, 'success');
                 
             } catch (error) {
                 console.error('[RC_DEBUG] Upload error:', error);
