@@ -110,8 +110,8 @@ function handleInit($input, $cacheDir, $user) {
         $storageKey = "groups/{$groupCode}/{$assetTypeDir}/{$cleanFilename}";
     }
     
-    // 分片大小 50MB
-    $partSize = 50 * 1024 * 1024;
+    // 分片大小 90MB
+    $partSize = 90 * 1024 * 1024;
     $totalParts = (int)ceil($filesize / $partSize);
     
     // 创建上传目录
