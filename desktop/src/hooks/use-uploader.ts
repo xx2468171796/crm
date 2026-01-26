@@ -69,7 +69,7 @@ export function useUploader() {
     const formData = new FormData();
     formData.append('upload_id', uploadId);
     formData.append('part_number', partNumber.toString());
-    formData.append('chunk', new Blob([data]));
+    formData.append('chunk', new Blob([data as unknown as BlobPart]));
     
     const baseUrl = getApiBaseUrl();
     const token = useAuthStore.getState().token;
@@ -150,7 +150,6 @@ export function useUploader() {
         });
       }
 
-      const uploadedParts: Array<{ PartNumber: number; ETag: string }> = [];
       let uploadedCount = task.uploadedParts || 0;
 
       for (let partNumber = uploadedCount + 1; partNumber <= totalParts; partNumber++) {
