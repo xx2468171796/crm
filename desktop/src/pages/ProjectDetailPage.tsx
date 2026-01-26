@@ -1121,7 +1121,7 @@ export default function ProjectDetailPage() {
     
     // 2. 并发分片上传到本地缓存（3个并发）
     const CONCURRENT_UPLOADS = 3;
-    let completedParts = 0;
+    const completedPartsRef = { count: 0 };
     
     const uploadPart = async (partNumber: number): Promise<void> => {
       let retries = 3;
@@ -1152,9 +1152,10 @@ export default function ProjectDetailPage() {
             throw new Error(uploadData.error || `分片 ${partNumber} 上传失败`);
           }
           
-          completedParts++;
-          console.log(`[Upload] 分片 ${partNumber} 完成 (${completedParts}/${total_parts})`);
-          setUploadProgress({ current: completedParts, total: total_parts, filename: file.name });
+          completedPartsRef.count++;
+          const currentCount = completedPartsRef.count;
+          console.log(`[Upload] 分片 ${partNumber} 完成 (${currentCount}/${total_parts})`);
+          setUploadProgress({ current: currentCount, total: total_parts, filename: file.name });
           return;
         } catch (err: any) {
           lastError = err;
