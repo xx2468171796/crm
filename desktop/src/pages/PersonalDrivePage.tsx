@@ -552,65 +552,7 @@ export default function PersonalDrivePage() {
     });
   };
 
-  // 上传单个分片
-  const uploadChunk = (taskId: string, uploadId: string, chunkIndex: number, chunk: Blob, totalSize: number, previousBytes: number): Promise<void> => {
-    return new Promise((resolve, reject) => {
-      const xhr = new XMLHttpRequest();
-
-      xhr.upload.onprogress = (e) => {
-        if (e.lengthComputable) {
-          const totalUploaded = previousBytes + e.loaded;
-          const progress = Math.round((totalUploaded / totalSize) * 100);
-          const elapsed = (Date.now() - uploadStartTimeRef.current) / 1000;
-          const speed = totalUploaded / elapsed;
-          const remaining = (totalSize - totalUploaded) / speed;
-
-          setUploadQueue(prev => prev.map(t => 
-            t.id === taskId ? {
-              ...t,
-              progress,
-              uploadedBytes: totalUploaded,
-              speed,
-              remainingTime: remaining,
-              currentChunk: chunkIndex + 1,
-            } : t
-          ));
-        }
-      };
-
-      xhr.onload = () => {
-        if (xhr.status >= 200 && xhr.status < 300) {
-          try {
-            const data = JSON.parse(xhr.responseText);
-            if (data.success) {
-              resolve();
-            } else {
-              reject(new Error(data.error || '分片上传失败'));
-            }
-          } catch {
-            reject(new Error('解析响应失败'));
-          }
-        } else {
-          reject(new Error(`HTTP ${xhr.status}`));
-        }
-      };
-
-      xhr.onerror = () => reject(new Error('网络错误'));
-      xhr.onabort = () => reject(new DOMException('Aborted', 'AbortError'));
-
-      abortControllerRef.current?.signal.addEventListener('abort', () => xhr.abort());
-
-      const formData = new FormData();
-      formData.append('upload_id', uploadId);
-      formData.append('chunk_index', String(chunkIndex));
-      formData.append('chunk', chunk);
-
-      xhr.open('POST', `${serverUrl}/api/personal_drive_chunk_upload.php?action=upload_chunk`);
-      xhr.setRequestHeader('Authorization', `Bearer ${token}`);
-      xhr.send(formData);
-    });
-  };
-
+  
   // 暂停/继续上传
   const togglePauseUpload = (taskId: string) => {
     const task = uploadQueue.find(t => t.id === taskId);
