@@ -60,10 +60,6 @@ if (empty($uploadId) || empty($storageKey) || empty($parts)) {
 $pdo = Db::pdo();
 
 try {
-    // 完成分片上传
-    $multipart = new MultipartUploadService();
-    $result = $multipart->complete($storageKey, $uploadId, $parts);
-    
     // 确定审批状态
     $approvalStatus = ($fileCategory === 'artwork_file') ? 'pending' : 'approved';
     
@@ -71,7 +67,7 @@ try {
     $extension = strtolower(pathinfo($filename, PATHINFO_EXTENSION));
     $deliverableType = getDeliverableType($extension);
     
-    // 插入数据库记录
+    // 先插入数据库记录（标记为处理中）
     $now = time();
     $stmt = $pdo->prepare("
         INSERT INTO deliverables (
@@ -99,14 +95,42 @@ try {
     
     $deliverableId = $pdo->lastInsertId();
     
-    echo json_encode([
+    // 先返回响应给前端
+    $response = json_encode([
         'success' => true,
         'data' => [
             'deliverable_id' => $deliverableId,
             'storage_key' => $storageKey,
-            'etag' => $result['etag'] ?? '',
+            'async' => true,
         ]
     ], JSON_UNESCAPED_UNICODE);
+    
+    // 清除输出缓冲
+    while (ob_get_level() > 0) {
+        ob_end_clean();
+    }
+    
+    header('Content-Type: application/json; charset=utf-8');
+    header('Content-Length: ' . strlen($response));
+    header('Connection: close');
+    header('X-Accel-Buffering: no');
+    
+    echo $response;
+    
+    if (function_exists('fastcgi_finish_request')) {
+        fastcgi_finish_request();
+    } else {
+        flush();
+    }
+    
+    // 后台异步完成S3分片合并
+    try {
+        $multipart = new MultipartUploadService();
+        $result = $multipart->complete($storageKey, $uploadId, $parts);
+        error_log("[RC_UPLOAD_COMPLETE] S3 merge success: $storageKey, etag=" . ($result['etag'] ?? ''));
+    } catch (Exception $e) {
+        error_log("[RC_UPLOAD_COMPLETE] S3 merge failed: " . $e->getMessage());
+    }
     
 } catch (Exception $e) {
     http_response_code(500);
