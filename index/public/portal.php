@@ -2258,11 +2258,24 @@ if (empty($token)) {
             formData.append('project_id', currentProjectId);
             formData.append('file', file);
             
+            let uploadComplete = false;
             const xhr = new XMLHttpRequest();
             xhr.upload.addEventListener('progress', (e) => {
                 if (e.lengthComputable) {
                     const percent = Math.round(e.loaded / e.total * 100);
                     callbacks.onChunkProgress(0, 1, percent);
+                    // 传输完成100%后，显示服务器处理中状态
+                    if (percent >= 100 && !uploadComplete) {
+                        uploadComplete = true;
+                        callbacks.onMerging && callbacks.onMerging();
+                    }
+                }
+            });
+            // 传输结束事件（备用，确保显示处理中状态）
+            xhr.upload.addEventListener('loadend', () => {
+                if (!uploadComplete) {
+                    uploadComplete = true;
+                    callbacks.onMerging && callbacks.onMerging();
                 }
             });
             xhr.addEventListener('load', () => {
