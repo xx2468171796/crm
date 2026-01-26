@@ -243,7 +243,7 @@ export default function ProjectDetailPage() {
   const [uploading, setUploading] = useState(false);
   const [uploadCategory, setUploadCategory] = useState<(typeof FILE_CATEGORIES)[number]>('作品文件');
   const [showUploadModal, setShowUploadModal] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState<{ current: number; total: number; filename: string } | null>(null);
+  const [uploadProgress, setUploadProgress] = useState<{ current: number; total: number; filename: string; percent?: number } | null>(null);
   const [dragOver, setDragOver] = useState(false);
   type PendingUploadItem =
     | { kind: 'web'; file: File }
@@ -1089,7 +1089,7 @@ export default function ProjectDetailPage() {
     const mimeType = file.type || 'application/octet-stream';
     
     console.log('[Upload] 开始本地缓存分片上传:', { fileName: file.name, size: file.size, category, groupCode });
-    setUploadProgress({ current: 0, total: 1, filename: file.name });
+    setUploadProgress({ current: 0, total: 1, filename: file.name, percent: 0 });
     
     // 1. 初始化分片上传（使用新的本地缓存API）
     console.log('[Upload] 步骤1: 初始化分片上传...');
@@ -1117,11 +1117,78 @@ export default function ProjectDetailPage() {
     }
     
     const { upload_id, part_size, total_parts } = initData.data;
-    setUploadProgress({ current: 0, total: total_parts, filename: file.name });
+    setUploadProgress({ current: 0, total: total_parts, filename: file.name, percent: 0 });
     
-    // 2. 并发分片上传到本地缓存（3个并发）
+    // 2. 并发分片上传到本地缓存（3个并发）- 使用XMLHttpRequest实现实时进度
     const CONCURRENT_UPLOADS = 3;
+    const chunkProgressRef: Record<number, number> = {};
     const completedPartsRef = { count: 0 };
+    
+    const uploadPartWithProgress = (partNumber: number): Promise<void> => {
+      return new Promise((resolve, reject) => {
+        const start = (partNumber - 1) * part_size;
+        const end = Math.min(start + part_size, file.size);
+        const chunk = file.slice(start, end);
+        const chunkSize = end - start;
+        
+        const xhr = new XMLHttpRequest();
+        
+        xhr.upload.onprogress = (e) => {
+          if (e.lengthComputable) {
+            chunkProgressRef[partNumber] = e.loaded;
+            const totalUploaded = Object.values(chunkProgressRef).reduce((a, b) => a + b, 0);
+            const percent = Math.round((totalUploaded / file.size) * 100);
+            setUploadProgress({ 
+              current: completedPartsRef.count, 
+              total: total_parts, 
+              filename: file.name,
+              percent 
+            });
+          }
+        };
+        
+        xhr.onload = () => {
+          if (xhr.status >= 200 && xhr.status < 300) {
+            try {
+              const data = JSON.parse(xhr.responseText);
+              if (data.success) {
+                chunkProgressRef[partNumber] = chunkSize;
+                completedPartsRef.count++;
+                console.log(`[Upload] 分片 ${partNumber} 完成 (${completedPartsRef.count}/${total_parts})`);
+                const totalUploaded = Object.values(chunkProgressRef).reduce((a, b) => a + b, 0);
+                const percent = Math.round((totalUploaded / file.size) * 100);
+                setUploadProgress({ 
+                  current: completedPartsRef.count, 
+                  total: total_parts, 
+                  filename: file.name,
+                  percent 
+                });
+                resolve();
+              } else {
+                reject(new Error(data.error || `分片 ${partNumber} 上传失败`));
+              }
+            } catch {
+              reject(new Error('解析响应失败'));
+            }
+          } else {
+            reject(new Error(`HTTP ${xhr.status}`));
+          }
+        };
+        
+        xhr.onerror = () => reject(new Error('网络错误'));
+        xhr.ontimeout = () => reject(new Error('上传超时'));
+        
+        const formData = new FormData();
+        formData.append('upload_id', upload_id);
+        formData.append('part_number', partNumber.toString());
+        formData.append('chunk', chunk);
+        
+        xhr.open('POST', `${serverUrl}/api/desktop_chunk_upload.php`);
+        xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+        xhr.timeout = 300000; // 5分钟超时
+        xhr.send(formData);
+      });
+    };
     
     const uploadPart = async (partNumber: number): Promise<void> => {
       let retries = 3;
@@ -1129,39 +1196,14 @@ export default function ProjectDetailPage() {
       
       while (retries > 0) {
         try {
-          const start = (partNumber - 1) * part_size;
-          const end = Math.min(start + part_size, file.size);
-          const chunk = file.slice(start, end);
-          
-          const formData = new FormData();
-          formData.append('upload_id', upload_id);
-          formData.append('part_number', partNumber.toString());
-          formData.append('chunk', chunk);
-          
-          const uploadRes = await fetch(`${serverUrl}/api/desktop_chunk_upload.php`, {
-            method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${token}`,
-            },
-            body: formData,
-          });
-          
-          const uploadData = await parseJsonResponse(uploadRes, `步骤2-part-${partNumber}`);
-          
-          if (!uploadData.success) {
-            throw new Error(uploadData.error || `分片 ${partNumber} 上传失败`);
-          }
-          
-          completedPartsRef.count++;
-          const currentCount = completedPartsRef.count;
-          console.log(`[Upload] 分片 ${partNumber} 完成 (${currentCount}/${total_parts})`);
-          setUploadProgress({ current: currentCount, total: total_parts, filename: file.name });
+          await uploadPartWithProgress(partNumber);
           return;
         } catch (err: any) {
           lastError = err;
           retries--;
           if (retries > 0) {
             console.warn(`[Upload] 分片 ${partNumber} 失败，剩余重试次数: ${retries}`, err);
+            delete chunkProgressRef[partNumber];
             await new Promise(r => setTimeout(r, 1000));
           }
         }
@@ -3043,12 +3085,12 @@ export default function ProjectDetailPage() {
                       <p className="text-xs text-blue-500 mb-2 truncate">{uploadProgress.filename}</p>
                       <div className="w-full bg-blue-200 rounded-full h-2">
                         <div 
-                          className="bg-blue-500 h-2 rounded-full transition-all duration-300"
-                          style={{ width: `${Math.round((uploadProgress.current / uploadProgress.total) * 100)}%` }}
+                          className="bg-blue-500 h-2 rounded-full transition-all duration-100"
+                          style={{ width: `${uploadProgress.percent ?? Math.round((uploadProgress.current / uploadProgress.total) * 100)}%` }}
                         />
                       </div>
                       <p className="text-xs text-blue-500 mt-1 text-right">
-                        {Math.round((uploadProgress.current / uploadProgress.total) * 100)}%
+                        {uploadProgress.percent ?? Math.round((uploadProgress.current / uploadProgress.total) * 100)}%
                       </p>
                     </div>
                   )}
