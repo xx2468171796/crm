@@ -20,6 +20,9 @@ $assetType = $input['asset_type'] ?? '';
 $filename = $input['filename'] ?? '';
 $filesize = (int)($input['filesize'] ?? 0);
 
+// 调试日志
+error_log("[DESKTOP_UPLOAD] input: projectId=$projectId, assetType=$assetType, filename=$filename, filesize=$filesize");
+
 // 从 storage_key 解析信息（兼容旧版本桌面端）
 // 格式: groups/{group_code}/{project_name}/{category}/{filename}
 if ($storageKey && ($projectId <= 0 || !$assetType || !$filename)) {
