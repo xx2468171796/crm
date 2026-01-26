@@ -838,7 +838,16 @@ const ResourceCenter = (function() {
         const modal = document.getElementById('rcUploadProgressModal');
         if (modal) {
             const bsModal = bootstrap.Modal.getInstance(modal);
-            if (bsModal) bsModal.hide();
+            if (bsModal) {
+                bsModal.hide();
+            } else {
+                // 如果没有实例，直接隐藏
+                modal.classList.remove('show');
+                modal.style.display = 'none';
+                document.body.classList.remove('modal-open');
+                const backdrop = document.querySelector('.modal-backdrop');
+                if (backdrop) backdrop.remove();
+            }
         }
     }
     
