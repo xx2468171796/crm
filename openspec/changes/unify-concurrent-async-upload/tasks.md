@@ -13,6 +13,7 @@
 - [x] 2.2 修改use-uploader.ts使用新API
 - [x] 2.3 修改ProjectDetailPage.tsx支持3并发上传
 - [x] 2.4 修改use-auto-sync.ts支持3并发上传
+- [x] 2.5 修改PersonalDrivePage.tsx支持3并发上传
 
 ## 3. Web端前端修改
 - [x] 3.1 修改resource-center.js支持3并发上传

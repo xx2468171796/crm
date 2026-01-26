@@ -424,9 +424,10 @@ export default function PersonalDrivePage() {
     });
   };
 
-  // 大文件分片上传
+  // 大文件分片上传（3并发）
   const uploadLargeFile = async (task: UploadTask) => {
     const totalChunks = Math.ceil(task.fileSize / CHUNK_SIZE);
+    const CONCURRENT_UPLOADS = 3;
 
     // 1. 初始化上传
     const initRes = await fetch(`${serverUrl}/api/personal_drive_chunk_upload.php?action=init`, {
@@ -454,19 +455,25 @@ export default function PersonalDrivePage() {
       t.id === task.id ? { ...t, uploadId, totalChunks } : t
     ));
 
-    // 2. 上传分片
-    let uploadedBytes = 0;
-    for (let i = 0; i < totalChunks; i++) {
+    // 2. 并发上传分片（3并发）
+    const chunkProgress: Record<number, number> = {};
+    
+    const uploadSingleChunk = async (chunkIndex: number): Promise<void> => {
       if (abortControllerRef.current?.signal.aborted) {
         throw new DOMException('Aborted', 'AbortError');
       }
 
-      const start = i * CHUNK_SIZE;
+      const start = chunkIndex * CHUNK_SIZE;
       const end = Math.min(start + CHUNK_SIZE, task.fileSize);
       const chunk = task.file.slice(start, end);
 
-      await uploadChunk(task.id, uploadId, i, chunk, task.fileSize, uploadedBytes);
-      uploadedBytes += chunk.size;
+      await uploadChunkConcurrent(task.id, uploadId, chunkIndex, chunk, task.fileSize, chunkProgress);
+    };
+
+    const chunkIndexes = Array.from({ length: totalChunks }, (_, i) => i);
+    for (let i = 0; i < chunkIndexes.length; i += CONCURRENT_UPLOADS) {
+      const batch = chunkIndexes.slice(i, i + CONCURRENT_UPLOADS);
+      await Promise.all(batch.map(idx => uploadSingleChunk(idx)));
     }
 
     // 3. 完成上传
@@ -483,6 +490,66 @@ export default function PersonalDrivePage() {
     if (!completeData.success) {
       throw new Error(completeData.error || '完成上传失败');
     }
+  };
+  
+  // 并发上传单个分片
+  const uploadChunkConcurrent = (taskId: string, uploadId: string, chunkIndex: number, chunk: Blob, totalSize: number, chunkProgress: Record<number, number>): Promise<void> => {
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable) {
+          chunkProgress[chunkIndex] = e.loaded;
+          const totalUploaded = Object.values(chunkProgress).reduce((a, b) => a + b, 0);
+          const progress = Math.round((totalUploaded / totalSize) * 100);
+          const elapsed = (Date.now() - uploadStartTimeRef.current) / 1000;
+          const speed = totalUploaded / elapsed;
+          const remaining = (totalSize - totalUploaded) / speed;
+
+          setUploadQueue(prev => prev.map(t => 
+            t.id === taskId ? {
+              ...t,
+              progress,
+              uploadedBytes: totalUploaded,
+              speed,
+              remainingTime: remaining,
+            } : t
+          ));
+        }
+      };
+
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          try {
+            const data = JSON.parse(xhr.responseText);
+            if (data.success) {
+              chunkProgress[chunkIndex] = chunk.size;
+              resolve();
+            } else {
+              reject(new Error(data.error || '分片上传失败'));
+            }
+          } catch {
+            reject(new Error('解析响应失败'));
+          }
+        } else {
+          reject(new Error(`HTTP ${xhr.status}`));
+        }
+      };
+
+      xhr.onerror = () => reject(new Error('网络错误'));
+      xhr.onabort = () => reject(new DOMException('Aborted', 'AbortError'));
+
+      abortControllerRef.current?.signal.addEventListener('abort', () => xhr.abort());
+
+      const formData = new FormData();
+      formData.append('upload_id', uploadId);
+      formData.append('chunk_index', String(chunkIndex));
+      formData.append('chunk', chunk);
+
+      xhr.open('POST', `${serverUrl}/api/personal_drive_chunk_upload.php?action=upload_chunk`);
+      xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+      xhr.send(formData);
+    });
   };
 
   // 上传单个分片
