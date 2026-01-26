@@ -78,7 +78,8 @@ return [
         // S3_USE_PATH_STYLE - 1=路径样式(MinIO), 0=虚拟主机样式(AWS/阿里云)
         // ============================================
         
-        'endpoint'       => ($__s3Endpoint = getenv('S3_ENDPOINT') ?: 'https://ss3.ankotti.com'),
+        // 使用HTTP而非HTTPS，本地MinIO容器HTTPS加密开销太大（12秒 vs 0.005秒）
+        'endpoint'       => ($__s3Endpoint = getenv('S3_ENDPOINT') ?: 'http://ss3.ankotti.com'),
         'region'         => getenv('S3_REGION') ?: 'cn-default',
         'bucket'         => getenv('S3_BUCKET') ?: 'crm20260116',
         'access_key'     => getenv('S3_ACCESS_KEY') ?: 'L9G8IjSqWbftIWkkDkyu',
