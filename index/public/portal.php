@@ -2287,6 +2287,10 @@ if (empty($token)) {
                             if (res.data?.timings_ms) {
                                 console.log(`  ✓ 服务器处理耗时: S3=${res.data.timings_ms.s3_upload}ms, DB=${res.data.timings_ms.db_insert}ms, 总计=${res.data.timings_ms.total}ms`);
                             }
+                            // 打印异步上传调试信息
+                            if (res.data?.async_debug) {
+                                console.log('  [ASYNC_DEBUG]', JSON.stringify(res.data.async_debug));
+                            }
                             callbacks.onChunkComplete(0, 1);
                             resolve(res);
                         } else {
