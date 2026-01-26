@@ -79,10 +79,14 @@ function handleInit($user) {
         // 生成上传ID
         $uploadId = uniqid('upload_', true) . '_' . time();
         
-        // 创建临时目录
-        $tempDir = sys_get_temp_dir() . '/drive_chunks/' . $uploadId;
+        // 创建临时目录（使用SSD缓存目录）
+        $cacheBaseDir = __DIR__ . '/../../storage/upload_cache/drive_chunks';
+        if (!is_dir($cacheBaseDir)) {
+            mkdir($cacheBaseDir, 0777, true);
+        }
+        $tempDir = $cacheBaseDir . '/' . $uploadId;
         if (!is_dir($tempDir)) {
-            mkdir($tempDir, 0755, true);
+            mkdir($tempDir, 0777, true);
         }
         
         // 处理相对路径（文件夹上传）
@@ -141,7 +145,8 @@ function handleUploadChunk($user) {
         return;
     }
     
-    $tempDir = sys_get_temp_dir() . '/drive_chunks/' . $uploadId;
+    $cacheBaseDir = __DIR__ . '/../../storage/upload_cache/drive_chunks';
+    $tempDir = $cacheBaseDir . '/' . $uploadId;
     $infoFile = $tempDir . '/info.json';
     
     if (!file_exists($infoFile)) {
@@ -200,7 +205,8 @@ function handleComplete($user) {
         return;
     }
     
-    $tempDir = sys_get_temp_dir() . '/drive_chunks/' . $uploadId;
+    $cacheBaseDir = __DIR__ . '/../../storage/upload_cache/drive_chunks';
+    $tempDir = $cacheBaseDir . '/' . $uploadId;
     $infoFile = $tempDir . '/info.json';
     
     if (!file_exists($infoFile)) {
@@ -301,7 +307,8 @@ function handleAbort($user) {
         return;
     }
     
-    $tempDir = sys_get_temp_dir() . '/drive_chunks/' . $uploadId;
+    $cacheBaseDir = __DIR__ . '/../../storage/upload_cache/drive_chunks';
+    $tempDir = $cacheBaseDir . '/' . $uploadId;
     cleanupTempDir($tempDir);
     
     echo json_encode(['success' => true, 'message' => '上传已取消']);
