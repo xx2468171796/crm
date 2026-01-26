@@ -767,6 +767,7 @@ const ResourceCenter = (function() {
             };
             
             xhr.onload = function() {
+                console.log('[RC_DEBUG] xhr.onload triggered, status:', xhr.status, 'response:', xhr.responseText.substring(0, 200));
                 try {
                     const result = JSON.parse(xhr.responseText);
                     if (result.success) {
@@ -775,12 +776,18 @@ const ResourceCenter = (function() {
                         reject(new Error(result.message || '上传失败'));
                     }
                 } catch (e) {
+                    console.error('[RC_DEBUG] JSON parse error:', e, 'response:', xhr.responseText);
                     reject(new Error('服务器响应异常'));
                 }
             };
             
             xhr.onerror = function() {
+                console.error('[RC_DEBUG] xhr.onerror triggered');
                 reject(new Error('网络错误'));
+            };
+            
+            xhr.onreadystatechange = function() {
+                console.log('[RC_DEBUG] readyState:', xhr.readyState, 'status:', xhr.status);
             };
             
             xhr.send(formData);
