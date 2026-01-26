@@ -104,16 +104,38 @@ try {
     $storageKey = trim($storageConfig['prefix'] ?? '', '/') . '/' . $basePath . '/' . $uniqueName;
     $storageKey = ltrim($storageKey, '/');
     
-    // 上传到S3
-    $s3 = new S3StorageProvider($storageConfig, []);
-    $uploadResult = $s3->putObject($storageKey, $file['tmp_name'], [
-        'ContentType' => $file['type'] ?? 'application/octet-stream'
-    ]);
+    // 异步上传优化
+    $fileSize = $file['size'];
+    $mimeType = $file['type'] ?? 'application/octet-stream';
+    $tmpPath = $file['tmp_name'];
+    $useAsyncUpload = $fileSize <= 2 * 1024 * 1024 * 1024;
+    $asyncUploadFile = null;
     
-    if (!$uploadResult || empty($uploadResult['success'])) {
-        http_response_code(500);
-        echo json_encode(['error' => '文件上传到存储失败']);
-        exit;
+    if ($useAsyncUpload) {
+        $cacheDir = __DIR__ . '/../../storage/upload_cache';
+        if (!is_dir($cacheDir)) mkdir($cacheDir, 0777, true);
+        
+        $cacheFile = $cacheDir . '/' . uniqid('pfile_') . '_' . $uniqueName;
+        if (copy($tmpPath, $cacheFile)) {
+            file_put_contents($cacheFile . '.json', json_encode([
+                'storage_key' => $storageKey, 'mime_type' => $mimeType,
+                'file_size' => $fileSize, 'create_time' => time()
+            ]));
+            $asyncUploadFile = $cacheFile;
+        } else {
+            $useAsyncUpload = false;
+        }
+    }
+    
+    if (!$useAsyncUpload) {
+        $s3 = new S3StorageProvider($storageConfig, []);
+        $uploadResult = $s3->putObject($storageKey, $tmpPath, ['mime_type' => $mimeType]);
+        
+        if (!$uploadResult || empty($uploadResult['storage_key'])) {
+            http_response_code(500);
+            echo json_encode(['error' => '文件上传到存储失败']);
+            exit;
+        }
     }
     
     // 记录到deliverables表
@@ -132,6 +154,29 @@ try {
         'portal',
         time()
     ]);
+    
+    // 异步上传：先返回响应再执行S3上传
+    if ($asyncUploadFile && file_exists($asyncUploadFile)) {
+        $response = json_encode([
+            'success' => true,
+            'data' => ['original_name' => $originalName, 'stored_name' => $storedName, 'file_size' => $fileSize, 'message' => '文件上传成功', 'async' => true]
+        ]);
+        header('Content-Type: application/json');
+        header('Content-Length: ' . strlen($response));
+        echo $response;
+        if (function_exists('fastcgi_finish_request')) fastcgi_finish_request();
+        else { ob_end_flush(); flush(); }
+        
+        try {
+            $s3 = new S3StorageProvider($storageConfig, []);
+            $meta = json_decode(file_get_contents($asyncUploadFile . '.json'), true);
+            $s3->putObject($meta['storage_key'], $asyncUploadFile, ['mime_type' => $meta['mime_type']]);
+            @unlink($asyncUploadFile . '.json');
+        } catch (Exception $e) {
+            error_log("[PFILE_ASYNC] S3 upload failed: " . $e->getMessage());
+        }
+        exit;
+    }
     
     echo json_encode([
         'success' => true,
