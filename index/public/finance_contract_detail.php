@@ -56,7 +56,7 @@ if ($contractId <= 0) {
 }
 
 $contract = Db::queryOne(
-    'SELECT c.*, cu.name AS customer_name, cu.customer_code, cu.mobile AS customer_mobile, cu.activity_tag, cu.owner_user_id, u.realname AS sales_name, signer.realname AS signer_name, owner.realname AS owner_name
+    'SELECT c.*, cu.name AS customer_name, cu.customer_code, cu.mobile AS customer_mobile, cu.activity_tag, cu.owner_user_id, cu.customer_group AS customer_group_name, u.realname AS sales_name, signer.realname AS signer_name, owner.realname AS owner_name
      FROM finance_contracts c
      INNER JOIN customers cu ON cu.id = c.customer_id
      LEFT JOIN users u ON u.id = c.sales_user_id
@@ -285,6 +285,9 @@ layout_header('合同详情');
             <div class="text-muted small mt-1">
                 <span class="me-3"><i class="bi bi-hash"></i> <?= htmlspecialchars($contract['contract_no'] ?? '') ?></span>
                 <span><i class="bi bi-person"></i> <?= htmlspecialchars($contract['customer_name'] ?? '') ?>（<?= htmlspecialchars($contract['customer_code'] ?? '') ?>）</span>
+                <?php if (!empty($contract['customer_group_name'])): ?>
+                <span class="ms-2"><span class="badge bg-info text-white" style="cursor:pointer;" onclick="copyGroupName('<?= htmlspecialchars(addslashes($contract['customer_group_name']), ENT_QUOTES) ?>')" title="点击复制群名称"><?= htmlspecialchars($contract['customer_group_name']) ?></span></span>
+                <?php endif; ?>
             </div>
         </div>
         <div class="d-flex gap-2">
@@ -1521,6 +1524,21 @@ document.getElementById('statusNewStatus').addEventListener('change', function()
         renderVoucherPreview();
     }
 });
+
+// 复制群名称到剪贴板
+function copyGroupName(groupName) {
+    if (!groupName) return;
+    navigator.clipboard.writeText(groupName).then(() => {
+        const toast = document.createElement('div');
+        toast.className = 'position-fixed top-0 end-0 p-3';
+        toast.style.zIndex = '9999';
+        toast.innerHTML = `<div class="toast show" role="alert"><div class="toast-body bg-success text-white rounded">已复制: ${groupName}</div></div>`;
+        document.body.appendChild(toast);
+        setTimeout(() => toast.remove(), 2000);
+    }).catch(err => {
+        alert('复制失败，请手动复制: ' + groupName);
+    });
+}
 </script>
 
 <?php
