@@ -359,6 +359,7 @@ if ($viewMode === 'staff_summary') {
         cu.customer_code,
         cu.owner_user_id,
         cu.activity_tag,
+        cu.customer_group AS customer_group_name,
         u.realname AS signer_name,
         ou.realname AS owner_name,
         COUNT(i.id) AS installment_count,
@@ -408,6 +409,7 @@ if ($viewMode === 'staff_summary') {
         cu.customer_code,
         cu.owner_user_id,
         cu.activity_tag,
+        cu.customer_group AS customer_group_name,
         u.realname AS signer_name,
         ou.realname AS owner_name,
         coll.realname AS collector_name,
@@ -1406,6 +1408,9 @@ finance_sidebar_start('finance_dashboard');
                             <?php else: ?>
                                 <td>
                                     <div><?= htmlspecialchars($row['customer_name'] ?? '') ?></div>
+                                    <?php if (!empty($row['customer_group_name'])): ?>
+                                    <div class="small"><span class="badge bg-info text-white" style="cursor:pointer;" onclick="copyGroupName('<?= htmlspecialchars(addslashes($row['customer_group_name']), ENT_QUOTES) ?>')" title="点击复制群名称"><?= htmlspecialchars($row['customer_group_name']) ?></span></div>
+                                    <?php endif; ?>
                                     <div class="small text-muted"><?= htmlspecialchars($row['customer_code'] ?? '') ?> <?= htmlspecialchars($row['customer_mobile'] ?? '') ?></div>
                                 </td>
                                 <td>
@@ -1690,6 +1695,27 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
 });
+
+// 复制群名称到剪贴板
+function copyGroupName(groupName) {
+    if (!groupName) return;
+    navigator.clipboard.writeText(groupName).then(() => {
+        // 显示复制成功提示
+        const toast = document.createElement('div');
+        toast.className = 'position-fixed top-0 end-0 p-3';
+        toast.style.zIndex = '9999';
+        toast.innerHTML = `<div class="toast show" role="alert">
+            <div class="toast-body bg-success text-white rounded">
+                已复制: ${groupName}
+            </div>
+        </div>`;
+        document.body.appendChild(toast);
+        setTimeout(() => toast.remove(), 2000);
+    }).catch(err => {
+        console.error('复制失败:', err);
+        alert('复制失败，请手动复制: ' + groupName);
+    });
+}
 </script>
 <?php
 finance_sidebar_end();
