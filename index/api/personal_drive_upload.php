@@ -83,16 +83,44 @@ try {
     $storageKey = trim($storageConfig['prefix'] ?? '', '/') . '/' . $fullPath . '/' . $uniqueName;
     $storageKey = ltrim($storageKey, '/');
     
-    // 上传到S3
-    $s3 = new S3StorageProvider($storageConfig, []);
-    $uploadResult = $s3->putObject($storageKey, $file['tmp_name'], [
-        'mime_type' => $file['type'] ?? 'application/octet-stream'
-    ]);
+    // 异步上传优化：2GB以下文件使用异步上传
+    $fileSize = $file['size'];
+    $mimeType = $file['type'] ?? 'application/octet-stream';
+    $tmpPath = $file['tmp_name'];
+    $useAsyncUpload = $fileSize <= 2 * 1024 * 1024 * 1024;
+    $asyncUploadFile = null;
     
-    if (!$uploadResult || empty($uploadResult['storage_key'])) {
-        http_response_code(500);
-        echo json_encode(['error' => '文件上传到存储失败']);
-        exit;
+    if ($useAsyncUpload) {
+        // 先复制文件到SSD缓存目录
+        $cacheDir = __DIR__ . '/../../storage/upload_cache';
+        if (!is_dir($cacheDir)) {
+            mkdir($cacheDir, 0777, true);
+        }
+        
+        $cacheFile = $cacheDir . '/' . uniqid('drive_') . '_' . $uniqueName;
+        if (copy($tmpPath, $cacheFile)) {
+            file_put_contents($cacheFile . '.json', json_encode([
+                'storage_key' => $storageKey,
+                'mime_type' => $mimeType,
+                'file_size' => $fileSize,
+                'create_time' => time()
+            ]));
+            $asyncUploadFile = $cacheFile;
+        } else {
+            $useAsyncUpload = false;
+        }
+    }
+    
+    if (!$useAsyncUpload) {
+        // 同步上传到S3
+        $s3 = new S3StorageProvider($storageConfig, []);
+        $uploadResult = $s3->putObject($storageKey, $tmpPath, ['mime_type' => $mimeType]);
+        
+        if (!$uploadResult || empty($uploadResult['storage_key'])) {
+            http_response_code(500);
+            echo json_encode(['error' => '文件上传到存储失败']);
+            exit;
+        }
     }
     
     // 记录到数据库
@@ -117,6 +145,44 @@ try {
     // 更新已用空间
     $stmt = $pdo->prepare("UPDATE personal_drives SET used_storage = used_storage + ?, update_time = ? WHERE id = ?");
     $stmt->execute([$file['size'], time(), $drive['id']]);
+    
+    // 如果使用异步上传，先返回响应再执行S3上传
+    if ($asyncUploadFile && file_exists($asyncUploadFile)) {
+        $fileId = $pdo->lastInsertId();
+        $response = json_encode([
+            'success' => true,
+            'data' => [
+                'id' => $fileId,
+                'filename' => $filename,
+                'file_size' => $fileSize,
+                'message' => '上传成功',
+                'async' => true
+            ]
+        ]);
+        
+        header('Content-Type: application/json; charset=utf-8');
+        header('Content-Length: ' . strlen($response));
+        echo $response;
+        
+        if (function_exists('fastcgi_finish_request')) {
+            fastcgi_finish_request();
+        } else {
+            ob_end_flush();
+            flush();
+        }
+        
+        // 后台执行S3上传
+        try {
+            $s3 = new S3StorageProvider($storageConfig, []);
+            $meta = json_decode(file_get_contents($asyncUploadFile . '.json'), true);
+            $s3->putObject($meta['storage_key'], $asyncUploadFile, ['mime_type' => $meta['mime_type']]);
+            @unlink($asyncUploadFile . '.json');
+            error_log("[DRIVE_ASYNC] S3 upload success: {$meta['storage_key']}");
+        } catch (Exception $e) {
+            error_log("[DRIVE_ASYNC] S3 upload failed: " . $e->getMessage());
+        }
+        exit;
+    }
     
     echo json_encode([
         'success' => true,
