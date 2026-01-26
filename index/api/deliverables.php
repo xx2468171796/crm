@@ -418,6 +418,7 @@ function handlePost($pdo, $user) {
         header('Content-Type: application/json; charset=utf-8');
         header('Content-Length: ' . strlen($response));
         header('Connection: close');
+        header('X-Accel-Buffering: no'); // 禁用Nginx缓冲
         
         echo $response;
         
