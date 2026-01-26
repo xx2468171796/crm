@@ -187,6 +187,7 @@ class S3StorageProvider extends AbstractStorageProvider
 
     public function putObject(string $storageKey, string $sourcePath, array $options = []): array
     {
+        $t0 = microtime(true);
         if (!is_file($sourcePath)) {
             throw new RuntimeException('上传源文件不存在: ' . $sourcePath);
         }
@@ -194,16 +195,37 @@ class S3StorageProvider extends AbstractStorageProvider
         if ($bytes === false) {
             throw new RuntimeException('无法读取文件大小: ' . $sourcePath);
         }
-        $payloadHash = hash_file('sha256', $sourcePath);
+        
+        // 小文件使用UNSIGNED-PAYLOAD跳过SHA256计算，大幅提升速度
+        // AWS S3和MinIO都支持这个选项
+        $t1 = microtime(true);
+        if ($bytes <= 100 * 1024 * 1024) { // 100MB以下使用UNSIGNED-PAYLOAD
+            $payloadHash = 'UNSIGNED-PAYLOAD';
+        } else {
+            $payloadHash = hash_file('sha256', $sourcePath);
+        }
+        $hashTime = round((microtime(true) - $t1) * 1000);
+        
         $mime = $options['mime_type'] ?? 'application/octet-stream';
+        
+        $t2 = microtime(true);
         $this->sendRequest('PUT', $storageKey, [
             'headers' => [
                 'Content-Type' => $mime,
+                'x-amz-content-sha256' => $payloadHash, // 明确告知S3使用UNSIGNED-PAYLOAD
             ],
             'payload_hash' => $payloadHash,
             'source_path' => $sourcePath,
             'source_bytes' => $bytes,
         ]);
+        $uploadTime = round((microtime(true) - $t2) * 1000);
+        
+        // 记录慢上传（超过5秒）
+        $totalTime = round((microtime(true) - $t0) * 1000);
+        if ($totalTime > 5000) {
+            error_log("[S3_SLOW] key={$storageKey}, size={$bytes}, hash={$hashTime}ms, upload={$uploadTime}ms, total={$totalTime}ms");
+        }
+        
         if (is_file($sourcePath)) {
             @unlink($sourcePath);
         }
