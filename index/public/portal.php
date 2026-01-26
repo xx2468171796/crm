@@ -2217,16 +2217,32 @@ if (empty($token)) {
         const uploadId = initData.upload_id;
         console.log(`  ✓ 初始化成功, upload_id: ${uploadId}`);
         
-        // 2. 上传分片
-        for (let i = 0; i < totalChunks; i++) {
-            const start = i * PORTAL_CHUNK_SIZE;
+        // 2. 并发上传分片（3并发）
+        const CONCURRENT_UPLOADS = 3;
+        const chunkProgress = {};
+        let completedChunks = 0;
+        
+        const uploadSingleChunk = async (chunkIndex) => {
+            const start = chunkIndex * PORTAL_CHUNK_SIZE;
             const end = Math.min(start + PORTAL_CHUNK_SIZE, file.size);
             const chunk = file.slice(start, end);
             
-            await uploadPortalChunk(uploadId, i, chunk, (percent) => {
-                callbacks.onChunkProgress(i, totalChunks, percent);
+            await uploadPortalChunk(uploadId, chunkIndex, chunk, (percent) => {
+                chunkProgress[chunkIndex] = percent;
+                // 计算总体进度
+                const totalProgress = Object.values(chunkProgress).reduce((a, b) => a + b, 0);
+                const avgProgress = totalProgress / totalChunks;
+                callbacks.onChunkProgress(completedChunks, totalChunks, avgProgress);
             });
-            callbacks.onChunkComplete(i, totalChunks);
+            completedChunks++;
+            callbacks.onChunkComplete(completedChunks - 1, totalChunks);
+        };
+        
+        // 并发上传
+        const chunkIndexes = Array.from({ length: totalChunks }, (_, i) => i);
+        for (let i = 0; i < chunkIndexes.length; i += CONCURRENT_UPLOADS) {
+            const batch = chunkIndexes.slice(i, i + CONCURRENT_UPLOADS);
+            await Promise.all(batch.map(idx => uploadSingleChunk(idx)));
         }
         
         // 3. 完成 - 显示合并提示

@@ -19,6 +19,7 @@
 - [x] 3.1 修改resource-center.js支持3并发上传
 - [x] 3.2 修改folder-upload.js支持3并发上传
 - [x] 3.3 修改file-transfer.js支持3并发上传
+- [x] 3.4 修改portal.php客户门户支持3并发上传
 
 ## 4. 测试验证
 - [ ] 4.1 测试桌面端项目文件上传
