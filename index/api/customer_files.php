@@ -548,11 +548,23 @@ try {
         
         // 如果有异步文件，先返回响应再执行S3上传
         if ($hasAsync) {
+            // 清除所有输出缓冲
+            while (ob_get_level() > 0) {
+                ob_end_clean();
+            }
+            
             header('Content-Type: application/json; charset=utf-8');
             header('Content-Length: ' . strlen($response));
+            header('Connection: close');
+            header('X-Accel-Buffering: no'); // 禁用Nginx缓冲
+            
             echo $response;
-            if (function_exists('fastcgi_finish_request')) fastcgi_finish_request();
-            else { ob_end_flush(); flush(); }
+            
+            if (function_exists('fastcgi_finish_request')) {
+                fastcgi_finish_request();
+            } else {
+                flush();
+            }
             
             $service->processAsyncUploads();
             exit;
