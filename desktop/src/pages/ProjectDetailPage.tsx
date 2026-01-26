@@ -1119,21 +1119,20 @@ export default function ProjectDetailPage() {
     const { upload_id, part_size, total_parts } = initData.data;
     setUploadProgress({ current: 0, total: total_parts, filename: file.name });
     
-    // 2. 分片上传到本地缓存（带重试）
-    for (let partNumber = 1; partNumber <= total_parts; partNumber++) {
-      console.log(`[Upload] 步骤2: 上传分片 ${partNumber}/${total_parts} 到本地缓存...`);
-      
+    // 2. 并发分片上传到本地缓存（3个并发）
+    const CONCURRENT_UPLOADS = 3;
+    let completedParts = 0;
+    
+    const uploadPart = async (partNumber: number): Promise<void> => {
       let retries = 3;
       let lastError: Error | null = null;
       
       while (retries > 0) {
         try {
-          // 读取分片数据
           const start = (partNumber - 1) * part_size;
           const end = Math.min(start + part_size, file.size);
           const chunk = file.slice(start, end);
           
-          // 上传分片到本地缓存
           const formData = new FormData();
           formData.append('upload_id', upload_id);
           formData.append('part_number', partNumber.toString());
@@ -1153,24 +1152,30 @@ export default function ProjectDetailPage() {
             throw new Error(uploadData.error || `分片 ${partNumber} 上传失败`);
           }
           
-          console.log(`[Upload] 分片 ${partNumber} 完成`);
-          
-          // 更新进度
-          setUploadProgress({ current: partNumber, total: total_parts, filename: file.name });
-          break; // 成功，退出重试循环
+          completedParts++;
+          console.log(`[Upload] 分片 ${partNumber} 完成 (${completedParts}/${total_parts})`);
+          setUploadProgress({ current: completedParts, total: total_parts, filename: file.name });
+          return;
         } catch (err: any) {
           lastError = err;
           retries--;
           if (retries > 0) {
             console.warn(`[Upload] 分片 ${partNumber} 失败，剩余重试次数: ${retries}`, err);
-            await new Promise(r => setTimeout(r, 1000)); // 等待1秒后重试
+            await new Promise(r => setTimeout(r, 1000));
           }
         }
       }
       
-      if (retries === 0 && lastError) {
-        throw lastError;
-      }
+      throw lastError || new Error(`分片 ${partNumber} 上传失败`);
+    };
+    
+    // 并发上传所有分片
+    const partNumbers = Array.from({ length: total_parts }, (_, i) => i + 1);
+    console.log(`[Upload] 步骤2: 开始并发上传 ${total_parts} 个分片（${CONCURRENT_UPLOADS}并发）...`);
+    
+    for (let i = 0; i < partNumbers.length; i += CONCURRENT_UPLOADS) {
+      const batch = partNumbers.slice(i, i + CONCURRENT_UPLOADS);
+      await Promise.all(batch.map(partNumber => uploadPart(partNumber)));
     }
     
     // 3. 完成分片上传（服务端异步上传到S3）

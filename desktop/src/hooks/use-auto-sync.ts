@@ -110,8 +110,10 @@ export function useAutoSync() {
       
       const { upload_id, part_size, total_parts } = initData.data;
       
-      // 2. 分片上传到本地缓存
-      for (let partNumber = 1; partNumber <= total_parts; partNumber++) {
+      // 2. 并发分片上传到本地缓存（3个并发）
+      const CONCURRENT_UPLOADS = 3;
+      
+      const uploadPart = async (partNumber: number): Promise<void> => {
         const start = (partNumber - 1) * part_size;
         const end = Math.min(start + part_size, fileSize);
         const chunkData = await readFileChunk(filePath, start, end - start);
@@ -133,6 +135,13 @@ export function useAutoSync() {
         if (!uploadData.success) {
           throw new Error(uploadData.error || `分片 ${partNumber} 上传失败`);
         }
+      };
+      
+      // 并发上传所有分片
+      const partNumbers = Array.from({ length: total_parts }, (_, i) => i + 1);
+      for (let i = 0; i < partNumbers.length; i += CONCURRENT_UPLOADS) {
+        const batch = partNumbers.slice(i, i + CONCURRENT_UPLOADS);
+        await Promise.all(batch.map(partNumber => uploadPart(partNumber)));
       }
       
       // 3. 完成上传（服务端异步上传到S3）
