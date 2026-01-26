@@ -885,12 +885,14 @@ const ResourceCenter = (function() {
         const { upload_id, storage_key, part_size, total_parts, mode, presigned_urls } = initResult.data;
         console.log('[RC_DEBUG] 分片上传初始化:', upload_id, 'total_parts:', total_parts, 'mode:', mode);
         
-        // 2. 上传各分片
+        // 2. 并发上传各分片（3个并发）
+        const CONCURRENT_UPLOADS = 3;
         const parts = [];
         let totalUploaded = 0;
         const isDirect = mode === 'direct' && presigned_urls;
+        const partProgress = {}; // 记录每个分片的进度
         
-        for (let partNumber = 1; partNumber <= total_parts; partNumber++) {
+        const uploadSinglePart = async (partNumber) => {
             const start = (partNumber - 1) * part_size;
             const end = Math.min(start + part_size, file.size);
             const chunk = file.slice(start, end);
@@ -900,7 +902,8 @@ const ResourceCenter = (function() {
             if (isDirect && presigned_urls[partNumber]) {
                 // 直连模式：直接上传到 S3
                 etag = await uploadChunkDirect(presigned_urls[partNumber], chunk, (loaded) => {
-                    const currentTotal = totalUploaded + loaded;
+                    partProgress[partNumber] = loaded;
+                    const currentTotal = Object.values(partProgress).reduce((a, b) => a + b, 0);
                     const pct = Math.round((currentTotal / file.size) * 100);
                     const elapsed = (Date.now() - startTime) / 1000;
                     const speed = elapsed > 0 ? currentTotal / elapsed : 0;
@@ -909,7 +912,8 @@ const ResourceCenter = (function() {
             } else {
                 // 代理模式：通过后端代理上传
                 const chunkResult = await uploadChunkWithProgress(apiBase, upload_id, storage_key, partNumber, chunk, (loaded) => {
-                    const currentTotal = totalUploaded + loaded;
+                    partProgress[partNumber] = loaded;
+                    const currentTotal = Object.values(partProgress).reduce((a, b) => a + b, 0);
                     const pct = Math.round((currentTotal / file.size) * 100);
                     const elapsed = (Date.now() - startTime) / 1000;
                     const speed = elapsed > 0 ? currentTotal / elapsed : 0;
@@ -918,9 +922,20 @@ const ResourceCenter = (function() {
                 etag = chunkResult.data?.etag || '';
             }
             
-            totalUploaded += chunkSize;
-            parts.push({ PartNumber: partNumber, ETag: etag });
+            partProgress[partNumber] = chunkSize; // 完成后记录完整大小
+            return { PartNumber: partNumber, ETag: etag };
+        };
+        
+        // 并发上传所有分片
+        const partNumbers = Array.from({ length: total_parts }, (_, i) => i + 1);
+        for (let i = 0; i < partNumbers.length; i += CONCURRENT_UPLOADS) {
+            const batch = partNumbers.slice(i, i + CONCURRENT_UPLOADS);
+            const batchResults = await Promise.all(batch.map(pn => uploadSinglePart(pn)));
+            parts.push(...batchResults);
         }
+        
+        // 按分片号排序
+        parts.sort((a, b) => a.PartNumber - b.PartNumber);
         
         // 3. 完成上传
         const completeResponse = await fetch(`${apiBase}rc_upload_complete.php`, {

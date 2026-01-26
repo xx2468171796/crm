@@ -216,62 +216,68 @@ const FolderUploader = (function() {
     async function uploadFile(file, uploadSession, onProgress) {
         const { upload_id, storage_key, part_size, total_parts } = uploadSession;
         const parts = [];
+        const CONCURRENT_UPLOADS = 3; // 3个并发
+        let completedParts = 0;
         
-        console.log('[FU_DEBUG] uploadFile开始:', { upload_id, storage_key, part_size, total_parts, fileSize: file.size });
+        console.log('[FU_DEBUG] uploadFile开始:', { upload_id, storage_key, part_size, total_parts, fileSize: file.size, concurrent: CONCURRENT_UPLOADS });
         
-        for (let partNumber = 1; partNumber <= total_parts; partNumber++) {
+        // 构建认证头（不含Content-Type，因为body是二进制）
+        const authHeaders = {};
+        const desktopToken = localStorage.getItem('desktop_token');
+        if (desktopToken) {
+            authHeaders['Authorization'] = 'Bearer ' + desktopToken;
+        }
+        const portalToken = localStorage.getItem('portal_token');
+        if (portalToken) {
+            authHeaders['X-Portal-Token'] = portalToken;
+        }
+        
+        const uploadSinglePart = async (partNumber) => {
             const start = (partNumber - 1) * part_size;
             const end = Math.min(start + part_size, file.size);
             const chunk = file.slice(start, end);
             
             console.log('[FU_DEBUG] 上传分片 partNumber=' + partNumber);
             
-            // 通过后端代理上传分片（解决CORS问题）
             const uploadUrl = API_ENDPOINTS.uploadPart + 
                 '?upload_id=' + encodeURIComponent(upload_id) +
                 '&storage_key=' + encodeURIComponent(storage_key) +
                 '&part_number=' + partNumber;
             
-            try {
-                // 构建认证头（不含Content-Type，因为body是二进制）
-                const authHeaders = {};
-                const desktopToken = localStorage.getItem('desktop_token');
-                if (desktopToken) {
-                    authHeaders['Authorization'] = 'Bearer ' + desktopToken;
-                }
-                const portalToken = localStorage.getItem('portal_token');
-                if (portalToken) {
-                    authHeaders['X-Portal-Token'] = portalToken;
-                }
-                
-                const uploadResponse = await fetch(uploadUrl, {
-                    method: 'POST',
-                    headers: authHeaders,
-                    credentials: 'include',
-                    body: chunk,
-                });
-                
-                const result = await uploadResponse.json();
-                
-                if (!result.success) {
-                    console.error('[FU_DEBUG] 分片上传失败:', result);
-                    throw new Error(result.error || '分片上传失败');
-                }
-                
-                console.log('[FU_DEBUG] 分片上传成功, ETag=' + result.data.etag);
-                parts.push({
-                    PartNumber: partNumber,
-                    ETag: result.data.etag,
-                });
-            } catch (fetchErr) {
-                console.error('[FU_DEBUG] fetch异常:', fetchErr);
-                throw fetchErr;
+            const uploadResponse = await fetch(uploadUrl, {
+                method: 'POST',
+                headers: authHeaders,
+                credentials: 'include',
+                body: chunk,
+            });
+            
+            const result = await uploadResponse.json();
+            
+            if (!result.success) {
+                console.error('[FU_DEBUG] 分片上传失败:', result);
+                throw new Error(result.error || '分片上传失败');
             }
             
+            completedParts++;
+            console.log('[FU_DEBUG] 分片上传成功, partNumber=' + partNumber + ', ETag=' + result.data.etag + ' (' + completedParts + '/' + total_parts + ')');
+            
             if (onProgress) {
-                onProgress(partNumber, total_parts);
+                onProgress(completedParts, total_parts);
             }
+            
+            return { PartNumber: partNumber, ETag: result.data.etag };
+        };
+        
+        // 并发上传所有分片
+        const partNumbers = Array.from({ length: total_parts }, (_, i) => i + 1);
+        for (let i = 0; i < partNumbers.length; i += CONCURRENT_UPLOADS) {
+            const batch = partNumbers.slice(i, i + CONCURRENT_UPLOADS);
+            const batchResults = await Promise.all(batch.map(pn => uploadSinglePart(pn)));
+            parts.push(...batchResults);
         }
+        
+        // 按分片号排序
+        parts.sort((a, b) => a.PartNumber - b.PartNumber);
         
         return parts;
     }

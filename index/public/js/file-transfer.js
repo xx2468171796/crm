@@ -222,20 +222,26 @@ class UploadTask {
     }
     
     /**
-     * 大文件分片上传
+     * 大文件分片上传（3个并发）
      */
     async _uploadChunked() {
-        for (let partNumber = 1; partNumber <= this.totalParts; partNumber++) {
+        const CONCURRENT_UPLOADS = 3;
+        const partNumbers = Array.from({ length: this.totalParts }, (_, i) => i + 1);
+        
+        for (let i = 0; i < partNumbers.length; i += CONCURRENT_UPLOADS) {
             if (this.aborted) {
                 throw new Error('上传已取消');
             }
             
-            const start = (partNumber - 1) * this.chunkSize;
-            const end = Math.min(start + this.chunkSize, this.file.size);
-            const chunk = this.file.slice(start, end);
-            
-            // 带重试的分片上传
-            await this._uploadChunkWithRetry(partNumber, chunk);
+            const batch = partNumbers.slice(i, i + CONCURRENT_UPLOADS);
+            await Promise.all(batch.map(async (partNumber) => {
+                const start = (partNumber - 1) * this.chunkSize;
+                const end = Math.min(start + this.chunkSize, this.file.size);
+                const chunk = this.file.slice(start, end);
+                
+                // 带重试的分片上传
+                await this._uploadChunkWithRetry(partNumber, chunk);
+            }));
         }
     }
     
