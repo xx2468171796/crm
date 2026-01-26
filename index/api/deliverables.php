@@ -287,6 +287,7 @@ function handlePost($pdo, $user) {
             $tmpPath = $_FILES['file']['tmp_name'];
             $mimeType = mime_content_type($tmpPath) ?: 'application/octet-stream';
             $fileSize = $_FILES['file']['size'];
+            $asyncUploadFile = null; // 初始化异步上传文件变量
             
             // 异步上传优化：2GB以下文件使用异步上传
             $useAsyncUpload = $fileSize <= 2 * 1024 * 1024 * 1024;
