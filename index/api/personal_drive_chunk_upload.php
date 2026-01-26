@@ -242,11 +242,38 @@ function handleComplete($user) {
         }
         fclose($fp);
         
-        // 上传到S3
+        // 上传到S3（异步优化已在uploadToS3函数中实现）
         $result = uploadToS3($pdo, $user, $uploadInfo, $mergedFile);
+        
+        // 检查是否使用了异步上传
+        $asyncFile = $result['_async_file'] ?? null;
+        unset($result['_async_file']);
         
         // 清理临时文件
         cleanupTempDir($tempDir);
+        
+        // 如果使用异步上传，先返回响应再执行S3上传
+        if ($asyncFile && file_exists($asyncFile)) {
+            $response = json_encode(['success' => true, 'data' => array_merge($result, ['async' => true])]);
+            header('Content-Type: application/json; charset=utf-8');
+            header('Content-Length: ' . strlen($response));
+            echo $response;
+            
+            if (function_exists('fastcgi_finish_request')) fastcgi_finish_request();
+            else { ob_end_flush(); flush(); }
+            
+            try {
+                $config = require __DIR__ . '/../config/storage.php';
+                $storageConfig = $config['s3'] ?? [];
+                $s3 = new S3StorageProvider($storageConfig, []);
+                $meta = json_decode(file_get_contents($asyncFile . '.json'), true);
+                $s3->putObject($meta['storage_key'], $asyncFile, ['mime_type' => $meta['mime_type']]);
+                @unlink($asyncFile . '.json');
+            } catch (Exception $e) {
+                error_log("[PDCHUNK_ASYNC] S3 upload failed: " . $e->getMessage());
+            }
+            return;
+        }
         
         echo json_encode([
             'success' => true,
@@ -390,14 +417,35 @@ function uploadToS3($pdo, $user, $uploadInfo, $filePath) {
     $storageKey = trim($storageConfig['prefix'] ?? '', '/') . '/' . $fullPath . '/' . $uniqueName;
     $storageKey = ltrim($storageKey, '/');
     
-    // 上传到S3
-    $s3 = new S3StorageProvider($storageConfig, []);
-    $uploadResult = $s3->putObject($storageKey, $filePath, [
-        'mime_type' => mime_content_type($filePath) ?: 'application/octet-stream'
-    ]);
+    // 异步上传优化：先记录数据库，后台执行S3上传
+    $fileSize = $uploadInfo['file_size'];
+    $mimeType = mime_content_type($filePath) ?: 'application/octet-stream';
+    $useAsyncUpload = $fileSize <= 2 * 1024 * 1024 * 1024;
+    $asyncUploadFile = null;
     
-    if (!$uploadResult || empty($uploadResult['storage_key'])) {
-        throw new Exception('文件上传到存储失败');
+    if ($useAsyncUpload) {
+        $cacheDir = __DIR__ . '/../../storage/upload_cache';
+        if (!is_dir($cacheDir)) mkdir($cacheDir, 0777, true);
+        
+        $cacheFile = $cacheDir . '/' . uniqid('pdchunk_') . '_' . $uniqueName;
+        if (copy($filePath, $cacheFile)) {
+            file_put_contents($cacheFile . '.json', json_encode([
+                'storage_key' => $storageKey, 'mime_type' => $mimeType,
+                'file_size' => $fileSize, 'create_time' => time()
+            ]));
+            $asyncUploadFile = $cacheFile;
+        } else {
+            $useAsyncUpload = false;
+        }
+    }
+    
+    if (!$useAsyncUpload) {
+        $s3 = new S3StorageProvider($storageConfig, []);
+        $uploadResult = $s3->putObject($storageKey, $filePath, ['mime_type' => $mimeType]);
+        
+        if (!$uploadResult || empty($uploadResult['storage_key'])) {
+            throw new Exception('文件上传到存储失败');
+        }
     }
     
     // 确保文件夹路径存在于数据库
@@ -433,7 +481,8 @@ function uploadToS3($pdo, $user, $uploadInfo, $filePath) {
         'filename' => $filename,
         'file_size' => $uploadInfo['file_size'],
         'folder_path' => $folderPath,
-        'message' => '上传成功'
+        'message' => '上传成功',
+        '_async_file' => $asyncUploadFile  // 传递异步文件路径给调用者
     ];
 }
 
