@@ -179,6 +179,20 @@ class S3Service
     public function exists(string $storageKey): bool
     {
         try {
+            $info = $this->headObject($storageKey);
+            return $info !== null;
+        } catch (Exception $e) {
+            return false;
+        }
+    }
+    
+    /**
+     * 获取文件元信息（HEAD请求）
+     * @return array|null ['size' => int, 'content_type' => string, 'last_modified' => string]
+     */
+    public function headObject(string $storageKey): ?array
+    {
+        try {
             $objectKey = $this->applyPrefix($storageKey);
             $url = $this->buildHeadUrl($objectKey);
             
@@ -187,15 +201,25 @@ class S3Service
                 CURLOPT_URL => $url,
                 CURLOPT_NOBODY => true,
                 CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_HEADER => true,
                 CURLOPT_TIMEOUT => 10,
             ]);
-            curl_exec($ch);
+            $response = curl_exec($ch);
             $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            $contentLength = curl_getinfo($ch, CURLINFO_CONTENT_LENGTH_DOWNLOAD);
+            $contentType = curl_getinfo($ch, CURLINFO_CONTENT_TYPE);
             curl_close($ch);
             
-            return $httpCode === 200;
+            if ($httpCode !== 200) {
+                return null;
+            }
+            
+            return [
+                'size' => (int)$contentLength,
+                'content_type' => $contentType ?: 'application/octet-stream',
+            ];
         } catch (Exception $e) {
-            return false;
+            return null;
         }
     }
     

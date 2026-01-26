@@ -89,6 +89,20 @@ try {
     $completeTime = microtime(true) - $startTime;
     error_log("[DESKTOP_UPLOAD] complete() took {$completeTime}s for $storageKey");
 
+    // 如果没有传递filesize，尝试从S3获取
+    if ($filesize <= 0) {
+        try {
+            $s3 = new S3Service();
+            $objectInfo = $s3->headObject($storageKey);
+            if (!empty($objectInfo['size'])) {
+                $filesize = (int)$objectInfo['size'];
+                error_log("[DESKTOP_UPLOAD] Got filesize from S3: $filesize");
+            }
+        } catch (Exception $e) {
+            error_log("[DESKTOP_UPLOAD] Failed to get filesize from S3: " . $e->getMessage());
+        }
+    }
+
     // 尝试落库到 deliverables（便于项目详情页 CRUD 管理）
     $deliverableId = 0;
     try {
