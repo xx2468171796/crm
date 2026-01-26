@@ -496,6 +496,10 @@ function handleDirectUpload($pdo, $customer, $projectId) {
     $tmpPath = $file['tmp_name'];
     $fileType = $file['type'] ?: 'application/octet-stream';
     
+    // 小文件优化：先保存到SSD队列目录，后台异步上传到S3
+    // 这样用户不用等待HDD的fsync
+    $useAsyncUpload = $fileSize <= 50 * 1024 * 1024; // 50MB以下使用异步上传
+    
     // 获取客户文件夹路径
     $groupCode = $project['group_code'] ?? '';
     $customerName = $project['customer_name'] ?? '未知客户';
@@ -524,6 +528,80 @@ function handleDirectUpload($pdo, $customer, $projectId) {
     $storageKey = trim($storageConfig['prefix'] ?? '', '/') . '/' . $basePath . '/' . $uniqueName;
     $storageKey = ltrim($storageKey, '/');
     
+    // 异步上传优化：先保存到SSD队列目录，立即返回成功，后台worker异步上传到S3
+    if ($useAsyncUpload) {
+        $queueDir = '/tmp/portal_upload_queue';
+        if (!is_dir($queueDir)) {
+            mkdir($queueDir, 0755, true);
+        }
+        
+        // 保存文件到SSD队列目录
+        $queueFile = $queueDir . '/' . $uniqueName;
+        if (!move_uploaded_file($tmpPath, $queueFile)) {
+            // 如果移动失败，回退到同步上传
+            $useAsyncUpload = false;
+        } else {
+            // 保存上传任务元数据
+            $taskData = [
+                'queue_file' => $queueFile,
+                'storage_key' => $storageKey,
+                'mime_type' => $fileType,
+                'project_id' => $projectId,
+                'customer_id' => $customer['id'],
+                'stored_name' => $storedName,
+                'file_size' => $fileSize,
+                'create_time' => time()
+            ];
+            file_put_contents($queueFile . '.json', json_encode($taskData));
+            
+            // 先记录到数据库（状态为pending）
+            $now = time();
+            $stmt = $pdo->prepare("
+                INSERT INTO deliverables 
+                (project_id, deliverable_name, deliverable_type, file_category, file_path, file_size, 
+                 visibility_level, approval_status, submitted_by, submitted_at, create_time, update_time)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ");
+            $stmt->execute([
+                $projectId,
+                $storedName,
+                'portal_upload',
+                'customer_file',
+                $storageKey,  // 预先设置storage_key
+                $fileSize,
+                'client',
+                'approved',
+                $customer['id'],
+                $now,
+                $now,
+                $now
+            ]);
+            
+            // 触发后台上传（使用nohup在后台执行）
+            $workerScript = __DIR__ . '/portal_upload_worker.php';
+            if (file_exists($workerScript)) {
+                exec("nohup php {$workerScript} " . escapeshellarg($queueFile) . " > /dev/null 2>&1 &");
+            }
+            
+            $timings['async'] = true;
+            $timings['total'] = round((microtime(true) - $startTime) * 1000);
+            
+            echo json_encode([
+                'success' => true,
+                'data' => [
+                    'original_name' => $originalName,
+                    'stored_name' => $storedName,
+                    'file_size' => $fileSize,
+                    'timings_ms' => $timings,
+                    'async' => true
+                ],
+                'message' => '文件上传成功'
+            ]);
+            return;
+        }
+    }
+    
+    // 同步上传（大文件或异步失败时）
     $s3StartTime = microtime(true);
     $s3 = new S3StorageProvider($storageConfig, []);
     $uploadResult = $s3->putObject($storageKey, $tmpPath, [
@@ -575,7 +653,7 @@ function handleDirectUpload($pdo, $customer, $projectId) {
             'original_name' => $originalName,
             'stored_name' => $storedName,
             'file_size' => $fileSize,
-            'timings_ms' => $timings  // 返回给前端用于调试
+            'timings_ms' => $timings
         ],
         'message' => '文件上传成功'
     ]);
