@@ -1077,7 +1077,7 @@ export default function ProjectDetailPage() {
     }
   };
 
-  // 上传文件核心逻辑（使用分片上传 API，支持进度回调）
+  // 上传文件核心逻辑（使用本地缓存分片上传 API，支持进度回调）
   const uploadFile = async (file: File, category: (typeof FILE_CATEGORIES)[number]) => {
     if (!serverUrl || !token || !project) {
       console.log('[Upload] 缺少必要参数:', { serverUrl: !!serverUrl, token: !!token, project: !!project });
@@ -1086,25 +1086,24 @@ export default function ProjectDetailPage() {
     
     const groupCode = customer?.group_code || `P${project.id}`;
     const assetType = category === '客户文件' ? 'customer' : category === '模型文件' ? 'models' : 'works';
-    const relPath = file.name;
     const mimeType = file.type || 'application/octet-stream';
     
-    console.log('[Upload] 开始分片上传:', { fileName: file.name, size: file.size, category, groupCode });
+    console.log('[Upload] 开始本地缓存分片上传:', { fileName: file.name, size: file.size, category, groupCode });
     setUploadProgress({ current: 0, total: 1, filename: file.name });
     
-    // 1. 初始化分片上传
+    // 1. 初始化分片上传（使用新的本地缓存API）
     console.log('[Upload] 步骤1: 初始化分片上传...');
-    const initRes = await fetch(`${serverUrl}/api/desktop_upload_init.php`, {
+    const initRes = await fetch(`${serverUrl}/api/desktop_chunk_upload.php`, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${token}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
+        action: 'init',
         group_code: groupCode,
         project_id: project.id,
         asset_type: assetType,
-        rel_path: relPath,
         filename: file.name,
         filesize: file.size,
         mime_type: mimeType,
@@ -1117,62 +1116,44 @@ export default function ProjectDetailPage() {
       throw new Error(initData.error || '初始化上传失败');
     }
     
-    const { upload_id, storage_key, part_size, total_parts } = initData.data;
-    const parts: Array<{ PartNumber: number; ETag: string }> = [];
+    const { upload_id, part_size, total_parts } = initData.data;
     setUploadProgress({ current: 0, total: total_parts, filename: file.name });
     
-    // 2. 分片上传（带重试）
+    // 2. 分片上传到本地缓存（带重试）
     for (let partNumber = 1; partNumber <= total_parts; partNumber++) {
-      console.log(`[Upload] 步骤2: 上传分片 ${partNumber}/${total_parts}...`);
+      console.log(`[Upload] 步骤2: 上传分片 ${partNumber}/${total_parts} 到本地缓存...`);
       
       let retries = 3;
       let lastError: Error | null = null;
       
       while (retries > 0) {
         try {
-          // 获取分片预签名 URL
-          const partUrlRes = await fetch(`${serverUrl}/api/desktop_upload_part_url.php`, {
-            method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${token}`,
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              upload_id,
-              storage_key,
-              part_number: partNumber,
-            }),
-          });
-          const partUrlData = await parseJsonResponse(partUrlRes, `步骤2-part_url-${partNumber}`);
-          
-          if (!partUrlData.success || !partUrlData.data) {
-            throw new Error(partUrlData.error || '获取分片URL失败');
-          }
-          
-          // 读取分片数据（使用 Blob 而不是一次性 arrayBuffer，减少内存压力）
+          // 读取分片数据
           const start = (partNumber - 1) * part_size;
           const end = Math.min(start + part_size, file.size);
           const chunk = file.slice(start, end);
           
-          // 上传分片
-          const uploadRes = await fetch(partUrlData.data.presigned_url, {
-            method: 'PUT',
-            body: chunk,
+          // 上传分片到本地缓存
+          const formData = new FormData();
+          formData.append('upload_id', upload_id);
+          formData.append('part_number', partNumber.toString());
+          formData.append('chunk', chunk);
+          
+          const uploadRes = await fetch(`${serverUrl}/api/desktop_chunk_upload.php`, {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${token}`,
+            },
+            body: formData,
           });
           
-          if (!uploadRes.ok) {
-            throw new Error(`分片 ${partNumber} 上传失败: HTTP ${uploadRes.status}`);
+          const uploadData = await parseJsonResponse(uploadRes, `步骤2-part-${partNumber}`);
+          
+          if (!uploadData.success) {
+            throw new Error(uploadData.error || `分片 ${partNumber} 上传失败`);
           }
-
-          const etagRaw = uploadRes.headers.get('ETag') || uploadRes.headers.get('etag') || '';
-          const etag = etagRaw.replace(/"/g, '');
-          console.log(`[Upload] 分片 ${partNumber} 上传响应:`, {
-            status: uploadRes.status,
-            etagRaw,
-            etag,
-          });
-          parts.push({ PartNumber: partNumber, ETag: etag });
-          console.log(`[Upload] 分片 ${partNumber} 完成, ETag: ${etag}`);
+          
+          console.log(`[Upload] 分片 ${partNumber} 完成`);
           
           // 更新进度
           setUploadProgress({ current: partNumber, total: total_parts, filename: file.name });
@@ -1192,18 +1173,17 @@ export default function ProjectDetailPage() {
       }
     }
     
-    // 3. 完成分片上传
-    console.log('[Upload] 步骤3: 完成分片上传...');
-    const completeRes = await fetch(`${serverUrl}/api/desktop_upload_complete.php`, {
+    // 3. 完成分片上传（服务端异步上传到S3）
+    console.log('[Upload] 步骤3: 完成分片上传（异步上传到S3）...');
+    const completeRes = await fetch(`${serverUrl}/api/desktop_chunk_upload.php`, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${token}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
+        action: 'complete',
         upload_id,
-        storage_key,
-        parts,
       }),
     });
     const completeData = await parseJsonResponse(completeRes, '步骤3-complete');

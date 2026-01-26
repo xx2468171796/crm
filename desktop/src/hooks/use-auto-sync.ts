@@ -71,7 +71,7 @@ export function useAutoSync() {
     }
   }, []);
 
-  // 上传文件
+  // 上传文件（使用本地缓存分片上传API）
   const uploadFile = useCallback(async (
     filePath: string,
     fileName: string,
@@ -85,18 +85,18 @@ export function useAutoSync() {
       const meta = await getFileMetadata(filePath);
       const fileSize = meta.size;
       
-      // 1. 初始化分片上传
-      const initRes = await fetch(`${serverUrl}/api/desktop_upload_init.php`, {
+      // 1. 初始化分片上传（使用新的本地缓存API）
+      const initRes = await fetch(`${serverUrl}/api/desktop_chunk_upload.php`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
+          action: 'init',
           group_code: groupCode,
           project_id: projectId || 0,
           asset_type: assetType,
-          rel_path: fileName,
           filename: fileName,
           filesize: fileSize,
           mime_type: 'application/octet-stream',
@@ -108,54 +108,41 @@ export function useAutoSync() {
         throw new Error(initData.error || '初始化上传失败');
       }
       
-      const { upload_id, storage_key, part_size, total_parts } = initData.data;
-      const parts: Array<{ PartNumber: number; ETag: string }> = [];
+      const { upload_id, part_size, total_parts } = initData.data;
       
-      // 2. 分片上传
+      // 2. 分片上传到本地缓存
       for (let partNumber = 1; partNumber <= total_parts; partNumber++) {
-        const partUrlRes = await fetch(`${serverUrl}/api/desktop_upload_part_url.php`, {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ upload_id, storage_key, part_number: partNumber }),
-        });
-        const partUrlData = await partUrlRes.json();
-        
-        if (!partUrlData.success || !partUrlData.data) {
-          throw new Error('获取分片URL失败');
-        }
-        
         const start = (partNumber - 1) * part_size;
         const end = Math.min(start + part_size, fileSize);
         const chunkData = await readFileChunk(filePath, start, end - start);
-        const body = chunkData.buffer.slice(
-          chunkData.byteOffset,
-          chunkData.byteOffset + chunkData.byteLength
-        ) as ArrayBuffer;
         
-        const uploadRes = await fetch(partUrlData.data.presigned_url, {
-          method: 'PUT',
-          body,
+        const formData = new FormData();
+        formData.append('upload_id', upload_id);
+        formData.append('part_number', partNumber.toString());
+        formData.append('chunk', new Blob([chunkData]));
+        
+        const uploadRes = await fetch(`${serverUrl}/api/desktop_chunk_upload.php`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+          },
+          body: formData,
         });
         
-        if (!uploadRes.ok) {
-          throw new Error(`分片上传失败: ${uploadRes.status}`);
+        const uploadData = await uploadRes.json();
+        if (!uploadData.success) {
+          throw new Error(uploadData.error || `分片 ${partNumber} 上传失败`);
         }
-        
-        const etag = uploadRes.headers.get('ETag')?.replace(/"/g, '') || '';
-        parts.push({ PartNumber: partNumber, ETag: etag });
       }
       
-      // 3. 完成上传
-      const completeRes = await fetch(`${serverUrl}/api/desktop_upload_complete.php`, {
+      // 3. 完成上传（服务端异步上传到S3）
+      const completeRes = await fetch(`${serverUrl}/api/desktop_chunk_upload.php`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ upload_id, storage_key, parts }),
+        body: JSON.stringify({ action: 'complete', upload_id }),
       });
       const completeData = await completeRes.json();
       
