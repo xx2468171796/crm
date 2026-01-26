@@ -626,8 +626,8 @@ const ResourceCenter = (function() {
             return;
         }
         
-        // 大文件阈值 10MB
-        const CHUNK_THRESHOLD = 10 * 1024 * 1024;
+        // 大文件阈值 2GB（超过2GB才使用S3直连分片上传）
+        const CHUNK_THRESHOLD = 2 * 1024 * 1024 * 1024;
         
         for (const file of files) {
             console.log('[RC_DEBUG] 上传文件:', file.name, 'size:', file.size);
@@ -1234,7 +1234,7 @@ const ResourceCenter = (function() {
                 }
                 
                 // 正常上传
-                const CHUNK_THRESHOLD = 10 * 1024 * 1024;
+                const CHUNK_THRESHOLD = 2 * 1024 * 1024 * 1024; // 2GB
                 if (file.size > CHUNK_THRESHOLD) {
                     await uploadLargeFileWithProgress(file, fileHash);
                 } else {
