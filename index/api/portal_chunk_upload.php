@@ -604,16 +604,16 @@ function handleDirectUpload($pdo, $customer, $projectId) {
                 $now
             ]);
             
-            // 触发后台上传（使用nohup在后台执行）
+            // 触发后台上传
+            // 方案1: 使用fastcgi_finish_request()立即返回响应，然后继续执行上传
+            // 方案2: 使用exec后台执行（可能在Docker中不可用）
             $workerScript = __DIR__ . '/portal_upload_worker.php';
-            if (file_exists($workerScript)) {
-                exec("nohup php {$workerScript} " . escapeshellarg($queueFile) . " > /dev/null 2>&1 &");
-            }
             
+            // 先返回响应给用户
             $timings['async'] = true;
             $timings['total'] = round((microtime(true) - $startTime) * 1000);
             
-            echo json_encode([
+            $response = json_encode([
                 'success' => true,
                 'data' => [
                     'original_name' => $originalName,
@@ -624,7 +624,36 @@ function handleDirectUpload($pdo, $customer, $projectId) {
                 ],
                 'message' => '文件上传成功'
             ]);
-            return;
+            
+            // 设置响应头并输出
+            header('Content-Type: application/json');
+            header('Content-Length: ' . strlen($response));
+            echo $response;
+            
+            // 立即刷新输出缓冲区并结束请求
+            if (function_exists('fastcgi_finish_request')) {
+                fastcgi_finish_request();
+            } else {
+                ob_end_flush();
+                flush();
+            }
+            
+            // 请求已结束，用户不用等待，现在执行S3上传
+            try {
+                $config = require __DIR__ . '/../config/storage.php';
+                $storageConfig = $config['s3'] ?? [];
+                $s3 = new S3StorageProvider($storageConfig, []);
+                $uploadResult = $s3->putObject($storageKey, $queueFile, [
+                    'mime_type' => $fileType
+                ]);
+                // 上传成功，删除元数据文件
+                @unlink($queueFile . '.json');
+                error_log("[PORTAL_ASYNC] S3 upload success: {$storedName}");
+            } catch (Exception $e) {
+                error_log("[PORTAL_ASYNC] S3 upload failed: " . $e->getMessage());
+            }
+            
+            exit; // 确保不再执行后续代码
         }
     }
     
