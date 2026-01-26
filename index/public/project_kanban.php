@@ -725,6 +725,7 @@ layout_header($pageTitle);
 // API_URL 已在 layout_header 中定义
 const CURRENT_USER_ID = <?= $user['id'] ?? 0 ?>;
 const CURRENT_USER_ROLE = '<?= $user['role'] ?? '' ?>';
+const IS_ADMIN = <?= json_encode(isAdmin($user)) ?>;
 let allProjects = [];
 let currentView = localStorage.getItem('kanban_view') || 'kanban';
 let usersCache = { tech: [], sales: [] };
@@ -1232,12 +1233,15 @@ function createProjectCard(project) {
         }
     }
     
+    const deleteAction = IS_ADMIN ? `<a href="#" onclick="event.stopPropagation(); event.preventDefault(); confirmDeleteProject(${project.id}, '${escapeHtml(project.project_name)}', '${project.project_code}')" style="color: #dc2626;">删除项目</a>` : '';
+    
     card.innerHTML = `
         <div class="card-menu">
             <button class="card-menu-btn" onclick="event.stopPropagation(); toggleCardMenu('${cardId}')">⋯</button>
             <div class="card-actions" id="menu-${cardId}">
                 <a href="#" onclick="event.stopPropagation(); event.preventDefault(); changeStatus(${project.id}, '${project.current_status}')">变更状态</a>
                 <a href="#" onclick="event.stopPropagation(); event.preventDefault(); viewProjectDetail(${project.id})">查看详情</a>
+                ${deleteAction}
             </div>
         </div>
         <div class="project-card-header">
@@ -1595,6 +1599,7 @@ function renderTableRow(project) {
     const statusStyle = statusColors[project.current_status] || { bg: '#f1f5f9', color: '#64748b' };
     const updateTime = formatRelativeTime(project.update_time);
     const techNames = project.tech_users ? project.tech_users.map(u => u.realname || u.username).join(', ') : '-';
+    const deleteBtn = IS_ADMIN ? `<button class="action-btn" style="color: #dc2626; border-color: #fecaca;" onclick="confirmDeleteProject(${project.id}, '${escapeHtml(project.project_name)}', '${project.project_code}')">删除</button>` : '';
     
     return `
         <tr>
@@ -1607,6 +1612,7 @@ function renderTableRow(project) {
             <td>
                 <button class="action-btn" onclick="viewProjectDetail(${project.id})">查看</button>
                 <button class="action-btn" onclick="changeStatus(${project.id}, '${project.current_status}')">变更状态</button>
+                ${deleteBtn}
             </td>
         </tr>
     `;
@@ -2316,6 +2322,57 @@ function submitStageAdjust(projectId, stageId, currentDays) {
         console.error('[SIDEBAR_DEBUG] 调整阶段失败:', err);
         showAlertModal('调整失败: ' + err.message, 'error');
     });
+}
+
+// 删除项目确认
+function confirmDeleteProject(projectId, projectName, projectCode) {
+    if (!IS_ADMIN) {
+        showAlertModal('您没有删除项目的权限', 'error');
+        return;
+    }
+    
+    showConfirmModal(
+        '确认删除项目',
+        `<div class="text-start">
+            <p>确定要删除项目 <strong>${escapeHtml(projectName)}</strong> 吗？</p>
+            <p class="text-muted small mb-2">项目编号：${escapeHtml(projectCode)}</p>
+            <div class="alert alert-warning py-2 mb-0">
+                <i class="bi bi-exclamation-triangle"></i> 删除后项目及相关交付物将移至回收站，15天后自动永久删除。
+            </div>
+        </div>`,
+        function() {
+            deleteProject(projectId);
+        }
+    );
+}
+
+// 执行删除项目
+function deleteProject(projectId) {
+    fetch(API_URL + '/projects.php?id=' + projectId, {
+        method: 'DELETE',
+        headers: {'Content-Type': 'application/json'}
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            showAlertModal('项目已删除', 'success');
+            // 重新加载看板
+            loadKanban();
+        } else {
+            showAlertModal('删除失败: ' + data.message, 'error');
+        }
+    })
+    .catch(err => {
+        showAlertModal('删除失败: ' + err.message, 'error');
+    });
+}
+
+// HTML转义函数
+function escapeHtml(text) {
+    if (!text) return '';
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
 }
 </script>
 

@@ -468,6 +468,9 @@ layout_header($pageTitle);
                 <input class="form-check-input" type="checkbox" id="showModelFiles" <?= $project['show_model_files'] ? 'checked' : '' ?> onchange="toggleModelFiles(this.checked)">
                 <label class="form-check-label text-white small" for="showModelFiles">显示模型文件</label>
             </div>
+            <button type="button" class="btn btn-danger ms-2" onclick="confirmDeleteProject()">
+                <i class="bi bi-trash"></i> 删除项目
+            </button>
             <?php endif; ?>
         </div>
     </div>
@@ -1922,6 +1925,48 @@ function toggleModelFiles(enabled) {
     .catch(err => {
         showAlertModal('设置失败: ' + err.message, 'error');
         document.getElementById('showModelFiles').checked = !enabled;
+    });
+}
+
+// 删除项目确认
+function confirmDeleteProject() {
+    const projectName = <?= json_encode($project['project_name']) ?>;
+    const projectCode = <?= json_encode($project['project_code'] ?? '') ?>;
+    
+    showConfirmModal(
+        '确认删除项目',
+        `<div class="text-start">
+            <p>确定要删除项目 <strong>${escapeHtml(projectName)}</strong> 吗？</p>
+            <p class="text-muted small mb-2">项目编号：${escapeHtml(projectCode)}</p>
+            <div class="alert alert-warning py-2 mb-0">
+                <i class="bi bi-exclamation-triangle"></i> 删除后项目及相关交付物将移至回收站，15天后自动永久删除。
+            </div>
+        </div>`,
+        function() {
+            deleteProject();
+        }
+    );
+}
+
+// 执行删除项目
+function deleteProject() {
+    fetch(API_URL + '/projects.php?id=' + PROJECT_ID, {
+        method: 'DELETE',
+        headers: {'Content-Type': 'application/json'}
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            showAlertModal('项目已删除，即将返回...', 'success');
+            setTimeout(() => {
+                window.location.href = 'index.php?page=project_kanban';
+            }, 1500);
+        } else {
+            showAlertModal('删除失败: ' + data.message, 'error');
+        }
+    })
+    .catch(err => {
+        showAlertModal('删除失败: ' + err.message, 'error');
     });
 }
 
