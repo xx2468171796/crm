@@ -22,7 +22,7 @@
 class FileTransfer {
     constructor(options = {}) {
         this.apiBase = options.apiBase || '/api/';
-        this.chunkThreshold = options.chunkThreshold || 10 * 1024 * 1024; // 10MB
+        this.chunkThreshold = options.chunkThreshold || 2 * 1024 * 1024 * 1024; // 2GB
         this.maxRetries = options.maxRetries || 3;
         this.retryDelay = options.retryDelay || 1000;
         this.progressInterval = options.progressInterval || 500; // 进度轮询间隔
