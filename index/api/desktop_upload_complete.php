@@ -80,8 +80,11 @@ if (!$uploadId || !$storageKey || empty($parts)) {
 }
 
 try {
+    $startTime = microtime(true);
     $uploadService = new MultipartUploadService();
     $result = $uploadService->complete($storageKey, $uploadId, $parts);
+    $completeTime = microtime(true) - $startTime;
+    error_log("[DESKTOP_UPLOAD] complete() took {$completeTime}s for $storageKey");
 
     // 尝试落库到 deliverables（便于项目详情页 CRUD 管理）
     $deliverableId = 0;
