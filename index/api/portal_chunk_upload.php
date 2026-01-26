@@ -498,7 +498,8 @@ function handleDirectUpload($pdo, $customer, $projectId) {
     
     // 小文件优化：先保存到SSD队列目录，后台异步上传到S3
     // 这样用户不用等待HDD的fsync
-    $useAsyncUpload = $fileSize <= 50 * 1024 * 1024; // 50MB以下使用异步上传
+    // 2GB以下使用异步上传（缓存配额2GB）
+    $useAsyncUpload = $fileSize <= 2 * 1024 * 1024 * 1024; // 2GB以下使用异步上传
     $asyncDebug = ['enabled' => $useAsyncUpload, 'size' => $fileSize];
     
     // 获取客户文件夹路径
@@ -529,22 +530,22 @@ function handleDirectUpload($pdo, $customer, $projectId) {
     $storageKey = trim($storageConfig['prefix'] ?? '', '/') . '/' . $basePath . '/' . $uniqueName;
     $storageKey = ltrim($storageKey, '/');
     
-    // 异步上传优化：先保存到SSD缓存目录，立即返回成功，后台worker异步上传到S3
-    // 使用专用的SSD缓存目录（5GB配额）
+    // 异步上传优化：先保存到SSD缓存目录，立即返回成功，后台异步上传到S3
+    // 使用专用的SSD缓存目录（2GB配额）
     if ($useAsyncUpload) {
         $queueDir = __DIR__ . '/../../storage/upload_cache';
         if (!is_dir($queueDir)) {
             mkdir($queueDir, 0777, true);
         }
         
-        // 检查缓存目录大小，超过5GB时回退到同步上传
+        // 检查缓存目录大小，超过2GB时回退到同步上传
         $cacheSize = 0;
         foreach (glob($queueDir . '/*') as $f) {
             if (is_file($f) && !str_ends_with($f, '.json')) {
                 $cacheSize += filesize($f);
             }
         }
-        if ($cacheSize > 5 * 1024 * 1024 * 1024) { // 5GB
+        if ($cacheSize > 2 * 1024 * 1024 * 1024) { // 2GB缓存配额
             error_log("[PORTAL_ASYNC] Cache full, fallback to sync upload");
             $useAsyncUpload = false;
         }
