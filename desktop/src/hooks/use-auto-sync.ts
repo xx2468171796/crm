@@ -119,7 +119,7 @@ export function useAutoSync() {
         const formData = new FormData();
         formData.append('upload_id', upload_id);
         formData.append('part_number', partNumber.toString());
-        formData.append('chunk', new Blob([chunkData]));
+        formData.append('chunk', new Blob([chunkData as any], { type: 'application/octet-stream' }));
         
         const uploadRes = await fetch(`${serverUrl}/api/desktop_chunk_upload.php`, {
           method: 'POST',
