@@ -581,8 +581,8 @@ function getProjects($pdo, $user, $customerId = 0) {
     // 数据权限过滤
     if (!isAdmin($user)) {
         // 使用RBAC检查用户角色（用户可能同时拥有多个角色）
-        $hasSalesRole = RoleCode::hasRole($user['id'], 'sales');
-        $hasTechRole = RoleCode::hasRole($user['id'], 'tech') || $user['role'] === 'tech';
+        $hasSalesRole = Permission::hasRole($user['id'], 'sales');
+        $hasTechRole = Permission::hasRole($user['id'], 'tech') || $user['role'] === 'tech';
         
         if ($hasSalesRole || $hasTechRole) {
             // 销售/技术：看自己创建的、客户归属自己的、或分配给自己的项目
