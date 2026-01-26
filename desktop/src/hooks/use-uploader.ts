@@ -1,11 +1,11 @@
 import { useCallback, useRef } from 'react';
 import { useSyncStore, type UploadTask } from '@/stores/sync';
 import { useSettingsStore } from '@/stores/settings';
-import { http } from '@/lib/http';
+import { http, getApiBaseUrl } from '@/lib/http';
 import { readFileChunk, getFileMetadata, getMimeType } from '@/lib/tauri';
 import { toast } from './use-toast';
-import { applyAcceleration } from '@/lib/urlReplacer';
 import { useQueryClient } from '@tanstack/react-query';
+import { useAuthStore } from '@/stores/auth';
 
 interface InitUploadResponse {
   upload_id: string;
@@ -14,17 +14,16 @@ interface InitUploadResponse {
   total_parts: number;
 }
 
-interface PartUrlResponse {
-  presigned_url: string;
+interface UploadPartResponse {
   part_number: number;
-  expires_in: number;
+  uploaded: number;
+  total: number;
 }
 
 interface CompleteResponse {
-  resource_id: number;
-  etag: string;
   storage_key: string;
   deliverable_id?: number;
+  async?: boolean;
 }
 
 export function useUploader() {
@@ -43,7 +42,8 @@ export function useUploader() {
     filesize: number,
     mimeType: string
   ): Promise<InitUploadResponse> => {
-    const response = await http.post<InitUploadResponse>('desktop_upload_init.php', {
+    const response = await http.post<InitUploadResponse>('desktop_chunk_upload.php', {
+      action: 'init',
       group_code: groupCode,
       project_id: projectId || 0,
       asset_type: assetType,
@@ -60,65 +60,46 @@ export function useUploader() {
     return response.data;
   }, []);
 
-  const getPartUrl = useCallback(async (
+  const uploadPartToServer = useCallback(async (
     uploadId: string,
-    storageKey: string,
-    partNumber: number
-  ): Promise<PartUrlResponse> => {
-    const response = await http.post<PartUrlResponse>('desktop_upload_part_url.php', {
-      upload_id: uploadId,
-      storage_key: storageKey,
-      part_number: partNumber,
-    });
-
-    if (!response.success || !response.data) {
-      throw new Error(response.error?.message || '获取预签名URL失败');
-    }
-
-    return response.data;
-  }, []);
-
-  const uploadPart = useCallback(async (
-    presignedUrl: string,
+    partNumber: number,
     data: Uint8Array,
     abortSignal?: AbortSignal
-  ): Promise<string> => {
-    const response = await fetch(presignedUrl, {
-      method: 'PUT',
-      body: new Blob([data as unknown as BlobPart]),
+  ): Promise<UploadPartResponse> => {
+    const formData = new FormData();
+    formData.append('upload_id', uploadId);
+    formData.append('part_number', partNumber.toString());
+    formData.append('chunk', new Blob([data]));
+    
+    const baseUrl = getApiBaseUrl();
+    const token = useAuthStore.getState().token;
+    
+    const response = await fetch(`${baseUrl}desktop_chunk_upload.php`, {
+      method: 'POST',
+      body: formData,
       signal: abortSignal,
+      headers: token ? { 'Authorization': `Bearer ${token}` } : {},
     });
-
+    
     if (!response.ok) {
       throw new Error(`分片上传失败: HTTP ${response.status}`);
     }
-
-    const etagRaw = response.headers.get('ETag') || response.headers.get('etag') || '';
-    const etag = etagRaw.replace(/"/g, '');
-    if (!etag) {
-      throw new Error('分片上传成功但未返回 ETag（可能被代理/网关剥离响应头）');
+    
+    const result = await response.json();
+    if (!result.success) {
+      throw new Error(result.error || '分片上传失败');
     }
-    return etag;
+    
+    return result.data;
   }, []);
 
+
   const completeUpload = useCallback(async (
-    uploadId: string,
-    storageKey: string,
-    parts: Array<{ PartNumber: number; ETag: string }>,
-    meta?: {
-      project_id?: number;
-      asset_type?: 'works' | 'models' | 'customer';
-      filename?: string;
-      filesize?: number;
-      rel_path?: string;
-      group_code?: string;
-    }
+    uploadId: string
   ): Promise<CompleteResponse> => {
-    const response = await http.post<CompleteResponse>('desktop_upload_complete.php', {
+    const response = await http.post<CompleteResponse>('desktop_chunk_upload.php', {
+      action: 'complete',
       upload_id: uploadId,
-      storage_key: storageKey,
-      parts,
-      ...(meta || {}),
     });
 
     if (!response.success || !response.data) {
@@ -186,13 +167,8 @@ export function useUploader() {
         const length = Math.min(partSize, remaining);
 
         const chunkData = await readFileChunk(task.localPath, offset, length);
-        const { presigned_url } = await getPartUrl(uploadId!, storageKey!, partNumber);
-        // 应用加速节点URL替换
-        const accelerationUrl = useSettingsStore.getState().accelerationNodeUrl;
-        const finalUrl = applyAcceleration(presigned_url, accelerationUrl);
-        const etag = await uploadPart(finalUrl, chunkData, abortController.signal);
+        await uploadPartToServer(uploadId!, partNumber, chunkData, abortController.signal);
 
-        uploadedParts.push({ PartNumber: partNumber, ETag: etag });
         uploadedCount++;
 
         const progress = (uploadedCount / totalParts) * 100;
@@ -202,14 +178,7 @@ export function useUploader() {
         });
       }
 
-      await completeUpload(uploadId!, storageKey!, uploadedParts, {
-        project_id: task.projectId ?? 0,
-        asset_type: task.assetType,
-        filename: task.filename,
-        filesize: task.filesize,
-        rel_path: task.relPath,
-        group_code: task.groupCode,
-      });
+      await completeUpload(uploadId!);
 
       updateUploadTask(taskId, {
         status: 'completed',
@@ -251,7 +220,7 @@ export function useUploader() {
         }
       }, 0);
     }
-  }, [partSizeMB, initUpload, getPartUrl, uploadPart, completeUpload, updateUploadTask, maxConcurrentUploads, queryClient]);
+  }, [partSizeMB, initUpload, uploadPartToServer, completeUpload, updateUploadTask, maxConcurrentUploads, queryClient]);
 
   const pauseUpload = useCallback((taskId: string) => {
     const controller = abortControllers.current.get(taskId);

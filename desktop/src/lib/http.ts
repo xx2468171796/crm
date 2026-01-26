@@ -261,3 +261,8 @@ class HttpClient {
 }
 
 export const http = new HttpClient();
+
+export function getApiBaseUrl(): string {
+  const serverUrl = useSettingsStore.getState().serverUrl || '';
+  return serverUrl ? `${serverUrl}/api/` : '';
+}

@@ -1,4 +1,4 @@
-import { http } from './http';
+import { http, getApiBaseUrl } from './http';
 import { getFileMetadata } from './tauri';
 import { useSyncStore, type UploadTask } from '@/stores/sync';
 
@@ -9,16 +9,16 @@ interface InitUploadResponse {
   total_parts: number;
 }
 
-interface PartUrlResponse {
-  presigned_url: string;
+interface UploadPartResponse {
   part_number: number;
-  expires_in: number;
+  uploaded: number;
+  total: number;
 }
 
 interface CompleteResponse {
-  resource_id: number;
-  etag: string;
   storage_key: string;
+  deliverable_id: number;
+  async?: boolean;
 }
 
 export class FileUploader {
@@ -26,14 +26,17 @@ export class FileUploader {
   
   async initUpload(
     groupCode: string,
-    assetType: 'works' | 'models',
+    assetType: 'works' | 'models' | 'customer',
     relPath: string,
     filename: string,
     filesize: number,
-    mimeType: string
+    mimeType: string,
+    projectId?: number
   ): Promise<InitUploadResponse> {
-    const response = await http.post<InitUploadResponse>('desktop_upload_init.php', {
+    const response = await http.post<InitUploadResponse>('desktop_chunk_upload.php', {
+      action: 'init',
       group_code: groupCode,
+      project_id: projectId || 0,
       asset_type: assetType,
       rel_path: relPath,
       filename,
@@ -48,54 +51,49 @@ export class FileUploader {
     return response.data;
   }
   
-  async getPartUrl(
-    uploadId: string,
-    storageKey: string,
-    partNumber: number
-  ): Promise<PartUrlResponse> {
-    const response = await http.post<PartUrlResponse>('desktop_upload_part_url.php', {
-      upload_id: uploadId,
-      storage_key: storageKey,
-      part_number: partNumber,
-    });
-    
-    if (!response.success || !response.data) {
-      throw new Error(response.error?.message || '获取预签名URL失败');
-    }
-    
-    return response.data;
-  }
-  
   async uploadPart(
-    presignedUrl: string,
+    uploadId: string,
+    partNumber: number,
     data: ArrayBuffer,
     _onProgress?: (loaded: number) => void
-  ): Promise<string> {
+  ): Promise<UploadPartResponse> {
     this.abortController = new AbortController();
     
-    const response = await fetch(presignedUrl, {
-      method: 'PUT',
-      body: data,
+    const formData = new FormData();
+    formData.append('upload_id', uploadId);
+    formData.append('part_number', partNumber.toString());
+    formData.append('chunk', new Blob([data]));
+    
+    const baseUrl = getApiBaseUrl();
+    const response = await fetch(`${baseUrl}desktop_chunk_upload.php`, {
+      method: 'POST',
+      body: formData,
       signal: this.abortController.signal,
+      headers: {
+        'Authorization': `Bearer ${localStorage.getItem('desktop_token') || ''}`,
+      },
     });
     
     if (!response.ok) {
       throw new Error(`分片上传失败: HTTP ${response.status}`);
     }
     
-    const etag = response.headers.get('ETag') || '';
-    return etag.replace(/"/g, '');
+    const result = await response.json();
+    if (!result.success) {
+      throw new Error(result.error || '分片上传失败');
+    }
+    
+    return result.data;
   }
   
   async completeUpload(
     uploadId: string,
-    storageKey: string,
-    parts: Array<{ PartNumber: number; ETag: string }>
+    _storageKey?: string,
+    _parts?: Array<{ PartNumber: number; ETag: string }>
   ): Promise<CompleteResponse> {
-    const response = await http.post<CompleteResponse>('desktop_upload_complete.php', {
+    const response = await http.post<CompleteResponse>('desktop_chunk_upload.php', {
+      action: 'complete',
       upload_id: uploadId,
-      storage_key: storageKey,
-      parts,
     });
     
     if (!response.success || !response.data) {
