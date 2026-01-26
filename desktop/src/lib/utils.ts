@@ -87,7 +87,7 @@ export function parseGroupFolder(folderName: string): { groupCode: string; group
 }
 
 // 管理员角色列表（可管理项目、审批、设置提成）
-export const MANAGER_ROLES = ['admin', 'super_admin', 'manager', 'tech_manager', 'design_manager'] as const;
+export const MANAGER_ROLES = ['admin', 'super_admin', 'system_admin', 'manager', 'tech_manager', 'design_manager'] as const;
 
 // 判断用户是否为管理员
 export function isManager(role: string | undefined | null): boolean {
