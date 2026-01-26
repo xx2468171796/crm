@@ -328,11 +328,15 @@ class S3StorageProvider extends AbstractStorageProvider
         }
 
         $timeout = (int)($this->config['timeout'] ?? 60);
+        $connectTimeout = (int)($this->config['connect_timeout'] ?? 10);
         $opts = [
             CURLOPT_CUSTOMREQUEST => $method,
             CURLOPT_HTTPHEADER => $httpHeaders,
             CURLOPT_RETURNTRANSFER => !isset($options['sink']),
             CURLOPT_TIMEOUT => $timeout > 0 ? $timeout : 60,
+            CURLOPT_CONNECTTIMEOUT => $connectTimeout > 0 ? $connectTimeout : 10,
+            CURLOPT_TCP_NODELAY => true,  // 禁用Nagle算法，小数据包立即发送
+            CURLOPT_TCP_KEEPALIVE => 1,   // 启用TCP保活
         ];
 
         if (isset($options['source_path'])) {

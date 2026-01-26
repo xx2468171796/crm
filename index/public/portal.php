@@ -2283,6 +2283,10 @@ if (empty($token)) {
                     try {
                         const res = JSON.parse(xhr.responseText);
                         if (res.success) {
+                            // 打印服务器处理耗时
+                            if (res.data?.timings_ms) {
+                                console.log(`  ✓ 服务器处理耗时: S3=${res.data.timings_ms.s3_upload}ms, DB=${res.data.timings_ms.db_insert}ms, 总计=${res.data.timings_ms.total}ms`);
+                            }
                             callbacks.onChunkComplete(0, 1);
                             resolve(res);
                         } else {

@@ -446,6 +446,9 @@ function handleAbort($pdo, $customer) {
  * 小文件直接上传（不分片）
  */
 function handleDirectUpload($pdo, $customer, $projectId) {
+    $startTime = microtime(true);
+    $timings = [];
+    
     if ($projectId <= 0) {
         http_response_code(400);
         echo json_encode(['error' => '缺少项目ID']);
@@ -504,6 +507,8 @@ function handleDirectUpload($pdo, $customer, $projectId) {
     // 文件重命名
     $storedName = '客户上传+' . $originalName;
     
+    $timings['validate'] = round((microtime(true) - $startTime) * 1000);
+    
     // 上传到S3
     $config = require __DIR__ . '/../config/storage.php';
     $storageConfig = $config['s3'] ?? [];
@@ -519,10 +524,12 @@ function handleDirectUpload($pdo, $customer, $projectId) {
     $storageKey = trim($storageConfig['prefix'] ?? '', '/') . '/' . $basePath . '/' . $uniqueName;
     $storageKey = ltrim($storageKey, '/');
     
+    $s3StartTime = microtime(true);
     $s3 = new S3StorageProvider($storageConfig, []);
     $uploadResult = $s3->putObject($storageKey, $tmpPath, [
         'mime_type' => $fileType
     ]);
+    $timings['s3_upload'] = round((microtime(true) - $s3StartTime) * 1000);
     
     if (!$uploadResult || empty($uploadResult['storage_key'])) {
         http_response_code(500);
@@ -530,6 +537,7 @@ function handleDirectUpload($pdo, $customer, $projectId) {
         exit;
     }
     
+    $dbStartTime = microtime(true);
     // 记录到deliverables表
     $now = time();
     $stmt = $pdo->prepare("
@@ -553,12 +561,21 @@ function handleDirectUpload($pdo, $customer, $projectId) {
         $now
     ]);
     
+    $timings['db_insert'] = round((microtime(true) - $dbStartTime) * 1000);
+    $timings['total'] = round((microtime(true) - $startTime) * 1000);
+    
+    // 记录慢上传日志（超过3秒）
+    if ($timings['total'] > 3000) {
+        error_log("[PORTAL_UPLOAD_SLOW] file={$originalName}, size={$fileSize}, timings=" . json_encode($timings));
+    }
+    
     echo json_encode([
         'success' => true,
         'data' => [
             'original_name' => $originalName,
             'stored_name' => $storedName,
-            'file_size' => $fileSize
+            'file_size' => $fileSize,
+            'timings_ms' => $timings  // 返回给前端用于调试
         ],
         'message' => '文件上传成功'
     ]);
