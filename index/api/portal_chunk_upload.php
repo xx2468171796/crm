@@ -499,6 +499,7 @@ function handleDirectUpload($pdo, $customer, $projectId) {
     // 小文件优化：先保存到SSD队列目录，后台异步上传到S3
     // 这样用户不用等待HDD的fsync
     $useAsyncUpload = $fileSize <= 50 * 1024 * 1024; // 50MB以下使用异步上传
+    $asyncDebug = ['enabled' => $useAsyncUpload, 'size' => $fileSize];
     
     // 获取客户文件夹路径
     $groupCode = $project['group_code'] ?? '';
@@ -555,12 +556,18 @@ function handleDirectUpload($pdo, $customer, $projectId) {
         $queueFile = $queueDir . '/' . $uniqueName;
         
         // 使用copy而不是move_uploaded_file，因为move可能跨文件系统失败
+        $asyncDebug['queue_file'] = $queueFile;
+        $asyncDebug['tmp_path'] = $tmpPath;
+        $asyncDebug['tmp_exists'] = file_exists($tmpPath);
+        $asyncDebug['dir_writable'] = is_writable($queueDir);
+        
         if (!copy($tmpPath, $queueFile)) {
-            error_log("[PORTAL_ASYNC] Failed to copy file to cache: {$queueFile}");
+            $asyncDebug['copy_failed'] = true;
+            $asyncDebug['copy_error'] = error_get_last();
             $useAsyncUpload = false;
         } else {
             @unlink($tmpPath); // 删除原临时文件
-            error_log("[PORTAL_ASYNC] File copied to cache: {$queueFile}, size={$fileSize}");
+            $asyncDebug['copy_success'] = true;
             // 保存上传任务元数据
             $taskData = [
                 'queue_file' => $queueFile,
@@ -673,7 +680,8 @@ function handleDirectUpload($pdo, $customer, $projectId) {
             'original_name' => $originalName,
             'stored_name' => $storedName,
             'file_size' => $fileSize,
-            'timings_ms' => $timings
+            'timings_ms' => $timings,
+            'async_debug' => $asyncDebug ?? null
         ],
         'message' => '文件上传成功'
     ]);
