@@ -115,8 +115,8 @@ function handleDelete($pdo, $customer, $projectId) {
     }
     
     // 软删除：标记为已删除
-    $stmt = $pdo->prepare("UPDATE deliverables SET is_deleted = 1, update_time = ? WHERE id = ?");
-    $stmt->execute([time(), $fileId]);
+    $stmt = $pdo->prepare("UPDATE deliverables SET deleted_at = ?, update_time = ? WHERE id = ?");
+    $stmt->execute([time(), time(), $fileId]);
     
     echo json_encode([
         'success' => true,
@@ -160,8 +160,8 @@ function handleBatchDelete($pdo, $customer, $projectId) {
         $file = $stmt->fetch(PDO::FETCH_ASSOC);
         
         if ($file) {
-            $stmt = $pdo->prepare("UPDATE deliverables SET is_deleted = 1, update_time = ? WHERE id = ?");
-            $stmt->execute([$now, $fileId]);
+            $stmt = $pdo->prepare("UPDATE deliverables SET deleted_at = ?, update_time = ? WHERE id = ?");
+            $stmt->execute([$now, $now, $fileId]);
             $deletedCount++;
         }
     }
