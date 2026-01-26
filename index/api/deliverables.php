@@ -289,9 +289,9 @@ function handlePost($pdo, $user) {
             $fileSize = $_FILES['file']['size'];
             $asyncUploadFile = null; // 初始化异步上传文件变量
             
-            // 异步上传优化：暂时禁用以调试问题
-            $useAsyncUpload = false; // $fileSize <= 2 * 1024 * 1024 * 1024;
-            error_log("[DELIVERABLES] fileSize=$fileSize, useAsyncUpload=DISABLED");
+            // 异步上传优化：2GB以下文件使用异步上传
+            $useAsyncUpload = $fileSize <= 2 * 1024 * 1024 * 1024;
+            error_log("[DELIVERABLES] fileSize=$fileSize, useAsyncUpload=" . ($useAsyncUpload ? 'true' : 'false'));
             
             if ($useAsyncUpload) {
                 // 先复制文件到SSD缓存目录
