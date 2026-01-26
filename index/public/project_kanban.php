@@ -2356,8 +2356,8 @@ function deleteProject(projectId) {
     .then(data => {
         if (data.success) {
             showAlertModal('项目已删除', 'success');
-            // 重新加载看板
-            loadKanban();
+            // 重新加载项目列表
+            loadProjects();
         } else {
             showAlertModal('删除失败: ' + data.message, 'error');
         }
