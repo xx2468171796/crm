@@ -134,8 +134,8 @@ function handleInit($pdo, $customer, $projectId) {
     // 生成唯一上传ID
     $uploadId = bin2hex(random_bytes(16));
     
-    // 创建临时目录
-    $tempDir = sys_get_temp_dir() . '/portal_chunks/' . $uploadId;
+    // 创建临时目录（使用SSD缓存目录，避免HDD的慢速IO）
+    $tempDir = __DIR__ . '/../../storage/upload_cache/chunks/' . $uploadId;
     if (!is_dir($tempDir)) {
         mkdir($tempDir, 0755, true);
     }
