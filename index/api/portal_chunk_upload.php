@@ -532,7 +532,7 @@ function handleDirectUpload($pdo, $customer, $projectId) {
     // 异步上传优化：先保存到SSD缓存目录，立即返回成功，后台worker异步上传到S3
     // 使用专用的SSD缓存目录（5GB配额）
     if ($useAsyncUpload) {
-        $queueDir = '/opt/portal_upload_cache';
+        $queueDir = __DIR__ . '/../../storage/upload_cache';
         if (!is_dir($queueDir)) {
             mkdir($queueDir, 0777, true);
         }
