@@ -31,6 +31,7 @@ class CustomerFileService
     private array $folderLimits = [];
     private array $zipLimits = [];
     private array $customerFolderCache = [];
+    private array $asyncUploadFiles = []; // 异步上传文件列表
 
     public function __construct(?StorageProviderInterface $storage = null, ?CustomerFileLogger $logger = null)
     {
@@ -40,6 +41,24 @@ class CustomerFileService
         $this->limits = $config['limits'] ?? [];
         $this->folderLimits = $this->limits['folder_upload'] ?? [];
         $this->zipLimits = $this->limits['zip_download'] ?? [];
+    }
+    
+    /** 获取待异步上传的文件列表 */
+    public function getAsyncUploadFiles(): array { return $this->asyncUploadFiles; }
+    
+    /** 执行异步上传到S3 */
+    public function processAsyncUploads(): void {
+        foreach ($this->asyncUploadFiles as $cacheFile) {
+            if (!file_exists($cacheFile) || !file_exists($cacheFile . '.json')) continue;
+            try {
+                $meta = json_decode(file_get_contents($cacheFile . '.json'), true);
+                $this->storage->putObject($meta['storage_key'], $cacheFile, ['mime_type' => $meta['mime_type']]);
+                @unlink($cacheFile . '.json');
+            } catch (Exception $e) {
+                error_log("[CFILE_ASYNC] S3 upload failed: " . $e->getMessage());
+            }
+        }
+        $this->asyncUploadFiles = [];
     }
 
     public function listFiles(int $customerId, array $filters, array $actor): array
@@ -419,12 +438,44 @@ class CustomerFileService
                 $storageKey = $this->buildStorageKey($customer, $category, $convertedFilename, $folderPath);
             }
             
-            // 移动文件到存储
+            // 移动文件到存储（异步上传优化）
             $fileStartTime = microtime(true);
-            $storageMeta = $this->storage->putObject($storageKey, $file['tmp_name'], [
-                'mime_type' => $convertedMime,
-            ]);
-            $bytes = (int)($storageMeta['bytes'] ?? 0);
+            $tmpPath = $file['tmp_name'];
+            $useAsyncUpload = $fileSize <= 2 * 1024 * 1024 * 1024; // 2GB以下使用异步
+            $asyncUploadFile = null;
+            
+            if ($useAsyncUpload) {
+                $cacheDir = __DIR__ . '/../storage/upload_cache';
+                if (!is_dir($cacheDir)) mkdir($cacheDir, 0777, true);
+                
+                $cacheFile = $cacheDir . '/' . uniqid('cfile_') . '_' . basename($storageKey);
+                if (copy($tmpPath, $cacheFile)) {
+                    file_put_contents($cacheFile . '.json', json_encode([
+                        'storage_key' => $storageKey,
+                        'mime_type' => $convertedMime,
+                        'file_size' => $fileSize,
+                        'create_time' => time()
+                    ]));
+                    $asyncUploadFile = $cacheFile;
+                    $this->asyncUploadFiles[] = $cacheFile; // 记录异步文件
+                    // 模拟storageMeta返回
+                    $storageMeta = [
+                        'disk' => 's3',
+                        'storage_key' => $storageKey,
+                        'bytes' => $fileSize,
+                        'extra' => null
+                    ];
+                } else {
+                    $useAsyncUpload = false;
+                }
+            }
+            
+            if (!$useAsyncUpload) {
+                $storageMeta = $this->storage->putObject($storageKey, $tmpPath, [
+                    'mime_type' => $convertedMime,
+                ]);
+            }
+            $bytes = (int)($storageMeta['bytes'] ?? $fileSize);
             $summary['total_bytes'] += $bytes;
             $storageDuration = microtime(true) - $fileStartTime;
             

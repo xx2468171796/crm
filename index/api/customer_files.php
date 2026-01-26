@@ -535,11 +535,30 @@ try {
             count($created)
         ));
         
-        echo json_encode([
+        // 检查是否有异步上传文件
+        $asyncFiles = $service->getAsyncUploadFiles();
+        $hasAsync = !empty($asyncFiles);
+        
+        $response = json_encode([
             'success' => true,
             'message' => '上传成功',
             'files' => $created,
+            'async' => $hasAsync
         ]);
+        
+        // 如果有异步文件，先返回响应再执行S3上传
+        if ($hasAsync) {
+            header('Content-Type: application/json; charset=utf-8');
+            header('Content-Length: ' . strlen($response));
+            echo $response;
+            if (function_exists('fastcgi_finish_request')) fastcgi_finish_request();
+            else { ob_end_flush(); flush(); }
+            
+            $service->processAsyncUploads();
+            exit;
+        }
+        
+        echo $response;
         exit;
     }
 
