@@ -2183,8 +2183,8 @@ if (empty($token)) {
         document.getElementById('portalOverallStats').textContent = `${Math.min(completed + 1, total)} / ${total} 文件 (${Math.round(percent)}%)`;
     }
     
-    // 小文件阈值：90MB以下直接上传，不分片
-    const PORTAL_SMALL_FILE_THRESHOLD = 90 * 1024 * 1024;
+    // 小文件阈值：2GB以下直接上传，不分片（使用异步上传优化）
+    const PORTAL_SMALL_FILE_THRESHOLD = 2 * 1024 * 1024 * 1024;
     
     async function uploadPortalFileChunked(file, fileIndex, callbacks) {
         const totalChunks = Math.ceil(file.size / PORTAL_CHUNK_SIZE);
