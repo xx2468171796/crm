@@ -252,7 +252,8 @@ class MultipartUploadService
             CURLOPT_CUSTOMREQUEST => $method,
             CURLOPT_HTTPHEADER => $httpHeaders,
             CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_TIMEOUT => 60,
+            CURLOPT_TIMEOUT => 300,
+            CURLOPT_CONNECTTIMEOUT => 30,
         ]);
         
         if ($body !== null) {
