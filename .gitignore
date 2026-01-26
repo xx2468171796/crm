@@ -78,3 +78,4 @@ output/
 *.temp
 *.bak
 .windsurfrules
+storage/upload_cache/
