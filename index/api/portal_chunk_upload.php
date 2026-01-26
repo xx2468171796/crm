@@ -533,7 +533,7 @@ function handleDirectUpload($pdo, $customer, $projectId) {
     if ($useAsyncUpload) {
         $queueDir = '/opt/portal_upload_cache';
         if (!is_dir($queueDir)) {
-            mkdir($queueDir, 0755, true);
+            mkdir($queueDir, 0777, true);
         }
         
         // 检查缓存目录大小，超过5GB时回退到同步上传
@@ -544,15 +544,23 @@ function handleDirectUpload($pdo, $customer, $projectId) {
             }
         }
         if ($cacheSize > 5 * 1024 * 1024 * 1024) { // 5GB
+            error_log("[PORTAL_ASYNC] Cache full, fallback to sync upload");
             $useAsyncUpload = false;
         }
-        
+    }
+    
+    // 再次检查useAsyncUpload（可能被上面的检查禁用）
+    if ($useAsyncUpload) {
         // 保存文件到SSD队列目录
         $queueFile = $queueDir . '/' . $uniqueName;
-        if (!move_uploaded_file($tmpPath, $queueFile)) {
-            // 如果移动失败，回退到同步上传
+        
+        // 使用copy而不是move_uploaded_file，因为move可能跨文件系统失败
+        if (!copy($tmpPath, $queueFile)) {
+            error_log("[PORTAL_ASYNC] Failed to copy file to cache: {$queueFile}");
             $useAsyncUpload = false;
         } else {
+            @unlink($tmpPath); // 删除原临时文件
+            error_log("[PORTAL_ASYNC] File copied to cache: {$queueFile}, size={$fileSize}");
             // 保存上传任务元数据
             $taskData = [
                 'queue_file' => $queueFile,
