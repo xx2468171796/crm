@@ -291,6 +291,7 @@ function handlePost($pdo, $user) {
             
             // 异步上传优化：2GB以下文件使用异步上传
             $useAsyncUpload = $fileSize <= 2 * 1024 * 1024 * 1024;
+            error_log("[DELIVERABLES] fileSize=$fileSize, useAsyncUpload=" . ($useAsyncUpload ? 'true' : 'false'));
             
             if ($useAsyncUpload) {
                 // 先复制文件到SSD缓存目录
@@ -298,9 +299,12 @@ function handlePost($pdo, $user) {
                 if (!is_dir($cacheDir)) {
                     mkdir($cacheDir, 0777, true);
                 }
+                error_log("[DELIVERABLES] cacheDir=$cacheDir, exists=" . (is_dir($cacheDir) ? 'true' : 'false'));
                 
                 $cacheFile = $cacheDir . '/' . uniqid('upload_') . '_' . basename($storageKey);
+                error_log("[DELIVERABLES] copying $tmpPath to $cacheFile");
                 if (copy($tmpPath, $cacheFile)) {
+                    error_log("[DELIVERABLES] copy success, cacheFile=$cacheFile");
                     // 保存元数据
                     file_put_contents($cacheFile . '.json', json_encode([
                         'storage_key' => $storageKey,
@@ -316,11 +320,13 @@ function handlePost($pdo, $user) {
                     $asyncUploadFile = $cacheFile;
                 } else {
                     // 复制失败，回退到同步上传
+                    error_log("[DELIVERABLES] copy FAILED");
                     $useAsyncUpload = false;
                 }
             }
             
             if (!$useAsyncUpload) {
+                error_log("[DELIVERABLES] using sync upload");
                 // 同步上传
                 $result = $storage->putObject($storageKey, $tmpPath, ['mime_type' => $mimeType]);
                 error_log("[RC_DEBUG] Upload SUCCESS: storageKey=$storageKey");
