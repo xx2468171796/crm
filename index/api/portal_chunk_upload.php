@@ -341,28 +341,11 @@ function handleComplete($pdo, $customer) {
     $storageKey = trim($storageConfig['prefix'] ?? '', '/') . '/' . $basePath . '/' . $uniqueName;
     $storageKey = ltrim($storageKey, '/');
     
-    $s3 = new S3StorageProvider($storageConfig, []);
-    $uploadResult = $s3->putObject($storageKey, $mergedFile, [
-        'mime_type' => $task['file_type'] ?? 'application/octet-stream'
-    ]);
+    // 异步上传优化：先返回成功，后台执行S3上传
+    $fileSize = filesize($mergedFile);
+    $fileType = $task['file_type'] ?? 'application/octet-stream';
     
-    // 清理临时文件（putObject内部已删除源文件，这里清理分片）
-    foreach ($chunkFiles as $chunkFile) {
-        @unlink($chunkFile);
-    }
-    @rmdir($tempDir);
-    
-    // S3StorageProvider返回包含storage_key的数组
-    if (!$uploadResult || empty($uploadResult['storage_key'])) {
-        $stmt = $pdo->prepare("UPDATE chunk_upload_tasks SET status = 'aborted' WHERE upload_id = ?");
-        $stmt->execute([$uploadId]);
-        
-        http_response_code(500);
-        echo json_encode(['error' => '文件上传到存储失败']);
-        exit;
-    }
-    
-    // 记录到deliverables表
+    // 先记录到数据库
     $now = time();
     $stmt = $pdo->prepare("
         INSERT INTO deliverables 
@@ -376,7 +359,7 @@ function handleComplete($pdo, $customer) {
         'portal_upload',
         'customer_file',
         $storageKey,
-        $task['file_size'],
+        $fileSize,
         'client',
         'approved',
         $customer['id'],
@@ -389,15 +372,48 @@ function handleComplete($pdo, $customer) {
     $stmt = $pdo->prepare("UPDATE chunk_upload_tasks SET status = 'completed' WHERE upload_id = ?");
     $stmt->execute([$uploadId]);
     
-    echo json_encode([
+    // 先返回响应给用户
+    $response = json_encode([
         'success' => true,
         'data' => [
-            'original_name' => $originalName,
+            'file_name' => $originalName,
             'stored_name' => $storedName,
-            'file_size' => $task['file_size']
+            'file_size' => $fileSize
         ],
-        'message' => '文件上传成功'
+        'message' => '文件合并成功'
     ]);
+    
+    header('Content-Type: application/json');
+    header('Content-Length: ' . strlen($response));
+    echo $response;
+    
+    // 立即刷新输出缓冲区并结束请求
+    if (function_exists('fastcgi_finish_request')) {
+        fastcgi_finish_request();
+    } else {
+        ob_end_flush();
+        flush();
+    }
+    
+    // 请求已结束，用户不用等待，现在执行S3上传
+    try {
+        $s3 = new S3StorageProvider($storageConfig, []);
+        $uploadResult = $s3->putObject($storageKey, $mergedFile, [
+            'mime_type' => $fileType
+        ]);
+        error_log("[PORTAL_CHUNK_ASYNC] S3 upload success: {$storedName}, size={$fileSize}");
+    } catch (Exception $e) {
+        error_log("[PORTAL_CHUNK_ASYNC] S3 upload failed: " . $e->getMessage());
+    }
+    
+    // 清理临时文件（putObject内部已删除源文件，这里清理分片）
+    foreach ($chunkFiles as $chunkFile) {
+        @unlink($chunkFile);
+    }
+    @rmdir($tempDir);
+    
+    // 响应已在fastcgi_finish_request之前发送，直接退出
+    exit;
 }
 
 /**
