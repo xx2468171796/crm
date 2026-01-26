@@ -15,6 +15,7 @@ require_once __DIR__ . '/../core/api_init.php';
 
 require_once __DIR__ . '/../core/desktop_auth.php';
 require_once __DIR__ . '/../core/storage/storage_provider.php';
+require_once __DIR__ . '/../services/S3Service.php';
 
 $user = desktop_auth_require();
 
