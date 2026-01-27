@@ -1086,7 +1086,7 @@ finance_sidebar_start('finance_dashboard');
         
         debounceTimer = setTimeout(() => {
             currentRequest = new AbortController();
-            fetch(`api/customer_group_search.php?keyword=${encodeURIComponent(keyword)}`, {
+            fetch(`../api/customer_group_search.php?keyword=${encodeURIComponent(keyword)}`, {
                 signal: currentRequest.signal
             })
             .then(res => res.json())
