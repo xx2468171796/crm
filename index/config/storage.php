@@ -82,7 +82,7 @@ return [
         // MinIO上传速度约1-2MB/s，这是MinIO容器的处理开销，非代码问题
         // 内网上传端点：服务器内部上传使用本地地址，速度更快
         'endpoint'       => ($__s3Endpoint = getenv('S3_ENDPOINT') ?: 'https://ss3.ankotti.com'),
-        'internal_endpoint' => getenv('S3_INTERNAL_ENDPOINT') ?: 'http://127.0.0.1:9000',
+        'internal_endpoint' => getenv('S3_INTERNAL_ENDPOINT') ?: 'http://172.18.0.2:9000',
         'region'         => getenv('S3_REGION') ?: 'cn-default',
         'bucket'         => getenv('S3_BUCKET') ?: 'crm20260116',
         'access_key'     => getenv('S3_ACCESS_KEY') ?: 'L9G8IjSqWbftIWkkDkyu',
