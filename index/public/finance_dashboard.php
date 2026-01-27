@@ -939,11 +939,7 @@ finance_sidebar_start('finance_dashboard');
             <!-- 常用筛选（始终显示） -->
             <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
                 <input type="hidden" name="view_mode" value="<?= htmlspecialchars($viewMode) ?>">
-                <input type="text" class="form-control form-control-sm" name="keyword" placeholder="客户/合同号/项目编号" value="<?= htmlspecialchars($keyword) ?>" style="width:180px;">
-                <div class="position-relative" style="width:200px;">
-                    <input type="text" class="form-control form-control-sm" name="customer_group" id="customerGroupSearch" placeholder="群名称搜索" value="<?= htmlspecialchars($customerGroup) ?>" autocomplete="off" title="输入群名称搜索，如：251113-2阮先生-設計服務群">
-                    <div id="customerGroupSuggestions" class="position-absolute bg-white border rounded shadow-sm" style="display:none; top:100%; left:0; right:0; max-height:300px; overflow-y:auto; z-index:1050;"></div>
-                </div>
+                <input type="text" class="form-control form-control-sm" name="keyword" placeholder="客户/合同号/项目编号/群名称" value="<?= htmlspecialchars($keyword) ?>" style="width:220px;">
                 <select class="form-select form-select-sm" name="status" style="width:auto;">
                     <option value="">全部状态</option>
                     <?php if ($viewMode === 'contract'): ?>
@@ -1062,96 +1058,6 @@ finance_sidebar_start('finance_dashboard');
         toggleBtn.classList.toggle('active', isHidden);
         localStorage.setItem(STORAGE_KEY, isHidden ? 'true' : 'false');
     });
-})();
-
-// 群名称AJAX搜索
-(function() {
-    const input = document.getElementById('customerGroupSearch');
-    const suggestions = document.getElementById('customerGroupSuggestions');
-    if (!input || !suggestions) return;
-    
-    let debounceTimer = null;
-    let currentRequest = null;
-    
-    input.addEventListener('input', function() {
-        const keyword = this.value.trim();
-        
-        if (debounceTimer) clearTimeout(debounceTimer);
-        if (currentRequest) currentRequest.abort();
-        
-        if (keyword.length < 1) {
-            suggestions.style.display = 'none';
-            return;
-        }
-        
-        debounceTimer = setTimeout(() => {
-            currentRequest = new AbortController();
-            fetch(`../api/customer_group_search.php?keyword=${encodeURIComponent(keyword)}`, {
-                signal: currentRequest.signal
-            })
-            .then(res => res.json())
-            .then(data => {
-                if (!data.success || !data.data.length) {
-                    suggestions.style.display = 'none';
-                    return;
-                }
-                
-                let html = '';
-                data.data.forEach(item => {
-                    html += `<div class="px-3 py-2 border-bottom cursor-pointer suggestion-item" style="cursor:pointer;" data-value="${escapeHtml(item.group_name)}">
-                        <div class="fw-medium">${escapeHtml(item.group_name)}</div>
-                        <div class="small text-muted">${item.contract_count} 个合同 · ${item.customer_count} 个客户</div>
-                    </div>`;
-                });
-                suggestions.innerHTML = html;
-                suggestions.style.display = 'block';
-                
-                // 点击建议项
-                suggestions.querySelectorAll('.suggestion-item').forEach(el => {
-                    el.addEventListener('click', function() {
-                        input.value = this.dataset.value;
-                        suggestions.style.display = 'none';
-                        // 自动触发筛选
-                        if (typeof applyDashboardFilters === 'function') {
-                            applyDashboardFilters();
-                        }
-                    });
-                    el.addEventListener('mouseenter', function() {
-                        this.classList.add('bg-light');
-                    });
-                    el.addEventListener('mouseleave', function() {
-                        this.classList.remove('bg-light');
-                    });
-                });
-            })
-            .catch(err => {
-                if (err.name !== 'AbortError') console.error('搜索失败:', err);
-            });
-        }, 300);
-    });
-    
-    // 点击外部关闭建议
-    document.addEventListener('click', function(e) {
-        if (!input.contains(e.target) && !suggestions.contains(e.target)) {
-            suggestions.style.display = 'none';
-        }
-    });
-    
-    // 回车触发筛选
-    input.addEventListener('keydown', function(e) {
-        if (e.key === 'Enter') {
-            e.preventDefault();
-            suggestions.style.display = 'none';
-            if (typeof applyDashboardFilters === 'function') {
-                applyDashboardFilters();
-            }
-        }
-    });
-    
-    function escapeHtml(str) {
-        if (!str) return '';
-        return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-    }
 })();
 </script>
 
