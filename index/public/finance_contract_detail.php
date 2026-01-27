@@ -40,7 +40,9 @@ function convertCurrency(float $amount, string $fromCurrency, string $toCurrency
 auth_require();
 $user = current_user();
 
-if (!canOrAdmin(PermissionCode::CONTRACT_VIEW)) {
+// 销售可以查看自己客户的合同
+$isSales = ($user['role'] ?? '') === 'sales';
+if (!$isSales && !canOrAdmin(PermissionCode::CONTRACT_VIEW)) {
     layout_header('无权访问');
     echo '<div class="alert alert-danger">无权限。</div>';
     layout_footer();

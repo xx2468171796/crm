@@ -7,7 +7,9 @@ require_once __DIR__ . '/../core/rbac.php';
 auth_require();
 $user = current_user();
 
-if (!canOrAdmin(PermissionCode::CONTRACT_CREATE)) {
+// 销售可以给自己的客户创建合同
+$isSales = ($user['role'] ?? '') === 'sales';
+if (!$isSales && !canOrAdmin(PermissionCode::CONTRACT_CREATE)) {
     layout_header('无权访问');
     echo '<div class="alert alert-danger">无权限。</div>';
     layout_footer();

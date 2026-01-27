@@ -9,7 +9,9 @@ header('Content-Type: application/json; charset=utf-8');
 auth_require();
 $user = current_user();
 
-if (!canOrAdmin(PermissionCode::CONTRACT_EDIT) && !canOrAdmin(PermissionCode::FINANCE_EDIT)) {
+// 销售可以修改自己客户的合同，其他角色需要CONTRACT_EDIT或FINANCE_EDIT权限
+$isSales = ($user['role'] ?? '') === 'sales';
+if (!$isSales && !canOrAdmin(PermissionCode::CONTRACT_EDIT) && !canOrAdmin(PermissionCode::FINANCE_EDIT)) {
     echo json_encode(['success' => false, 'message' => '无权限'], JSON_UNESCAPED_UNICODE);
     exit;
 }
@@ -35,9 +37,15 @@ if ($contractId <= 0) {
     exit;
 }
 
-$contract = Db::queryOne('SELECT * FROM finance_contracts WHERE id = ? LIMIT 1', [$contractId]);
+$contract = Db::queryOne('SELECT fc.*, c.owner_user_id FROM finance_contracts fc LEFT JOIN customers c ON fc.customer_id = c.id WHERE fc.id = ? LIMIT 1', [$contractId]);
 if (!$contract) {
     echo json_encode(['success' => false, 'message' => '合同不存在'], JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
+// 销售只能修改自己客户的合同
+if ($isSales && (int)($contract['owner_user_id'] ?? 0) !== (int)($user['id'] ?? 0)) {
+    echo json_encode(['success' => false, 'message' => '无权限：只能修改自己名下客户的合同'], JSON_UNESCAPED_UNICODE);
     exit;
 }
 

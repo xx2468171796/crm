@@ -9,7 +9,9 @@ header('Content-Type: application/json; charset=utf-8');
 auth_require();
 $user = current_user();
 
-if (!canOrAdmin(PermissionCode::CONTRACT_EDIT) && !canOrAdmin(PermissionCode::FINANCE_EDIT)) {
+// 销售可以给自己的客户创建合同，其他角色需要CONTRACT_EDIT或FINANCE_EDIT权限
+$isSales = ($user['role'] ?? '') === 'sales';
+if (!$isSales && !canOrAdmin(PermissionCode::CONTRACT_EDIT) && !canOrAdmin(PermissionCode::FINANCE_EDIT)) {
     echo json_encode(['success' => false, 'message' => '无权限'], JSON_UNESCAPED_UNICODE);
     exit;
 }
