@@ -81,7 +81,48 @@ try {
     $s3Config = $config['s3'] ?? [];
     $s3 = new S3StorageProvider($s3Config, []);
     
-    $stream = $s3->readStream($file['storage_key']);
+    $stream = null;
+    $fromCache = false;
+    
+    try {
+        $stream = $s3->readStream($file['storage_key']);
+    } catch (Exception $s3Error) {
+        // S3文件不存在，尝试从本地缓存读取
+        $cacheDir = __DIR__ . '/../../storage/upload_cache';
+        $cacheFiles = glob($cacheDir . '/*.json');
+        
+        foreach ($cacheFiles as $metaFile) {
+            $meta = @json_decode(file_get_contents($metaFile), true);
+            if ($meta && ($meta['storage_key'] ?? '') === $file['storage_key']) {
+                $dataFile = str_replace('.json', '', $metaFile);
+                if (file_exists($dataFile)) {
+                    $stream = fopen($dataFile, 'rb');
+                    $fromCache = true;
+                    
+                    // 后台尝试同步到S3
+                    register_shutdown_function(function() use ($s3, $meta, $dataFile, $metaFile) {
+                        try {
+                            $s3->putObject($meta['storage_key'], $dataFile, ['mime_type' => $meta['mime_type'] ?? 'application/octet-stream']);
+                            @unlink($dataFile);
+                            @unlink($metaFile);
+                            error_log("[DRIVE_SHARE] Auto-synced to S3: " . $meta['storage_key']);
+                        } catch (Exception $e) {
+                            error_log("[DRIVE_SHARE] Auto-sync failed: " . $e->getMessage());
+                        }
+                    });
+                    break;
+                }
+            }
+        }
+        
+        if (!$stream) {
+            throw $s3Error; // 重新抛出原始错误
+        }
+    }
+    
+    if (!$stream) {
+        throw new Exception('无法获取文件流');
+    }
     
     // 设置响应头
     $filename = $file['original_filename'] ?: $file['filename'];
