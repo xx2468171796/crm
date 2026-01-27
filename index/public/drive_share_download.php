@@ -106,7 +106,18 @@ try {
     fclose($stream);
     
 } catch (Exception $e) {
-    error_log('Drive share download error: ' . $e->getMessage());
+    error_log('Drive share download error: ' . $e->getMessage() . ' | storage_key: ' . ($file['storage_key'] ?? 'unknown'));
     http_response_code(500);
-    die('下载失败');
+    
+    // 提供更详细的错误信息
+    $errorMsg = '下载失败';
+    if (strpos($e->getMessage(), '404') !== false || strpos($e->getMessage(), 'NoSuchKey') !== false) {
+        $errorMsg = '文件不存在于存储服务器，可能已被删除或未成功上传';
+    } elseif (strpos($e->getMessage(), '403') !== false) {
+        $errorMsg = '存储服务器访问被拒绝';
+    } elseif (strpos($e->getMessage(), 'timeout') !== false || strpos($e->getMessage(), 'Timeout') !== false) {
+        $errorMsg = '存储服务器连接超时，请稍后重试';
+    }
+    
+    die($errorMsg);
 }
