@@ -322,7 +322,9 @@ class S3StorageProvider extends AbstractStorageProvider
     private function sendRequest(string $method, string $storageKey, array $options = []): array
     {
         $objectKey = $this->applyPrefix($storageKey);
-        [$baseUrl, $hostHeader, $canonicalUri] = $this->buildRequestParts($objectKey);
+        // PUT请求（上传）使用内网端点，GET/DELETE使用外网端点
+        $useInternal = ($method === 'PUT') && !empty($this->config['internal_endpoint']);
+        [$baseUrl, $hostHeader, $canonicalUri] = $this->buildRequestParts($objectKey, $useInternal);
         $query = $options['query'] ?? [];
         $canonicalQuery = $this->canonicalQueryString($query);
         $url = $baseUrl . ($canonicalQuery !== '' ? '?' . $canonicalQuery : '');
@@ -446,14 +448,20 @@ class S3StorageProvider extends AbstractStorageProvider
         return $tmpFile;
     }
 
-    private function buildRequestParts(string $objectKey): array
+    private function buildRequestParts(string $objectKey, bool $useInternalEndpoint = false): array
     {
         $objectKey = ltrim($objectKey, '/');
         $encodedKey = $this->encodeKey($objectKey);
 
         $useHttps = ($this->config['use_https'] ?? true) !== false;
         $defaultScheme = $useHttps ? 'https' : 'http';
+        
+        // 优先使用内网端点（如果可用且请求使用内网）
         $endpoint = $this->config['endpoint'] ?? '';
+        if ($useInternalEndpoint && !empty($this->config['internal_endpoint'])) {
+            $endpoint = $this->config['internal_endpoint'];
+            $defaultScheme = 'http'; // 内网通常用HTTP
+        }
         $usePathStyle = (bool)($this->config['use_path_style'] ?? false);
 
         if ($endpoint) {
