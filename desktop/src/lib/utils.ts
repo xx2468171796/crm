@@ -104,7 +104,7 @@ export function isDesignManager(role: string | undefined | null): boolean {
   return role === 'design_manager';
 }
 
-// 判断用户是否可以查看财务（design_manager不能）
+// 判断用户是否可以查看财务（design_manager不能，但tech可以看自己的提成）
 export function canViewFinance(role: string | undefined | null): boolean {
-  return ['admin', 'super_admin', 'manager', 'tech_manager'].includes(role || '');
+  return ['admin', 'super_admin', 'manager', 'tech_manager', 'tech'].includes(role || '');
 }
