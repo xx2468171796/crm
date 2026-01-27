@@ -940,6 +940,7 @@ finance_sidebar_start('finance_dashboard');
             <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
                 <input type="hidden" name="view_mode" value="<?= htmlspecialchars($viewMode) ?>">
                 <input type="text" class="form-control form-control-sm" name="keyword" placeholder="客户/合同号/项目编号" value="<?= htmlspecialchars($keyword) ?>" style="width:180px;">
+                <input type="text" class="form-control form-control-sm" name="customer_group" placeholder="群名称搜索" value="<?= htmlspecialchars($customerGroup) ?>" style="width:160px;" title="搜索群名称，如：251113-2阮先生-設計服務群">
                 <select class="form-select form-select-sm" name="status" style="width:auto;">
                     <option value="">全部状态</option>
                     <?php if ($viewMode === 'contract'): ?>
@@ -1022,6 +1023,15 @@ finance_sidebar_start('finance_dashboard');
                             <select class="form-select form-select-sm" name="group_by">
                                 <option value="sales" <?= $groupBy === 'sales' ? 'selected' : '' ?>>按合同签约人</option>
                                 <option value="owner" <?= $groupBy === 'owner' ? 'selected' : '' ?>>按归属人</option>
+                            </select>
+                        </div>
+                    <?php endif; ?>
+                    <?php if ($viewMode !== 'staff_summary'): ?>
+                        <div class="col-lg-2 col-md-4 col-sm-6">
+                            <label class="form-label small text-muted mb-1">分组显示</label>
+                            <select class="form-select form-select-sm" name="group_display" id="groupDisplaySelect" onchange="toggleGroupDisplay()">
+                                <option value="" <?= empty($_GET['group_display']) ? 'selected' : '' ?>>不分组</option>
+                                <option value="customer_group" <?= ($_GET['group_display'] ?? '') === 'customer_group' ? 'selected' : '' ?>>按群名称分组</option>
                             </select>
                         </div>
                     <?php endif; ?>
@@ -1336,9 +1346,36 @@ finance_sidebar_start('finance_dashboard');
                 <?php if (empty($rows)): ?>
                     <tr><td colspan="<?= $viewMode === 'contract' ? 14 : ($viewMode === 'staff_summary' ? 6 : 15) ?>" class="text-center text-muted">暂无数据</td></tr>
                 <?php else: ?>
-                    <?php $rowIndex = 0; ?>
+                    <?php 
+                    $rowIndex = 0;
+                    $groupDisplay = trim($_GET['group_display'] ?? '');
+                    $currentGroup = null;
+                    
+                    // 如果按群名称分组，先对数据排序
+                    if ($groupDisplay === 'customer_group' && $viewMode !== 'staff_summary') {
+                        usort($rows, function($a, $b) {
+                            $groupA = $a['customer_group_name'] ?? '';
+                            $groupB = $b['customer_group_name'] ?? '';
+                            if ($groupA === '' && $groupB !== '') return 1;
+                            if ($groupA !== '' && $groupB === '') return -1;
+                            return strcmp($groupA, $groupB);
+                        });
+                    }
+                    ?>
                     <?php foreach ($rows as $row): ?>
                     <?php $rowIndex++; ?>
+                    <?php 
+                    // 按群名称分组显示分组标题
+                    if ($groupDisplay === 'customer_group' && $viewMode !== 'staff_summary') {
+                        $rowGroup = $row['customer_group_name'] ?? '';
+                        if ($rowGroup !== $currentGroup) {
+                            $currentGroup = $rowGroup;
+                            $groupLabel = $rowGroup !== '' ? $rowGroup : '(无群名称)';
+                            $colSpan = $viewMode === 'contract' ? 14 : 15;
+                            echo '<tr class="table-secondary"><td colspan="' . $colSpan . '" class="fw-bold py-2"><i class="bi bi-people-fill me-2"></i>' . htmlspecialchars($groupLabel) . '</td></tr>';
+                        }
+                    }
+                    ?>
                         <?php
                         $statusLabel = '';
                         $badge = 'secondary';
