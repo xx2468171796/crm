@@ -221,7 +221,7 @@ if ($viewMode === 'staff_summary') {
         $sql .= ' AND cu.owner_user_id IN (' . implode(',', $ps) . ')';
     }
     if ($keyword !== '') {
-        $sql .= ' AND (cu.name LIKE :kw OR cu.mobile LIKE :kw OR cu.customer_code LIKE :kw OR c.contract_no LIKE :kw)';
+        $sql .= ' AND (cu.name LIKE :kw OR cu.mobile LIKE :kw OR cu.customer_code LIKE :kw OR c.contract_no LIKE :kw OR cu.customer_group LIKE :kw)';
         $params['kw'] = '%' . $keyword . '%';
     }
     if ($customerGroup !== '') {
@@ -274,7 +274,7 @@ if ($viewMode === 'staff_summary') {
         $sql .= ' AND cu.owner_user_id IN (' . implode(',', $ps) . ')';
     }
     if ($keyword !== '') {
-        $sql .= ' AND (cu.name LIKE :kw OR cu.mobile LIKE :kw OR cu.customer_code LIKE :kw OR c.contract_no LIKE :kw)';
+        $sql .= ' AND (cu.name LIKE :kw OR cu.mobile LIKE :kw OR cu.customer_code LIKE :kw OR c.contract_no LIKE :kw OR cu.customer_group LIKE :kw)';
     }
     if ($customerGroup !== '') {
         $sql .= ' AND cu.customer_group LIKE :cg';
@@ -323,7 +323,7 @@ if ($viewMode === 'staff_summary') {
         $sql .= ' AND cu.owner_user_id IN (' . implode(',', $ps) . ')';
     }
     if ($keyword !== '') {
-        $sql .= ' AND (cu.name LIKE :kw OR cu.mobile LIKE :kw OR cu.customer_code LIKE :kw OR c.contract_no LIKE :kw)';
+        $sql .= ' AND (cu.name LIKE :kw OR cu.mobile LIKE :kw OR cu.customer_code LIKE :kw OR c.contract_no LIKE :kw OR cu.customer_group LIKE :kw)';
     }
     if ($customerGroup !== '') {
         $sql .= ' AND cu.customer_group LIKE :cg';
@@ -477,7 +477,7 @@ if ($viewMode !== 'staff_summary') {
 }
 
 if ($keyword !== '') {
-    $sql .= ' AND (cu.name LIKE :kw OR cu.mobile LIKE :kw OR cu.customer_code LIKE :kw OR c.contract_no LIKE :kw)';
+    $sql .= ' AND (cu.name LIKE :kw OR cu.mobile LIKE :kw OR cu.customer_code LIKE :kw OR c.contract_no LIKE :kw OR cu.customer_group LIKE :kw)';
     $params['kw'] = '%' . $keyword . '%';
 }
 
@@ -604,7 +604,7 @@ if ($viewMode === 'contract' || $viewMode === 'installment') {
         $sumParams['sales_user_id'] = (int)$user['id'];
     }
     if ($keyword !== '') {
-        $sumSql .= ' AND (cu.name LIKE :kw OR cu.mobile LIKE :kw OR cu.customer_code LIKE :kw OR c.contract_no LIKE :kw)';
+        $sumSql .= ' AND (cu.name LIKE :kw OR cu.mobile LIKE :kw OR cu.customer_code LIKE :kw OR c.contract_no LIKE :kw OR cu.customer_group LIKE :kw)';
         $sumParams['kw'] = '%' . $keyword . '%';
     }
     if ($customerGroup !== '') {
@@ -714,7 +714,7 @@ if ($viewMode === 'contract') {
         $groupStatsParams['sales_user_id'] = (int)$user['id'];
     }
     if ($keyword !== '') {
-        $groupStatsSql .= ' AND (cu.name LIKE :kw OR cu.mobile LIKE :kw OR cu.customer_code LIKE :kw OR c.contract_no LIKE :kw)';
+        $groupStatsSql .= ' AND (cu.name LIKE :kw OR cu.mobile LIKE :kw OR cu.customer_code LIKE :kw OR c.contract_no LIKE :kw OR cu.customer_group LIKE :kw)';
         $groupStatsParams['kw'] = '%' . $keyword . '%';
     }
     if ($customerGroup !== '') {
@@ -817,7 +817,7 @@ if ($viewMode === 'contract') {
         $ownerGroupStatsParams['sales_user_id'] = (int)$user['id'];
     }
     if ($keyword !== '') {
-        $ownerGroupStatsSql .= ' AND (cu.name LIKE :kw OR cu.mobile LIKE :kw OR cu.customer_code LIKE :kw OR c.contract_no LIKE :kw)';
+        $ownerGroupStatsSql .= ' AND (cu.name LIKE :kw OR cu.mobile LIKE :kw OR cu.customer_code LIKE :kw OR c.contract_no LIKE :kw OR cu.customer_group LIKE :kw)';
         $ownerGroupStatsParams['kw'] = '%' . $keyword . '%';
     }
     if ($customerGroup !== '') {
