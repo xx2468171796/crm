@@ -93,6 +93,27 @@ ensureDictTableExists();
                         <option value="0">禁用</option>
                     </select>
                 </div>
+                <!-- 手续费配置（仅payment_method类型显示） -->
+                <div id="feeConfigSection" style="display:none;">
+                    <hr>
+                    <h6 class="text-muted">手续费加成配置</h6>
+                    <div class="mb-3">
+                        <label class="form-label">手续费类型</label>
+                        <select class="form-select" id="dictFeeType">
+                            <option value="">无手续费</option>
+                            <option value="fixed">固定金额</option>
+                            <option value="percent">百分比</option>
+                        </select>
+                    </div>
+                    <div class="mb-3" id="feeValueDiv" style="display:none;">
+                        <label class="form-label">手续费值</label>
+                        <div class="input-group">
+                            <input type="number" step="0.01" min="0" class="form-control" id="dictFeeValue" placeholder="输入手续费值">
+                            <span class="input-group-text" id="feeValueUnit">元</span>
+                        </div>
+                        <small class="text-muted" id="feeValueHint">每笔收款加收的固定金额</small>
+                    </div>
+                </div>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">取消</button>
@@ -150,7 +171,7 @@ function loadDictList() {
                     <td>${r.sort_order}</td>
                     <td>${r.is_enabled == 1 ? '<span class="badge bg-success">启用</span>' : '<span class="badge bg-secondary">禁用</span>'}</td>
                     <td>
-                        <button type="button" class="btn btn-sm btn-outline-primary" onclick="editDict(${r.id}, '${esc(r.dict_type)}', '${esc(r.dict_code)}', '${esc(r.dict_label)}', ${r.sort_order}, ${r.is_enabled})">编辑</button>
+                        <button type="button" class="btn btn-sm btn-outline-primary" onclick="editDict(${r.id}, '${esc(r.dict_type)}', '${esc(r.dict_code)}', '${esc(r.dict_label)}', ${r.sort_order}, ${r.is_enabled}, '${esc(r.fee_type || '')}', '${r.fee_value || ''}')">编辑</button>
                         <button type="button" class="btn btn-sm btn-outline-danger" onclick="deleteDict(${r.id})">删除</button>
                     </td>
                 </tr>
@@ -166,7 +187,10 @@ function openDictModal() {
     document.getElementById('dictLabel').value = '';
     document.getElementById('dictSortOrder').value = '0';
     document.getElementById('dictIsEnabled').value = '1';
+    document.getElementById('dictFeeType').value = '';
+    document.getElementById('dictFeeValue').value = '';
     document.getElementById('dictModalTitle').textContent = '新增字典项';
+    updateFeeConfigVisibility();
     
     if (!dictModal) {
         dictModal = new bootstrap.Modal(document.getElementById('dictModal'));
@@ -174,7 +198,41 @@ function openDictModal() {
     dictModal.show();
 }
 
-function editDict(id, type, code, label, sortOrder, isEnabled) {
+// 更新手续费配置区域的显示/隐藏
+function updateFeeConfigVisibility() {
+    const dictType = document.getElementById('dictType').value.trim();
+    const feeConfigSection = document.getElementById('feeConfigSection');
+    const feeType = document.getElementById('dictFeeType').value;
+    const feeValueDiv = document.getElementById('feeValueDiv');
+    const feeValueUnit = document.getElementById('feeValueUnit');
+    const feeValueHint = document.getElementById('feeValueHint');
+    
+    // 只有payment_method类型才显示手续费配置
+    if (dictType === 'payment_method') {
+        feeConfigSection.style.display = '';
+    } else {
+        feeConfigSection.style.display = 'none';
+    }
+    
+    // 手续费类型选择后显示对应的输入框
+    if (feeType === 'fixed') {
+        feeValueDiv.style.display = '';
+        feeValueUnit.textContent = '元';
+        feeValueHint.textContent = '每笔收款加收的固定金额';
+    } else if (feeType === 'percent') {
+        feeValueDiv.style.display = '';
+        feeValueUnit.textContent = '%';
+        feeValueHint.textContent = '输入百分比数字，如 3 表示 3%';
+    } else {
+        feeValueDiv.style.display = 'none';
+    }
+}
+
+// 监听字典类型和手续费类型变化
+document.getElementById('dictType').addEventListener('input', updateFeeConfigVisibility);
+document.getElementById('dictFeeType').addEventListener('change', updateFeeConfigVisibility);
+
+function editDict(id, type, code, label, sortOrder, isEnabled, feeType, feeValue) {
     document.getElementById('dictId').value = String(id);
     document.getElementById('dictType').value = type;
     document.getElementById('dictCode').value = code;
@@ -182,6 +240,15 @@ function editDict(id, type, code, label, sortOrder, isEnabled) {
     document.getElementById('dictSortOrder').value = String(sortOrder);
     document.getElementById('dictIsEnabled').value = String(isEnabled);
     document.getElementById('dictModalTitle').textContent = '编辑字典项';
+    
+    // 手续费配置
+    document.getElementById('dictFeeType').value = feeType || '';
+    if (feeType === 'percent' && feeValue) {
+        document.getElementById('dictFeeValue').value = (parseFloat(feeValue) * 100).toFixed(2);
+    } else {
+        document.getElementById('dictFeeValue').value = feeValue || '';
+    }
+    updateFeeConfigVisibility();
     
     if (!dictModal) {
         dictModal = new bootstrap.Modal(document.getElementById('dictModal'));
@@ -209,6 +276,19 @@ function saveDict() {
     fd.append('dict_label', dictLabel);
     fd.append('sort_order', sortOrder);
     fd.append('is_enabled', isEnabled);
+    
+    // 手续费配置（仅payment_method类型）
+    if (dictType === 'payment_method') {
+        const feeType = document.getElementById('dictFeeType').value;
+        fd.append('fee_type', feeType);
+        if (feeType) {
+            let feeValue = parseFloat(document.getElementById('dictFeeValue').value) || 0;
+            if (feeType === 'percent') {
+                feeValue = feeValue / 100; // 百分比转换为小数
+            }
+            fd.append('fee_value', feeValue);
+        }
+    }
     
     fetch(apiUrl('system_dict_save.php'), { method: 'POST', body: fd })
         .then(r => r.json())

@@ -10,7 +10,7 @@ try {
     
     $type = trim($_GET['type'] ?? '');
     
-    $sql = "SELECT id, dict_type, dict_code, dict_label, sort_order, is_enabled, create_time, update_time 
+    $sql = "SELECT id, dict_type, dict_code, dict_label, sort_order, is_enabled, fee_type, fee_value, create_time, update_time 
             FROM system_dict";
     $params = [];
     
