@@ -112,6 +112,7 @@ $routes = [
     // 财务模块
     'my_receivables'   => __DIR__ . '/my_receivables.php',
     'finance_cashier'  => __DIR__ . '/finance_cashier.php',
+    'finance_fee_dashboard' => __DIR__ . '/finance_fee_dashboard.php',
     'finance_dashboard' => __DIR__ . '/finance_dashboard.php',
     'finance_contract_create' => __DIR__ . '/finance_contract_create.php',
     'finance_contract_detail' => __DIR__ . '/finance_contract_detail.php',
