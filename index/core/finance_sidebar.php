@@ -149,6 +149,9 @@ function finance_sidebar_start($currentPage = '') {
         <div class="finance-sidebar d-none d-lg-block" id="financeSidebar">
             <nav class="nav flex-column py-3">
                 <div class="nav-header">收款管理</div>
+                <a class="nav-link <?= $currentPage === 'finance_cashier' ? 'active' : '' ?>" href="index.php?page=finance_cashier" data-title="收款台">
+                    <i class="bi bi-calculator"></i><span class="nav-text">收款台</span>
+                </a>
                 <a class="nav-link <?= $currentPage === 'finance_dashboard' ? 'active' : '' ?>" href="index.php?page=finance_dashboard" data-title="收款工作台">
                     <i class="bi bi-cash-stack"></i><span class="nav-text">收款工作台</span>
                 </a>
