@@ -253,6 +253,7 @@ try {
         $receipts = Db::query(
             "SELECT r.*, c.title as contract_name, c.sign_date as contract_sign_date,
                     c.is_first_contract, c.locked_commission_rate, c.sales_user_id,
+                    c.currency as contract_currency,
                     cu.name as customer_name, cu.owner_user_id, u.realname as collector_name
              FROM finance_receipts r
              LEFT JOIN finance_contracts c ON r.contract_id = c.id
@@ -270,7 +271,8 @@ try {
         
         foreach ($receipts as $r) {
             $receiptAmount = (float)($r['amount_received'] ?? 0);
-            $receiptCurrency = $r['currency'] ?? 'TWD';
+            // 优先使用合同货币，如果没有则使用收款记录货币，最后默认TWD
+            $receiptCurrency = $r['contract_currency'] ?? $r['currency'] ?? 'TWD';
             $amountInRuleCurrency = convertCurrency($receiptAmount, $receiptCurrency, $ruleCurrency, $currencyRates, $rateType);
             
             $contractSignDate = $r['contract_sign_date'] ?? '';
