@@ -131,17 +131,20 @@ layout_header('收款登记');
                     <label class="form-label">实际汇率</label>
                     <input type="number" step="0.0001" min="0" class="form-control" name="exchange_rate" id="exchangeRate" placeholder="输入当时汇率">
                 </div>
-                <div class="col-md-12" id="feeInfoDiv" style="display:none;">
+                <div class="col-md-3" id="feeInfoDiv" style="display:none;">
+                    <label class="form-label">手续费加成 <small class="text-muted" id="feeDesc"></small></label>
+                    <input type="number" step="0.01" min="0" class="form-control" name="fee_amount" id="feeAmountInput" placeholder="手续费金额">
+                    <small class="text-muted">自动计算，可手动调整</small>
+                </div>
+                <div class="col-md-12" id="feeSummaryDiv" style="display:none;">
                     <div class="alert alert-info py-2 mb-0">
                         <div class="d-flex align-items-center gap-3">
                             <span>原始金额: <strong id="feeOriginal">0.00</strong></span>
                             <span>+ 手续费: <strong id="feeAmount">0.00</strong></span>
-                            <span class="text-muted" id="feeDesc"></span>
                             <span>= 实收金额: <strong class="text-success" id="feeTotal">0.00</strong></span>
                         </div>
                     </div>
                     <input type="hidden" name="amount_received" id="amountReceived">
-                    <input type="hidden" name="fee_amount" id="feeAmountInput">
                 </div>
                 <div class="col-md-12">
                     <label class="form-label">备注</label>
@@ -253,8 +256,10 @@ function updateCalcHint() {
     hint.textContent = '本次将冲抵：' + fmt(applied) + '；超收转预收：' + fmt(overflow);
 }
 
-// 更新手续费显示
-function updateFeeDisplay() {
+let feeManuallyEdited = false; // 标记手续费是否被手动修改
+
+// 更新手续费显示（自动计算）
+function updateFeeDisplay(forceRecalc = false) {
     const originalAmount = Number(document.getElementById('originalAmount').value || 0);
     const method = document.getElementById('method').value;
     const feeConfig = paymentMethodFees[method] || {};
@@ -272,32 +277,66 @@ function updateFeeDisplay() {
         feeDesc = '(' + (feeValue * 100).toFixed(2) + '%)';
     }
     
-    const totalAmount = originalAmount + feeAmount;
-    
-    // 更新显示
-    document.getElementById('feeOriginal').textContent = fmt(originalAmount);
-    document.getElementById('feeAmount').textContent = fmt(feeAmount);
+    // 更新描述
     document.getElementById('feeDesc').textContent = feeDesc;
-    document.getElementById('feeTotal').textContent = fmt(totalAmount);
     
-    // 更新隐藏字段
-    document.getElementById('amountReceived').value = fmt(totalAmount);
-    document.getElementById('feeAmountInput').value = fmt(feeAmount);
+    // 如果手续费没有被手动修改，或者强制重新计算，则更新手续费输入框
+    if (!feeManuallyEdited || forceRecalc) {
+        document.getElementById('feeAmountInput').value = fmt(feeAmount);
+        feeManuallyEdited = false;
+    }
+    
+    // 更新汇总显示
+    updateFeeSummary();
     
     // 显示/隐藏手续费信息区域
     const feeInfoDiv = document.getElementById('feeInfoDiv');
+    const feeSummaryDiv = document.getElementById('feeSummaryDiv');
     if (originalAmount > 0) {
         feeInfoDiv.style.display = '';
+        feeSummaryDiv.style.display = '';
     } else {
         feeInfoDiv.style.display = 'none';
+        feeSummaryDiv.style.display = 'none';
     }
     
     updateCalcHint();
 }
 
-// 监听原始金额和支付方式变化
-document.getElementById('originalAmount').addEventListener('input', updateFeeDisplay);
-document.getElementById('method').addEventListener('change', updateFeeDisplay);
+// 更新汇总显示（使用当前输入框的值）
+function updateFeeSummary() {
+    const originalAmount = Number(document.getElementById('originalAmount').value || 0);
+    const feeAmount = Number(document.getElementById('feeAmountInput').value || 0);
+    const totalAmount = originalAmount + feeAmount;
+    
+    // 更新显示
+    document.getElementById('feeOriginal').textContent = fmt(originalAmount);
+    document.getElementById('feeAmount').textContent = fmt(feeAmount);
+    document.getElementById('feeTotal').textContent = fmt(totalAmount);
+    
+    // 更新隐藏字段
+    document.getElementById('amountReceived').value = fmt(totalAmount);
+    
+    updateCalcHint();
+}
+
+// 监听原始金额变化 - 重新计算手续费
+document.getElementById('originalAmount').addEventListener('input', function() {
+    feeManuallyEdited = false; // 原始金额变化时重置手动编辑标记
+    updateFeeDisplay();
+});
+
+// 监听支付方式变化 - 重新计算手续费
+document.getElementById('method').addEventListener('change', function() {
+    feeManuallyEdited = false; // 支付方式变化时重置手动编辑标记
+    updateFeeDisplay();
+});
+
+// 监听手续费输入框变化 - 标记为手动编辑
+document.getElementById('feeAmountInput').addEventListener('input', function() {
+    feeManuallyEdited = true;
+    updateFeeSummary();
+});
 
 document.getElementById('btnClear').addEventListener('click', function() {
     clearAll();
