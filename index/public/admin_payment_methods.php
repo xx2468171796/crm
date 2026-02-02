@@ -55,12 +55,13 @@ finance_sidebar_start('admin_payment_methods');
                                 <th width="60">排序</th>
                                 <th>代码</th>
                                 <th>显示名称</th>
+                                <th>手续费加成</th>
                                 <th width="100">状态</th>
                                 <th width="180">操作</th>
                             </tr>
                         </thead>
                         <tbody id="methodList">
-                            <tr><td colspan="5" class="text-center text-muted">加载中...</td></tr>
+                            <tr><td colspan="6" class="text-center text-muted">加载中...</td></tr>
                         </tbody>
                     </table>
                 </div>
@@ -100,6 +101,24 @@ finance_sidebar_start('admin_payment_methods');
                             <label class="form-check-label" for="isEnabled">启用</label>
                         </div>
                     </div>
+                    <hr>
+                    <h6 class="text-muted">手续费加成配置</h6>
+                    <div class="mb-3">
+                        <label class="form-label">手续费类型</label>
+                        <select class="form-select" id="feeType" name="fee_type">
+                            <option value="">无手续费</option>
+                            <option value="fixed">固定金额</option>
+                            <option value="percent">百分比</option>
+                        </select>
+                    </div>
+                    <div class="mb-3" id="feeValueDiv" style="display:none;">
+                        <label class="form-label">手续费值 <span class="text-danger">*</span></label>
+                        <div class="input-group">
+                            <input type="number" step="0.01" min="0" class="form-control" id="feeValue" name="fee_value" placeholder="输入手续费值">
+                            <span class="input-group-text" id="feeValueUnit">元</span>
+                        </div>
+                        <small class="text-muted" id="feeValueHint">每笔收款加收的固定金额</small>
+                    </div>
                 </form>
             </div>
             <div class="modal-footer">
@@ -137,15 +156,23 @@ function loadList() {
 function renderList(rows) {
     const tbody = document.getElementById('methodList');
     if (!rows.length) {
-        tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted">暂无数据</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted">暂无数据</td></tr>';
         return;
     }
     
-    tbody.innerHTML = rows.map(r => `
+    tbody.innerHTML = rows.map(r => {
+        let feeText = '无';
+        if (r.fee_type === 'fixed' && r.fee_value) {
+            feeText = '+' + parseFloat(r.fee_value).toFixed(2) + ' 元';
+        } else if (r.fee_type === 'percent' && r.fee_value) {
+            feeText = '+' + (parseFloat(r.fee_value) * 100).toFixed(2) + '%';
+        }
+        return `
         <tr data-id="${r.id}">
             <td>${r.sort_order}</td>
             <td><code>${esc(r.dict_code)}</code></td>
             <td>${esc(r.dict_label)}</td>
+            <td><span class="badge bg-info">${feeText}</span></td>
             <td>
                 <span class="badge ${r.is_enabled == 1 ? 'bg-success' : 'bg-secondary'}">${r.is_enabled == 1 ? '启用' : '禁用'}</span>
             </td>
@@ -155,7 +182,7 @@ function renderList(rows) {
                 <button class="btn btn-sm btn-outline-danger" onclick="deleteMethod(${r.id})">删除</button>
             </td>
         </tr>
-    `).join('');
+    `}).join('');
 }
 
 function esc(s) {
@@ -169,8 +196,32 @@ function showAddModal() {
     document.getElementById('dictLabel').value = '';
     document.getElementById('sortOrder').value = '0';
     document.getElementById('isEnabled').checked = true;
+    document.getElementById('feeType').value = '';
+    document.getElementById('feeValue').value = '';
+    updateFeeValueVisibility();
     methodModal.show();
 }
+
+function updateFeeValueVisibility() {
+    const feeType = document.getElementById('feeType').value;
+    const feeValueDiv = document.getElementById('feeValueDiv');
+    const feeValueUnit = document.getElementById('feeValueUnit');
+    const feeValueHint = document.getElementById('feeValueHint');
+    
+    if (feeType === 'fixed') {
+        feeValueDiv.style.display = '';
+        feeValueUnit.textContent = '元';
+        feeValueHint.textContent = '每笔收款加收的固定金额';
+    } else if (feeType === 'percent') {
+        feeValueDiv.style.display = '';
+        feeValueUnit.textContent = '%';
+        feeValueHint.textContent = '输入百分比数字，如 3 表示 3%';
+    } else {
+        feeValueDiv.style.display = 'none';
+    }
+}
+
+document.getElementById('feeType').addEventListener('change', updateFeeValueVisibility);
 
 function editMethod(id) {
     fetch(API_BASE + '?action=list&dict_type=payment_method')
@@ -186,6 +237,17 @@ function editMethod(id) {
             document.getElementById('dictLabel').value = row.dict_label;
             document.getElementById('sortOrder').value = row.sort_order;
             document.getElementById('isEnabled').checked = row.is_enabled == 1;
+            
+            // 手续费配置
+            document.getElementById('feeType').value = row.fee_type || '';
+            if (row.fee_type === 'percent' && row.fee_value) {
+                // 百分比转换为显示值（0.03 -> 3）
+                document.getElementById('feeValue').value = (parseFloat(row.fee_value) * 100).toFixed(2);
+            } else {
+                document.getElementById('feeValue').value = row.fee_value || '';
+            }
+            updateFeeValueVisibility();
+            
             methodModal.show();
         });
 }
@@ -199,6 +261,18 @@ function saveMethod() {
     fd.append('dict_label', document.getElementById('dictLabel').value.trim());
     fd.append('sort_order', document.getElementById('sortOrder').value);
     fd.append('is_enabled', document.getElementById('isEnabled').checked ? '1' : '0');
+    
+    // 手续费配置
+    const feeType = document.getElementById('feeType').value;
+    fd.append('fee_type', feeType);
+    if (feeType) {
+        let feeValue = parseFloat(document.getElementById('feeValue').value) || 0;
+        if (feeType === 'percent') {
+            // 百分比转换为小数（3 -> 0.03）
+            feeValue = feeValue / 100;
+        }
+        fd.append('fee_value', feeValue);
+    }
     
     fetch(API_BASE, { method: 'POST', body: fd })
         .then(r => r.json())

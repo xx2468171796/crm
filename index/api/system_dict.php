@@ -121,6 +121,32 @@ function handleSave($dictType) {
     $sortOrder = intval($_POST['sort_order'] ?? 0);
     $isEnabled = intval($_POST['is_enabled'] ?? 1);
     
+    // 手续费配置（仅payment_method类型支持）
+    $feeType = null;
+    $feeValue = null;
+    if ($dictType === 'payment_method') {
+        $feeType = trim($_POST['fee_type'] ?? '');
+        $feeValue = $_POST['fee_value'] ?? null;
+        
+        // 验证手续费类型
+        if ($feeType !== '' && !in_array($feeType, ['fixed', 'percent'])) {
+            $feeType = null;
+        }
+        if ($feeType === '') {
+            $feeType = null;
+        }
+        
+        // 验证手续费值
+        if ($feeType !== null && $feeValue !== null && $feeValue !== '') {
+            $feeValue = (float)$feeValue;
+            if ($feeValue < 0) {
+                $feeValue = 0;
+            }
+        } else {
+            $feeValue = null;
+        }
+    }
+    
     if ($code === '' || $label === '') {
         echo json_encode(['success' => false, 'message' => '代码和名称不能为空']);
         return;
@@ -140,13 +166,13 @@ function handleSave($dictType) {
     
     if ($id > 0) {
         Db::execute(
-            'UPDATE system_dict SET dict_code = ?, dict_label = ?, sort_order = ?, is_enabled = ?, update_time = ? WHERE id = ?',
-            [$code, $label, $sortOrder, $isEnabled, $now, $id]
+            'UPDATE system_dict SET dict_code = ?, dict_label = ?, sort_order = ?, is_enabled = ?, fee_type = ?, fee_value = ?, update_time = ? WHERE id = ?',
+            [$code, $label, $sortOrder, $isEnabled, $feeType, $feeValue, $now, $id]
         );
     } else {
         Db::execute(
-            'INSERT INTO system_dict (dict_type, dict_code, dict_label, sort_order, is_enabled, create_time, update_time) VALUES (?, ?, ?, ?, ?, ?, ?)',
-            [$dictType, $code, $label, $sortOrder, $isEnabled, $now, $now]
+            'INSERT INTO system_dict (dict_type, dict_code, dict_label, sort_order, is_enabled, fee_type, fee_value, create_time, update_time) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+            [$dictType, $code, $label, $sortOrder, $isEnabled, $feeType, $feeValue, $now, $now]
         );
         $id = (int)Db::lastInsertId();
     }

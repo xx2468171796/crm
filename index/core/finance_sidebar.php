@@ -172,6 +172,11 @@ function finance_sidebar_start($currentPage = '') {
                     <i class="bi bi-gear"></i><span class="nav-text">提成规则</span>
                 </a>
                 
+                <div class="nav-header mt-3">报表</div>
+                <a class="nav-link <?= $currentPage === 'finance_fee_report' ? 'active' : '' ?>" href="index.php?page=finance_fee_report" data-title="手续费报表">
+                    <i class="bi bi-receipt"></i><span class="nav-text">手续费报表</span>
+                </a>
+                
                 <div class="nav-header mt-3">设置</div>
                 <a class="nav-link <?= $currentPage === 'exchange_rate' ? 'active' : '' ?>" href="index.php?page=exchange_rate" data-title="汇率管理">
                     <i class="bi bi-currency-exchange"></i><span class="nav-text">汇率管理</span>

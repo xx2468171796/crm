@@ -103,8 +103,8 @@ layout_header('收款登记');
                     <input type="date" class="form-control" name="received_date" id="receivedDate" required>
                 </div>
                 <div class="col-md-3">
-                    <label class="form-label">实收金额</label>
-                    <input type="number" step="0.01" min="0" class="form-control" name="amount_received" id="amountReceived" required>
+                    <label class="form-label">原始金额</label>
+                    <input type="number" step="0.01" min="0" class="form-control" name="original_amount" id="originalAmount" required>
                 </div>
                 <div class="col-md-3">
                     <label class="form-label">收款方式</label>
@@ -130,6 +130,18 @@ layout_header('收款登记');
                 <div class="col-md-3" id="floatingRateDiv" style="display:none;">
                     <label class="form-label">实际汇率</label>
                     <input type="number" step="0.0001" min="0" class="form-control" name="exchange_rate" id="exchangeRate" placeholder="输入当时汇率">
+                </div>
+                <div class="col-md-12" id="feeInfoDiv" style="display:none;">
+                    <div class="alert alert-info py-2 mb-0">
+                        <div class="d-flex align-items-center gap-3">
+                            <span>原始金额: <strong id="feeOriginal">0.00</strong></span>
+                            <span>+ 手续费: <strong id="feeAmount">0.00</strong></span>
+                            <span class="text-muted" id="feeDesc"></span>
+                            <span>= 实收金额: <strong class="text-success" id="feeTotal">0.00</strong></span>
+                        </div>
+                    </div>
+                    <input type="hidden" name="amount_received" id="amountReceived">
+                    <input type="hidden" name="fee_amount" id="feeAmountInput">
                 </div>
                 <div class="col-md-12">
                     <label class="form-label">备注</label>
@@ -169,6 +181,21 @@ function setToday(el) {
 }
 
 let currentInstallment = null;
+let paymentMethodFees = {}; // 存储支付方式手续费配置
+
+// 加载支付方式手续费配置
+fetch(apiUrl('finance_payment_fee.php?action=config'))
+    .then(r => r.json())
+    .then(res => {
+        if (res.success && res.data) {
+            res.data.forEach(m => {
+                paymentMethodFees[m.code] = {
+                    fee_type: m.fee_type,
+                    fee_value: m.fee_value ? parseFloat(m.fee_value) : null
+                };
+            });
+        }
+    });
 
 function clearAll() {
     document.getElementById('installmentId').value = '';
@@ -208,7 +235,8 @@ function renderInfo(data) {
     document.getElementById('formCard').style.display = '';
     document.getElementById('formInstallmentId').value = data.installment_id;
     setToday(document.getElementById('receivedDate'));
-    document.getElementById('amountReceived').value = fmt(data.amount_unpaid);
+    document.getElementById('originalAmount').value = fmt(data.amount_unpaid);
+    updateFeeDisplay();
     updateCalcHint();
 }
 
@@ -224,6 +252,52 @@ function updateCalcHint() {
     const overflow = Math.max(0, amt - applied);
     hint.textContent = '本次将冲抵：' + fmt(applied) + '；超收转预收：' + fmt(overflow);
 }
+
+// 更新手续费显示
+function updateFeeDisplay() {
+    const originalAmount = Number(document.getElementById('originalAmount').value || 0);
+    const method = document.getElementById('method').value;
+    const feeConfig = paymentMethodFees[method] || {};
+    const feeType = feeConfig.fee_type;
+    const feeValue = feeConfig.fee_value;
+    
+    let feeAmount = 0;
+    let feeDesc = '';
+    
+    if (feeType === 'fixed' && feeValue > 0) {
+        feeAmount = feeValue;
+        feeDesc = '(固定 ' + fmt(feeValue) + ' 元)';
+    } else if (feeType === 'percent' && feeValue > 0) {
+        feeAmount = originalAmount * feeValue;
+        feeDesc = '(' + (feeValue * 100).toFixed(2) + '%)';
+    }
+    
+    const totalAmount = originalAmount + feeAmount;
+    
+    // 更新显示
+    document.getElementById('feeOriginal').textContent = fmt(originalAmount);
+    document.getElementById('feeAmount').textContent = fmt(feeAmount);
+    document.getElementById('feeDesc').textContent = feeDesc;
+    document.getElementById('feeTotal').textContent = fmt(totalAmount);
+    
+    // 更新隐藏字段
+    document.getElementById('amountReceived').value = fmt(totalAmount);
+    document.getElementById('feeAmountInput').value = fmt(feeAmount);
+    
+    // 显示/隐藏手续费信息区域
+    const feeInfoDiv = document.getElementById('feeInfoDiv');
+    if (originalAmount > 0) {
+        feeInfoDiv.style.display = '';
+    } else {
+        feeInfoDiv.style.display = 'none';
+    }
+    
+    updateCalcHint();
+}
+
+// 监听原始金额和支付方式变化
+document.getElementById('originalAmount').addEventListener('input', updateFeeDisplay);
+document.getElementById('method').addEventListener('change', updateFeeDisplay);
 
 document.getElementById('btnClear').addEventListener('click', function() {
     clearAll();
@@ -251,7 +325,7 @@ document.getElementById('btnLoad').addEventListener('click', function() {
         });
 });
 
-document.getElementById('amountReceived').addEventListener('input', updateCalcHint);
+// document.getElementById('amountReceived').addEventListener('input', updateCalcHint);
 
 document.getElementById('exchangeRateType').addEventListener('change', function() {
     const floatingDiv = document.getElementById('floatingRateDiv');
@@ -285,8 +359,8 @@ function updateReceiveAmount() {
             converted = convertCurrency(unpaid, instCurrency, receiveCurrency);
         }
     }
-    document.getElementById('amountReceived').value = fmt(converted);
-    updateCalcHint();
+    document.getElementById('originalAmount').value = fmt(converted);
+    updateFeeDisplay();
 }
 
 document.getElementById('btnSubmit').addEventListener('click', function() {
@@ -296,9 +370,9 @@ document.getElementById('btnSubmit').addEventListener('click', function() {
     }
     const form = document.getElementById('receiptForm');
     const fd = new FormData(form);
-    const amt = Number(fd.get('amount_received') || 0);
-    if (!amt || amt <= 0) {
-        showAlertModal('收款金额必须大于0', 'warning');
+    const originalAmt = Number(fd.get('original_amount') || 0);
+    if (!originalAmt || originalAmt <= 0) {
+        showAlertModal('原始金额必须大于0', 'warning');
         return;
     }
 

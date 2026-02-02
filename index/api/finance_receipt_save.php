@@ -3,6 +3,7 @@ require_once __DIR__ . '/../core/api_init.php';
 require_once __DIR__ . '/../core/db.php';
 require_once __DIR__ . '/../core/auth.php';
 require_once __DIR__ . '/../core/rbac.php';
+require_once __DIR__ . '/../core/dict.php';
 
 header('Content-Type: application/json; charset=utf-8');
 
@@ -22,6 +23,10 @@ $method = trim($_POST['method'] ?? '');
 $note = trim($_POST['note'] ?? '');
 $collectorUserId = (int)($_POST['collector_user_id'] ?? 0);
 $currency = trim($_POST['currency'] ?? $_POST['receive_currency'] ?? 'TWD');
+
+// 手续费相关参数（可选，如果不传则自动计算）
+$originalAmountStr = trim($_POST['original_amount'] ?? '');
+$feeAmountStr = trim($_POST['fee_amount'] ?? '');
 
 // 验证货币代码
 $validCurrencies = ['CNY', 'TWD', 'USD', 'GBP', 'SGD', 'HKD'];
@@ -52,6 +57,21 @@ if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $receivedDate)) {
 $amountReceived = 0.0;
 if ($amountReceivedStr !== '' && is_numeric($amountReceivedStr)) {
     $amountReceived = (float)$amountReceivedStr;
+}
+
+// 计算手续费
+$feeInfo = calculatePaymentFee($amountReceived, $method);
+$originalAmount = $amountReceived; // 原始金额就是用户输入的金额
+$feeType = $feeInfo['fee_type'];
+$feeValue = $feeInfo['fee_value'];
+$feeAmount = $feeInfo['fee_amount'];
+
+// 如果前端传了手续费金额，使用前端的值（允许手动调整）
+if ($feeAmountStr !== '' && is_numeric($feeAmountStr)) {
+    $feeAmount = (float)$feeAmountStr;
+}
+if ($originalAmountStr !== '' && is_numeric($originalAmountStr)) {
+    $originalAmount = (float)$originalAmountStr;
 }
 
 $prepayAmount = 0.0;
@@ -212,8 +232,8 @@ try {
     }
 
     Db::execute(
-        'INSERT INTO finance_receipts (customer_id, contract_id, installment_id, sales_user_id_snapshot, source_type, source_id, received_date, amount_received, amount_applied, amount_overflow, method, note, create_time, create_user_id, collector_user_id, currency, exchange_rate_floating, exchange_rate_fixed, amount_cny)
-         VALUES (:customer_id, :contract_id, :installment_id, :sales_user_id_snapshot, :source_type, :source_id, :received_date, :amount_received, :amount_applied, :amount_overflow, :method, :note, :create_time, :create_user_id, :collector_user_id, :currency, :exchange_rate_floating, :exchange_rate_fixed, :amount_cny)',
+        'INSERT INTO finance_receipts (customer_id, contract_id, installment_id, sales_user_id_snapshot, source_type, source_id, received_date, amount_received, original_amount, fee_type, fee_value, fee_amount, amount_applied, amount_overflow, method, note, create_time, create_user_id, collector_user_id, currency, exchange_rate_floating, exchange_rate_fixed, amount_cny)
+         VALUES (:customer_id, :contract_id, :installment_id, :sales_user_id_snapshot, :source_type, :source_id, :received_date, :amount_received, :original_amount, :fee_type, :fee_value, :fee_amount, :amount_applied, :amount_overflow, :method, :note, :create_time, :create_user_id, :collector_user_id, :currency, :exchange_rate_floating, :exchange_rate_fixed, :amount_cny)',
         [
             'customer_id' => (int)$inst['customer_id'],
             'contract_id' => (int)$inst['contract_id'],
@@ -223,6 +243,10 @@ try {
             'source_id' => null,
             'received_date' => $receivedDate,
             'amount_received' => $amountReceived,
+            'original_amount' => $originalAmount,
+            'fee_type' => $feeType,
+            'fee_value' => $feeValue,
+            'fee_amount' => $feeAmount,
             'amount_applied' => $amountApplied,
             'amount_overflow' => $amountOverflow,
             'method' => $method !== '' ? $method : null,

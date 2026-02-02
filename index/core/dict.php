@@ -134,6 +134,90 @@ function getCollectionResultLabel(string $value): string {
 /**
  * 确保字典表存在并有默认数据
  */
+/**
+ * 获取支付方式的手续费配置
+ * @param string $methodCode 支付方式代码
+ * @return array|null ['fee_type' => 'fixed'|'percent'|null, 'fee_value' => float|null]
+ */
+function getPaymentMethodFeeConfig(string $methodCode): ?array {
+    if ($methodCode === '') return null;
+    
+    ensureDictTableExists();
+    
+    $row = Db::queryOne(
+        "SELECT fee_type, fee_value FROM system_dict WHERE dict_type = 'payment_method' AND dict_code = ? AND is_enabled = 1",
+        [$methodCode]
+    );
+    
+    if (!$row) return null;
+    
+    return [
+        'fee_type' => $row['fee_type'],
+        'fee_value' => $row['fee_value'] !== null ? (float)$row['fee_value'] : null,
+    ];
+}
+
+/**
+ * 计算手续费金额
+ * @param float $originalAmount 原始金额
+ * @param string|null $feeType 手续费类型 (fixed/percent)
+ * @param float|null $feeValue 手续费值
+ * @return float 手续费金额
+ */
+function calculateFeeAmount(float $originalAmount, ?string $feeType, ?float $feeValue): float {
+    if ($feeType === null || $feeValue === null || $feeValue <= 0) {
+        return 0.0;
+    }
+    
+    if ($feeType === 'fixed') {
+        return round($feeValue, 2);
+    }
+    
+    if ($feeType === 'percent') {
+        // feeValue 存储的是小数形式，如 0.03 表示 3%
+        return round($originalAmount * $feeValue, 2);
+    }
+    
+    return 0.0;
+}
+
+/**
+ * 根据支付方式计算手续费
+ * @param float $originalAmount 原始金额
+ * @param string $methodCode 支付方式代码
+ * @return array ['fee_amount' => float, 'fee_type' => string|null, 'fee_value' => float|null, 'total_amount' => float]
+ */
+function calculatePaymentFee(float $originalAmount, string $methodCode): array {
+    $config = getPaymentMethodFeeConfig($methodCode);
+    
+    $feeType = $config['fee_type'] ?? null;
+    $feeValue = $config['fee_value'] ?? null;
+    $feeAmount = calculateFeeAmount($originalAmount, $feeType, $feeValue);
+    
+    return [
+        'fee_type' => $feeType,
+        'fee_value' => $feeValue,
+        'fee_amount' => $feeAmount,
+        'original_amount' => $originalAmount,
+        'total_amount' => round($originalAmount + $feeAmount, 2),
+    ];
+}
+
+/**
+ * 获取所有支付方式及其手续费配置
+ * @return array
+ */
+function getPaymentMethodsWithFee(): array {
+    ensureDictTableExists();
+    
+    return Db::query(
+        "SELECT dict_code AS code, dict_label AS label, fee_type, fee_value 
+         FROM system_dict 
+         WHERE dict_type = 'payment_method' AND is_enabled = 1 
+         ORDER BY sort_order ASC, id ASC"
+    );
+}
+
 function ensureDictTableExists(): void {
     static $checked = false;
     if ($checked) return;
