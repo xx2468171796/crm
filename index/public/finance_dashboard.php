@@ -366,6 +366,8 @@ if ($viewMode === 'staff_summary') {
         SUM(i.amount_due) AS total_due,
         SUM(i.amount_paid) AS total_paid,
         SUM(i.amount_due - i.amount_paid) AS total_unpaid,
+        COALESCE(feeagg.total_fee, 0) AS total_fee,
+        SUM(i.amount_paid) + COALESCE(feeagg.total_fee, 0) AS total_paid_with_fee,
         GROUP_CONCAT(DISTINCT cf.id ORDER BY cf.id DESC) AS contract_file_ids,
         GROUP_CONCAT(DISTINCT cf.filename ORDER BY cf.id DESC SEPARATOR "|||" ) AS contract_file_names,
         GROUP_CONCAT(DISTINCT cf.preview_supported ORDER BY cf.id DESC) AS contract_file_preview_supported,
@@ -376,6 +378,11 @@ if ($viewMode === 'staff_summary') {
     LEFT JOIN users u ON u.id = c.sales_user_id
     LEFT JOIN users ou ON ou.id = cu.owner_user_id
     LEFT JOIN finance_installments i ON i.contract_id = c.id AND i.deleted_at IS NULL
+    LEFT JOIN (
+        SELECT contract_id, SUM(COALESCE(fee_amount, 0)) AS total_fee
+        FROM finance_receipts
+        GROUP BY contract_id
+    ) feeagg ON feeagg.contract_id = c.id
     LEFT JOIN (
         SELECT contract_id, MAX(received_date) AS last_received_date
         FROM finance_receipts
@@ -416,6 +423,8 @@ if ($viewMode === 'staff_summary') {
         ragg.last_received_date,
         ragg.last_receipt_time,
         rmethod.last_payment_method,
+        COALESCE(feeagg.total_fee, 0) AS fee_amount,
+        i.amount_paid + COALESCE(feeagg.total_fee, 0) AS amount_paid_with_fee,
         CASE
             WHEN i.amount_due > i.amount_paid AND i.due_date < CURDATE() THEN DATEDIFF(CURDATE(), i.due_date)
             ELSE 0
@@ -427,6 +436,11 @@ if ($viewMode === 'staff_summary') {
     LEFT JOIN users u ON u.id = c.sales_user_id
     LEFT JOIN users ou ON ou.id = cu.owner_user_id
     LEFT JOIN users coll ON coll.id = i.collector_user_id
+    LEFT JOIN (
+        SELECT installment_id, SUM(COALESCE(fee_amount, 0)) AS total_fee
+        FROM finance_receipts
+        GROUP BY installment_id
+    ) feeagg ON feeagg.installment_id = i.id
     LEFT JOIN (
         SELECT r1.installment_id, r1.received_date AS last_received_date, r1.create_time AS last_receipt_time
         FROM finance_receipts r1
@@ -1468,9 +1482,12 @@ finance_sidebar_start('finance_dashboard');
                                         <small class="text-muted"><?= htmlspecialchars($contractCurrency) ?></small>
                                         <div class="amount-converted text-info small" style="display:none;"></div>
                                     </td>
-                                    <td class="amount-cell" data-amount="<?= (float)($row['total_paid'] ?? 0) ?>" data-currency="<?= htmlspecialchars($contractCurrency) ?>">
-                                        <span class="amount-original fw-semibold text-success"><?= number_format((float)($row['total_paid'] ?? 0), 2) ?></span>
+                                    <td class="amount-cell" data-amount="<?= (float)($row['total_paid_with_fee'] ?? $row['total_paid'] ?? 0) ?>" data-currency="<?= htmlspecialchars($contractCurrency) ?>">
+                                        <span class="amount-original fw-semibold text-success"><?= number_format((float)($row['total_paid_with_fee'] ?? $row['total_paid'] ?? 0), 2) ?></span>
                                         <small class="text-muted"><?= htmlspecialchars($contractCurrency) ?></small>
+                                        <?php if ((float)($row['total_fee'] ?? 0) > 0): ?>
+                                        <div class="small text-info">(含手续费 <?= number_format((float)$row['total_fee'], 2) ?>)</div>
+                                        <?php endif; ?>
                                         <div class="amount-converted text-success small" style="display:none;"></div>
                                     </td>
                                     <td class="amount-cell" data-amount="<?= (float)($row['total_unpaid'] ?? 0) ?>" data-currency="<?= htmlspecialchars($contractCurrency) ?>">
@@ -1526,7 +1543,12 @@ finance_sidebar_start('finance_dashboard');
                                     <td><?= !empty($row['create_time']) ? date('Y-m-d H:i', (int)$row['create_time']) : '-' ?></td>
                                     <td><?= htmlspecialchars($instDue) ?></td>
                                     <td><?= number_format((float)$row['amount_due'], 2) ?></td>
-                                    <td><?= number_format((float)$row['amount_paid'], 2) ?></td>
+                                    <td>
+                                        <?= number_format((float)($row['amount_paid_with_fee'] ?? $row['amount_paid']), 2) ?>
+                                        <?php if ((float)($row['fee_amount'] ?? 0) > 0): ?>
+                                        <div class="small text-info">(含手续费 <?= number_format((float)$row['fee_amount'], 2) ?>)</div>
+                                        <?php endif; ?>
+                                    </td>
                                     <td><?= number_format((float)$row['amount_unpaid'], 2) ?></td>
                                     <td><?= (int)$row['overdue_days'] ?></td>
                                     <td>
