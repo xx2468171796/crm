@@ -14,6 +14,7 @@ import {
   getInstanceId
 } from '@/lib/instanceId';
 import type { LoginResponse } from '@/types';
+import { getVersion } from '@tauri-apps/api/app';
 
 export default function LoginPage() {
   const navigate = useNavigate();
@@ -26,13 +27,15 @@ export default function LoginPage() {
   const [server, setServer] = useState(serverUrl || '');
   const [rememberLogin, setRememberLoginState] = useState(isRememberLoginEnabled());
   const [rememberUsername, setRememberUsername] = useState(true);
+  const [appVersion, setAppVersion] = useState('');
   
-  // 初始化：加载记住的用户名
+  // 初始化：加载记住的用户名和版本号
   useEffect(() => {
     const savedUsername = getRememberedUsername();
     if (savedUsername) {
       setUsername(savedUsername);
     }
+    getVersion().then(v => setAppVersion(v)).catch(() => setAppVersion(''));
   }, []);
   const [loading, setLoading] = useState(false);
   const [testing, setTesting] = useState(false);
@@ -271,7 +274,7 @@ export default function LoginPage() {
         </div>
 
         <p className="mt-4 text-center text-xs text-text-secondary">
-          项目管理工具客户端 v0.1.0
+          项目管理工具客户端 {appVersion ? `v${appVersion}` : ''}
         </p>
       </div>
     </div>

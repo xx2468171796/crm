@@ -210,9 +210,7 @@ export default function FileSyncPage() {
   // 打开项目文件夹
   const openProjectFolder = async (folderName: string, subFolder?: string) => {
     try {
-      const stored = localStorage.getItem('floating_settings');
-      const settings = stored ? JSON.parse(stored) : {};
-      const workDir = settings.workDir || 'D:\\客户资源';
+      const workDir = useSettingsStore.getState().rootDir;
       
       await invoke('open_project_folder', {
         workDir,
@@ -354,9 +352,7 @@ export default function FileSyncPage() {
       }
       
       // 获取工作目录
-      const stored = localStorage.getItem('floating_settings');
-      const settings = stored ? JSON.parse(stored) : {};
-      const workDir = settings.workDir || 'D:\\客户资源';
+      const workDir = useSettingsStore.getState().rootDir;
       const groupName = buildGroupFolderName(project.group_code, project.group_name || project.customer_name);
       const projectFolder = sanitizeFolderName(project.name || project.code || `项目${project.id}`);
       const projectPathName = groupName ? `${groupName}/${projectFolder}` : projectFolder;

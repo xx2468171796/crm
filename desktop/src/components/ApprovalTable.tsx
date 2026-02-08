@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Check, X, ChevronDown, ChevronUp, ExternalLink, Eye } from 'lucide-react';
+import { formatFileSize } from '@/lib/utils';
 
 interface ApprovalItem {
   id: number;
@@ -76,11 +77,42 @@ export default function ApprovalTable({
     }
   };
 
+  // 排序数据
+  const sortedData = [...data].sort((a, b) => {
+    let aVal: string | number = '';
+    let bVal: string | number = '';
+    switch (sortKey) {
+      case 'filename':
+        aVal = a.filename?.toLowerCase() || '';
+        bVal = b.filename?.toLowerCase() || '';
+        break;
+      case 'project.name':
+        aVal = a.project?.name?.toLowerCase() || '';
+        bVal = b.project?.name?.toLowerCase() || '';
+        break;
+      case 'uploader.name':
+        aVal = a.uploader?.name?.toLowerCase() || '';
+        bVal = b.uploader?.name?.toLowerCase() || '';
+        break;
+      case 'upload_time':
+        aVal = a.upload_time || '';
+        bVal = b.upload_time || '';
+        break;
+      case 'project.status':
+        aVal = a.project?.status?.toLowerCase() || '';
+        bVal = b.project?.status?.toLowerCase() || '';
+        break;
+    }
+    if (aVal < bVal) return sortOrder === 'asc' ? -1 : 1;
+    if (aVal > bVal) return sortOrder === 'asc' ? 1 : -1;
+    return 0;
+  });
+
   const handleSelectAll = () => {
-    if (selectedIds.size === data.length) {
+    if (selectedIds.size === sortedData.length) {
       onSelectChange(new Set());
     } else {
-      onSelectChange(new Set(data.map(item => item.id)));
+      onSelectChange(new Set(sortedData.map(item => item.id)));
     }
   };
 
@@ -94,11 +126,7 @@ export default function ApprovalTable({
     onSelectChange(newSet);
   };
 
-  const formatFileSize = (bytes: number) => {
-    if (bytes < 1024) return bytes + ' B';
-    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
-    return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
-  };
+  // formatFileSize imported from @/lib/utils
 
   const getStatusBadge = (status: number) => {
     switch (status) {
@@ -137,7 +165,7 @@ export default function ApprovalTable({
               <th className="w-10 px-4 py-3 text-left">
                 <input
                   type="checkbox"
-                  checked={selectedIds.size === data.length && data.length > 0}
+                  checked={selectedIds.size === sortedData.length && sortedData.length > 0}
                   onChange={handleSelectAll}
                   className="rounded"
                 />
@@ -192,7 +220,7 @@ export default function ApprovalTable({
           </tr>
         </thead>
         <tbody className="divide-y">
-          {data.map((item) => (
+          {sortedData.map((item) => (
             <tr key={item.id} className="hover:bg-gray-50">
               {isManager && (
                 <td className="px-4 py-3">

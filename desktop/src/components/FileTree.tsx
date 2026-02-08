@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { ChevronRight, ChevronDown, Folder, FileText, Download, Eye, Play, Pencil, Trash2 } from 'lucide-react';
+import { formatFileSize } from '@/lib/utils';
 
 export interface FileNode {
   name: string;
@@ -31,13 +32,7 @@ interface FileTreeProps {
   previewingFile?: string | null;
 }
 
-function formatFileSize(bytes: number): string {
-  if (bytes === 0) return '0 B';
-  const k = 1024;
-  const sizes = ['B', 'KB', 'MB', 'GB'];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
-}
+// formatFileSize imported from @/lib/utils
 
 function FileTreeNode({ 
   node, 

@@ -84,9 +84,10 @@ export default function TeamProjectsPage() {
     return `剩余 ${project.remaining_days} 天`;
   };
 
-  const isManager = ['admin', 'super_admin', 'manager', 'tech_manager'].includes(user?.role || '');
+  const { toast } = useToast();
+  const isManagerRole = isManager(user?.role);
   
-  if (!isManager) {
+  if (!isManagerRole) {
     return (
       <div className="flex-1 flex items-center justify-center bg-gray-50">
         <div className="text-center text-gray-500">

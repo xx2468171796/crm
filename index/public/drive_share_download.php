@@ -39,7 +39,7 @@ try {
     }
     
     // 检查访问次数
-    if ($link['max_visits'] && $link['visit_count'] > $link['max_visits']) {
+    if ($link['max_visits'] && $link['visit_count'] >= $link['max_visits']) {
         die('访问次数已达上限');
     }
     
@@ -76,18 +76,16 @@ try {
         }
     }
     
-    // 从S3获取文件并输出
-    $config = require __DIR__ . '/../config/storage.php';
-    $s3Config = $config['s3'] ?? [];
-    $s3 = new S3StorageProvider($s3Config, []);
+    // 从存储获取文件并输出（使用工厂函数，兼容 S3 和 local 存储）
+    $storage = storage_provider();
     
     $stream = null;
     $fromCache = false;
     
     try {
-        $stream = $s3->readStream($file['storage_key']);
-    } catch (Exception $s3Error) {
-        // S3文件不存在，尝试从本地缓存读取
+        $stream = $storage->readStream($file['storage_key']);
+    } catch (Exception $storageError) {
+        // 存储文件不存在，尝试从本地上传缓存读取（异步上传尚未完成的文件）
         $cacheDir = __DIR__ . '/../../storage/upload_cache';
         $cacheFiles = glob($cacheDir . '/*.json');
         
@@ -99,14 +97,20 @@ try {
                     $stream = fopen($dataFile, 'rb');
                     $fromCache = true;
                     
-                    // 后台尝试同步到S3
-                    register_shutdown_function(function() use ($s3, $meta, $dataFile, $metaFile) {
+                    // 后台尝试同步到存储（使用复制文件避免 putObject 删除源文件导致后续下载失败）
+                    register_shutdown_function(function() use ($storage, $meta, $dataFile, $metaFile) {
                         try {
-                            $s3->putObject($meta['storage_key'], $dataFile, ['mime_type' => $meta['mime_type'] ?? 'application/octet-stream']);
-                            @unlink($dataFile);
-                            @unlink($metaFile);
-                            error_log("[DRIVE_SHARE] Auto-synced to S3: " . $meta['storage_key']);
+                            // 复制缓存文件用于上传，避免 putObject 删除源文件
+                            $tmpCopy = $dataFile . '.uploading';
+                            if (copy($dataFile, $tmpCopy)) {
+                                $storage->putObject($meta['storage_key'], $tmpCopy, ['mime_type' => $meta['mime_type'] ?? 'application/octet-stream']);
+                                // S3 上传成功后删除缓存文件
+                                @unlink($dataFile);
+                                @unlink($metaFile);
+                                error_log("[DRIVE_SHARE] Auto-synced to storage: " . $meta['storage_key']);
+                            }
                         } catch (Exception $e) {
+                            @unlink($dataFile . '.uploading');
                             error_log("[DRIVE_SHARE] Auto-sync failed: " . $e->getMessage());
                         }
                     });
@@ -116,7 +120,7 @@ try {
         }
         
         if (!$stream) {
-            throw $s3Error; // 重新抛出原始错误
+            throw $storageError; // 重新抛出原始错误
         }
     }
     

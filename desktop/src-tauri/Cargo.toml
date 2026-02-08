@@ -1,6 +1,6 @@
 [package]
 name = "tech-resource-sync"
-version = "1.6.21"
+version = "1.6.95"
 description = "设计师项目管理工具"
 authors = ["Tech Team"]
 edition = "2021"

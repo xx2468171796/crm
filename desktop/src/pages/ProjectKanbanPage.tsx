@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { LayoutGrid, List, Search, MoreVertical, User, Users, ChevronRight, ChevronDown, RefreshCw, Calendar, DollarSign, FolderOpen, Trash2, AlertTriangle } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
@@ -166,9 +166,12 @@ export default function ProjectKanbanPage() {
           allProjects.push(...(col.projects || []));
         });
         setProjects(allProjects);
+      } else {
+        toast({ title: '加载失败', description: data.error || '获取看板数据失败', variant: 'destructive' });
       }
     } catch (error) {
       console.error('加载看板失败:', error);
+      toast({ title: '加载失败', description: '网络错误', variant: 'destructive' });
     } finally {
       setLoading(false);
     }
@@ -193,6 +196,11 @@ export default function ProjectKanbanPage() {
   // 变更项目状态
   const changeStatus = async (projectId: number, newStatus: string) => {
     if (!serverUrl || !token) return;
+    // 权限检查
+    if (!isManager) {
+      toast({ title: '权限不足', description: '只有管理员可以修改项目状态', variant: 'destructive' });
+      return;
+    }
     try {
       const response = await fetch(`${serverUrl}/api/desktop_projects.php?action=change_status`, {
         method: 'POST',
@@ -264,9 +272,11 @@ export default function ProjectKanbanPage() {
         
         setCustomerTotal(total);
         setCustomerPage(page);
-        // 计算是否还有更多：当前已加载数量 + 本次加载数量 < 总数
-        const loadedCount = append ? customers.length + items.length : items.length;
-        setHasMoreCustomers(loadedCount < total);
+        // 计算是否还有更多：使用函数式更新避免 stale closure
+        setHasMoreCustomers(prev => {
+          const currentCount = append ? (prev ? customers.length : 0) + items.length : items.length;
+          return currentCount < total;
+        });
       } else {
         toast({ title: '加载失败', description: data.error?.message || '获取客户列表失败', variant: 'destructive' });
       }
@@ -277,7 +287,7 @@ export default function ProjectKanbanPage() {
       setCustomersLoading(false);
       setLoadingMore(false);
     }
-  }, [serverUrl, token, customerSearch, toast, customers.length]);
+  }, [serverUrl, token, customerSearch, toast]);
 
   // 加载更多客户
   const loadMoreCustomers = useCallback(() => {
@@ -391,13 +401,18 @@ export default function ProjectKanbanPage() {
     return () => clearTimeout(timer);
   }, [customerSearch, viewMode, loadCustomers]);
 
-  // 搜索防抖
+  // 搜索防抖（排除首次渲染）
+  const isFirstSearchRef = useRef(true);
   useEffect(() => {
+    if (isFirstSearchRef.current) {
+      isFirstSearchRef.current = false;
+      return;
+    }
     const timer = setTimeout(() => {
       loadKanban();
     }, 300);
     return () => clearTimeout(timer);
-  }, [search]);
+  }, [search, loadKanban]);
 
   // 跳转到项目详情
   const goToProject = (projectId: number) => {
@@ -482,7 +497,7 @@ export default function ProjectKanbanPage() {
     if (!serverUrl || !token || !deleteConfirm) return;
     setDeleting(true);
     try {
-      const response = await fetch(`${serverUrl}/api/projects.php?id=${deleteConfirm.id}`, {
+      const response = await fetch(`${serverUrl}/api/desktop_projects.php?id=${deleteConfirm.id}`, {
         method: 'DELETE',
         headers: {
           'Authorization': `Bearer ${token}`,

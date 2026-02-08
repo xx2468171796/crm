@@ -112,8 +112,8 @@ pub fn run() {
             Ok(())
         })
         .on_window_event(|window, event| {
-            // 拦截主窗口关闭事件，隐藏而不是销毁
-            if window.label() == "main" {
+            // 拦截主窗口和悬浮窗关闭事件，隐藏而不是销毁
+            if window.label() == "main" || window.label() == "floating" {
                 if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                     // 阻止默认关闭行为
                     api.prevent_close();

@@ -1,6 +1,7 @@
 import { http, getApiBaseUrl } from './http';
 import { getFileMetadata } from './tauri';
 import { useSyncStore, type UploadTask } from '@/stores/sync';
+import { useAuthStore } from '@/stores/auth';
 
 interface InitUploadResponse {
   upload_id: string;
@@ -70,7 +71,7 @@ export class FileUploader {
       body: formData,
       signal: this.abortController.signal,
       headers: {
-        'Authorization': `Bearer ${localStorage.getItem('desktop_token') || ''}`,
+        'Authorization': `Bearer ${useAuthStore.getState().token || ''}`,
       },
     });
     

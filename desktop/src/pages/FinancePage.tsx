@@ -86,7 +86,7 @@ export default function FinancePage() {
       });
       const data = await response.json();
       if (data.success) {
-        setStats(data.data.stats || stats);
+        setStats(data.data.stats || { lastMonth: 0, thisMonth: 0, pending: 0, total: 0 });
         setCommissions(data.data.items || []);
         if (data.data.team_members) {
           setTeamMembers(data.data.team_members);

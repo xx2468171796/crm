@@ -41,6 +41,14 @@ class HttpClient {
     return useAuthStore.getState().token;
   }
 
+  private isTokenExpired(): boolean {
+    const { expireAt, isAuthenticated } = useAuthStore.getState();
+    if (!isAuthenticated || !expireAt) return false;
+    // 5 分钟缓冲窗口
+    const bufferSeconds = 5 * 60;
+    return Date.now() / 1000 > expireAt - bufferSeconds;
+  }
+
   private async request<T>(
     endpoint: string,
     options: RequestInit = {}
@@ -50,6 +58,16 @@ class HttpClient {
       return {
         success: false,
         error: { code: 'NO_SERVER_URL', message: '未配置服务器地址' },
+      };
+    }
+
+    // Token 过期检查
+    if (this.isTokenExpired()) {
+      console.warn('[HTTP] Token 已过期，自动登出');
+      useAuthStore.getState().logout();
+      return {
+        success: false,
+        error: { code: 'TOKEN_EXPIRED', message: '登录已过期，请重新登录' },
       };
     }
 
@@ -70,19 +88,7 @@ class HttpClient {
     }
 
     if (token) {
-      if (method === 'GET' || method === 'HEAD') {
-        try {
-          const urlObj = new URL(url);
-          if (!urlObj.searchParams.has('token')) {
-            urlObj.searchParams.set('token', token);
-          }
-          url = urlObj.toString();
-        } catch {
-          // ignore
-        }
-      } else {
-        headers['Authorization'] = `Bearer ${token}`;
-      }
+      headers['Authorization'] = `Bearer ${token}`;
     }
 
     const doRequest = async (): Promise<ApiResponse<T>> => {

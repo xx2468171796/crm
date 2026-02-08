@@ -4,6 +4,7 @@ import { Plus, Clock, ChevronRight, RefreshCw, User, Calendar, X, Search } from 
 import { useAuthStore } from '@/stores/auth';
 import { useSettingsStore } from '@/stores/settings';
 import { useToast } from '@/hooks/use-toast';
+import { isManager } from '@/lib/utils';
 import ProjectSelector from '@/components/relational-selector/ProjectSelector';
 import { ProjectItem } from '@/components/relational-selector/types';
 import { http } from '@/lib/http';
@@ -81,7 +82,7 @@ export default function TasksPage() {
   const [showProjectSelector, setShowProjectSelector] = useState(false);
   const [selectedProject, setSelectedProject] = useState<ProjectItem | null>(null);
   
-  const isManager = ['admin', 'super_admin', 'manager', 'tech_manager'].includes(user?.role || '');
+  const isManagerRole = isManager(user?.role);
 
   // 加载任务列表
   const loadTasks = useCallback(async () => {
@@ -102,9 +103,12 @@ export default function TasksPage() {
       if (data.success) {
         setTasks(data.data.tasks || []);
         setStats(data.data.stats || { total: 0, pending: 0, in_progress: 0, completed: 0 });
+      } else {
+        toast({ title: '加载失败', description: data.error || '获取任务列表失败', variant: 'destructive' });
       }
     } catch (error) {
       console.error('加载任务失败:', error);
+      toast({ title: '加载失败', description: '网络错误', variant: 'destructive' });
     } finally {
       setLoading(false);
     }
@@ -134,11 +138,13 @@ export default function TasksPage() {
       const data: any = await http.post('desktop_tasks_manage.php?action=update_status', { task_id: taskId, status: newStatus });
       if (data.success) {
         loadTasks();
+        toast({ title: '更新成功', variant: 'default' });
       } else {
-        toast({ title: '错误', description: data.error || '更新失败', variant: 'destructive' });
+        toast({ title: '更新失败', description: data.error || '未知错误', variant: 'destructive' });
       }
     } catch (error) {
       console.error('更新任务状态失败:', error);
+      toast({ title: '更新失败', description: '网络错误', variant: 'destructive' });
     }
   };
 
@@ -163,11 +169,13 @@ export default function TasksPage() {
         setShowCreateModal(false);
         setNewTask({ title: '', description: '', priority: 'medium', deadline: '', project_id: '', assignee_id: '' });
         loadTasks();
+        toast({ title: '创建成功', variant: 'default' });
       } else {
-        toast({ title: '错误', description: data.error || '创建失败', variant: 'destructive' });
+        toast({ title: '创建失败', description: data.error || '未知错误', variant: 'destructive' });
       }
     } catch (error) {
       console.error('创建任务失败:', error);
+      toast({ title: '创建失败', description: '网络错误', variant: 'destructive' });
     }
   };
 
@@ -280,7 +288,7 @@ export default function TasksPage() {
             )}
             
             {/* 管理员：人员筛选 */}
-            {isManager && users.length > 0 && (
+            {isManagerRole && users.length > 0 && (
               <select
                 value={filterUserId}
                 onChange={(e) => setFilterUserId(e.target.value)}
@@ -538,7 +546,7 @@ export default function TasksPage() {
                 }}
               />
               
-              {isManager && users.length > 0 && (
+              {isManagerRole && users.length > 0 && (
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">分配给</label>
                   <select

@@ -4,6 +4,7 @@ import { ListTodo, Kanban, FileCheck, DollarSign, TrendingUp, AlertTriangle } fr
 import { useAuthStore } from '@/stores/auth';
 import { useSettingsStore } from '@/stores/settings';
 import { isManager as checkIsManager } from '@/lib/utils';
+import { http } from '@/lib/http';
 
 interface DashboardStats {
   todayTasks: number;
@@ -50,17 +51,11 @@ export default function DashboardPage() {
       const params = new URLSearchParams();
       if (selectedMember) params.append('user_id', String(selectedMember));
       
-      const response = await fetch(`${serverUrl}/api/desktop_dashboard.php?${params}`, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-      });
-      const data = await response.json();
-      if (data.success) {
-        setStats(data.data.stats || stats);
-        if (data.data.team_members) {
-          setTeamMembers(data.data.team_members);
+      const result = await http.get<{ stats: DashboardStats; team_members?: TeamMember[] }>(`desktop_dashboard.php?${params}`);
+      if (result.success && result.data) {
+        setStats(result.data.stats || stats);
+        if (result.data.team_members) {
+          setTeamMembers(result.data.team_members);
         }
       }
     } catch (error) {

@@ -5,6 +5,7 @@ import { useSyncStore } from '@/stores/sync';
 import { toast } from '@/hooks/use-toast';
 import { selectDirectory, scanRootDirectory } from '@/lib/tauri';
 import { syncSettings, onEvent, EVENTS } from '@/lib/windowEvents';
+import { http } from '@/lib/http';
 
 interface AccelerationNode {
   id: number;
@@ -59,10 +60,9 @@ export default function SettingsPage() {
     
     setLoadingNodes(true);
     try {
-      const res = await fetch(`${serverUrl}/api/s3_acceleration_nodes.php?action=list`);
-      const data = await res.json();
-      if (data.success && data.data) {
-        setAccelerationNodes(data.data);
+      const result = await http.get<AccelerationNode[]>('s3_acceleration_nodes.php?action=list');
+      if (result.success && result.data) {
+        setAccelerationNodes(result.data);
       }
     } catch (err) {
       console.error('[SETTINGS] 加载加速节点失败:', err);

@@ -23,9 +23,89 @@ $user = desktop_auth_require();
 $action = $_GET['action'] ?? $_POST['action'] ?? 'list';
 
 // 权限判断
-$isManager = in_array($user['role'], ['admin', 'super_admin', 'manager', 'tech_manager']);
+$isManager = in_array($user['role'], ['admin', 'super_admin', 'manager', 'tech_manager', 'design_manager']);
 $isTechManager = $user['role'] === 'tech_manager';
 $isTech = $user['role'] === 'tech';
+
+/**
+ * 构建筛选条件（不含状态筛选，用于统计查询）
+ */
+function buildBaseFilterConditions($isTechManager, $projectId, $uploaderId, $techUserId, $projectStatus, $fileCategories, $startDate, $endDate) {
+    $conditions = ["d.deleted_at IS NULL"];
+    $params = [];
+    $needTechJoin = false;
+
+    if ($isTechManager) {
+        $conditions[] = "u.role = 'tech'";
+    }
+    if ($projectId) {
+        $conditions[] = "d.project_id = ?";
+        $params[] = (int)$projectId;
+    }
+    if ($uploaderId) {
+        $conditions[] = "d.submitted_by = ?";
+        $params[] = $uploaderId;
+    }
+    if ($techUserId) {
+        $conditions[] = "pta.tech_user_id = ?";
+        $params[] = $techUserId;
+        $needTechJoin = true;
+    }
+    if ($projectStatus) {
+        $conditions[] = "p.current_status = ?";
+        $params[] = $projectStatus;
+    }
+    if ($fileCategories && !empty($fileCategories)) {
+        $placeholders = implode(',', array_fill(0, count($fileCategories), '?'));
+        $conditions[] = "d.file_category IN ($placeholders)";
+        $params = array_merge($params, $fileCategories);
+    }
+    if ($startDate) {
+        $conditions[] = "DATE(FROM_UNIXTIME(d.create_time)) >= ?";
+        $params[] = $startDate;
+    }
+    if ($endDate) {
+        $conditions[] = "DATE(FROM_UNIXTIME(d.create_time)) <= ?";
+        $params[] = $endDate;
+    }
+
+    return ['conditions' => $conditions, 'params' => $params, 'needTechJoin' => $needTechJoin];
+}
+
+/**
+ * 构建并执行统计查询
+ */
+function buildStatsQuery($isTechManager, $projectId, $uploaderId, $techUserId, $projectStatus, $fileCategories, $startDate, $endDate) {
+    $filter = buildBaseFilterConditions($isTechManager, $projectId, $uploaderId, $techUserId, $projectStatus, $fileCategories, $startDate, $endDate);
+    $whereClause = implode(' AND ', $filter['conditions']);
+
+    if ($filter['needTechJoin']) {
+        $sql = "
+            SELECT 
+                COUNT(DISTINCT CASE WHEN d.approval_status = 'pending' THEN d.id END) as pending,
+                COUNT(DISTINCT CASE WHEN d.approval_status = 'approved' THEN d.id END) as approved,
+                COUNT(DISTINCT CASE WHEN d.approval_status = 'rejected' THEN d.id END) as rejected
+            FROM deliverables d
+            LEFT JOIN users u ON d.submitted_by = u.id
+            LEFT JOIN projects p ON d.project_id = p.id
+            LEFT JOIN project_tech_assignments pta ON p.id = pta.project_id
+            WHERE {$whereClause}
+        ";
+    } else {
+        $sql = "
+            SELECT 
+                SUM(CASE WHEN d.approval_status = 'pending' THEN 1 ELSE 0 END) as pending,
+                SUM(CASE WHEN d.approval_status = 'approved' THEN 1 ELSE 0 END) as approved,
+                SUM(CASE WHEN d.approval_status = 'rejected' THEN 1 ELSE 0 END) as rejected
+            FROM deliverables d
+            LEFT JOIN users u ON d.submitted_by = u.id
+            LEFT JOIN projects p ON d.project_id = p.id
+            WHERE {$whereClause}
+        ";
+    }
+
+    return Db::queryOne($sql, $filter['params']);
+}
 
 try {
     switch ($action) {
@@ -161,6 +241,7 @@ function handleList($user, $isManager, $isTechManager) {
         LEFT JOIN project_tech_assignments pta ON p.id = pta.project_id
         LEFT JOIN users tech_user ON pta.tech_user_id = tech_user.id
         WHERE {$whereClause}
+        GROUP BY d.id
         ORDER BY d.submitted_at DESC
         LIMIT {$offset}, {$perPage}
     ";
@@ -179,121 +260,8 @@ function handleList($user, $isManager, $isTechManager) {
     $countResult = Db::queryOne($countSql, $params);
     $total = (int)($countResult['total'] ?? 0);
     
-    // 统计数据 - 使用不含状态筛选的基础条件
-    $statsConditions = ["d.deleted_at IS NULL"];
-    $statsParams = [];
-    
-    if ($isTechManager) {
-        $statsConditions[] = "u.role = 'tech'";
-    }
-    
-    // 项目筛选
-    if ($projectId) {
-        $statsConditions[] = "d.project_id = ?";
-        $statsParams[] = (int)$projectId;
-    }
-    
-    // 上传人筛选
-    if ($uploaderId) {
-        $statsConditions[] = "d.submitted_by = ?";
-        $statsParams[] = $uploaderId;
-    }
-    
-    // 技术人员筛选
-    if ($techUserId) {
-        $statsConditions[] = "pta.tech_user_id = ?";
-        $statsParams[] = $techUserId;
-    }
-    
-    // 项目阶段筛选
-    if ($projectStatus) {
-        $statsConditions[] = "p.current_status = ?";
-        $statsParams[] = $projectStatus;
-    }
-    
-    // 文件类型筛选
-    if ($fileCategories && !empty($fileCategories)) {
-        $placeholders = implode(',', array_fill(0, count($fileCategories), '?'));
-        $statsConditions[] = "d.file_category IN ($placeholders)";
-        $statsParams = array_merge($statsParams, $fileCategories);
-    }
-    
-    // 时间筛选
-    if ($startDate) {
-        $statsConditions[] = "DATE(FROM_UNIXTIME(d.create_time)) >= ?";
-        $statsParams[] = $startDate;
-    }
-    if ($endDate) {
-        $statsConditions[] = "DATE(FROM_UNIXTIME(d.create_time)) <= ?";
-        $statsParams[] = $endDate;
-    }
-    
-    $statsWhere = implode(' AND ', $statsConditions);
-    
-    // 构建统计查询 - 根据是否有tech_user筛选决定是否需要JOIN
-    $needTechJoin = $techUserId ? true : false;
-    
-    if ($needTechJoin) {
-        $statsSql = "
-            SELECT 
-                COUNT(DISTINCT CASE WHEN d.approval_status = 'pending' THEN d.id END) as pending,
-                COUNT(DISTINCT CASE WHEN d.approval_status = 'approved' THEN d.id END) as approved,
-                COUNT(DISTINCT CASE WHEN d.approval_status = 'rejected' THEN d.id END) as rejected
-            FROM deliverables d
-            LEFT JOIN users u ON d.submitted_by = u.id
-            LEFT JOIN projects p ON d.project_id = p.id
-            LEFT JOIN project_tech_assignments pta ON p.id = pta.project_id
-            WHERE {$statsWhere}
-        ";
-    } else {
-        // 移除tech相关条件，简化查询
-        $simpleStatsConditions = ["d.deleted_at IS NULL"];
-        $simpleStatsParams = [];
-        
-        if ($isTechManager) {
-            $simpleStatsConditions[] = "u.role = 'tech'";
-        }
-        if ($projectId) {
-            $simpleStatsConditions[] = "d.project_id = ?";
-            $simpleStatsParams[] = (int)$projectId;
-        }
-        if ($uploaderId) {
-            $simpleStatsConditions[] = "d.submitted_by = ?";
-            $simpleStatsParams[] = $uploaderId;
-        }
-        if ($projectStatus) {
-            $simpleStatsConditions[] = "p.current_status = ?";
-            $simpleStatsParams[] = $projectStatus;
-        }
-        if ($fileCategories && !empty($fileCategories)) {
-            $placeholders = implode(',', array_fill(0, count($fileCategories), '?'));
-            $simpleStatsConditions[] = "d.file_category IN ($placeholders)";
-            $simpleStatsParams = array_merge($simpleStatsParams, $fileCategories);
-        }
-        if ($startDate) {
-            $simpleStatsConditions[] = "DATE(FROM_UNIXTIME(d.create_time)) >= ?";
-            $simpleStatsParams[] = $startDate;
-        }
-        if ($endDate) {
-            $simpleStatsConditions[] = "DATE(FROM_UNIXTIME(d.create_time)) <= ?";
-            $simpleStatsParams[] = $endDate;
-        }
-        
-        $simpleStatsWhere = implode(' AND ', $simpleStatsConditions);
-        $statsParams = $simpleStatsParams;
-        
-        $statsSql = "
-            SELECT 
-                SUM(CASE WHEN d.approval_status = 'pending' THEN 1 ELSE 0 END) as pending,
-                SUM(CASE WHEN d.approval_status = 'approved' THEN 1 ELSE 0 END) as approved,
-                SUM(CASE WHEN d.approval_status = 'rejected' THEN 1 ELSE 0 END) as rejected
-            FROM deliverables d
-            LEFT JOIN users u ON d.submitted_by = u.id
-            LEFT JOIN projects p ON d.project_id = p.id
-            WHERE {$simpleStatsWhere}
-        ";
-    }
-    $stats = Db::queryOne($statsSql, $statsParams);
+    // 统计数据 - 使用公共函数构建（不含状态筛选）
+    $stats = buildStatsQuery($isTechManager, $projectId, $uploaderId, $techUserId, $projectStatus, $fileCategories, $startDate, $endDate);
     
     // 格式化结果
     $items = [];
@@ -395,6 +363,7 @@ function handleMyFiles($user) {
         LEFT JOIN project_tech_assignments pta ON p.id = pta.project_id
         LEFT JOIN users tech_user ON pta.tech_user_id = tech_user.id
         WHERE {$whereClause}
+        GROUP BY d.id
         ORDER BY d.submitted_at DESC
         LIMIT {$offset}, {$perPage}
     ";
@@ -482,11 +451,17 @@ function handleApprove($user, $isManager) {
     }
     
     $now = time();
-    Db::execute("
+    $affected = Db::execute("
         UPDATE deliverables 
         SET approval_status = 'approved', approved_by = ?, approved_at = ?, reject_reason = NULL, update_time = ?
-        WHERE id = ?
+        WHERE id = ? AND approval_status = 'pending'
     ", [$user['id'], $now, $now, $fileId]);
+    
+    if ($affected === 0) {
+        http_response_code(400);
+        echo json_encode(['success' => false, 'error' => '文件状态已变更，请刷新后重试'], JSON_UNESCAPED_UNICODE);
+        return;
+    }
     
     echo json_encode(['success' => true, 'message' => '审批通过'], JSON_UNESCAPED_UNICODE);
 }
@@ -512,11 +487,17 @@ function handleReject($user, $isManager) {
     }
     
     $now = time();
-    Db::execute("
+    $affected = Db::execute("
         UPDATE deliverables 
         SET approval_status = 'rejected', approved_by = ?, approved_at = ?, reject_reason = ?, update_time = ?
-        WHERE id = ?
+        WHERE id = ? AND approval_status = 'pending'
     ", [$user['id'], $now, $reason ?: null, $now, $fileId]);
+    
+    if ($affected === 0) {
+        http_response_code(400);
+        echo json_encode(['success' => false, 'error' => '文件状态已变更，请刷新后重试'], JSON_UNESCAPED_UNICODE);
+        return;
+    }
     
     echo json_encode(['success' => true, 'message' => '已驳回'], JSON_UNESCAPED_UNICODE);
 }
@@ -547,7 +528,7 @@ function handleBatchApprove($user, $isManager) {
     Db::execute("
         UPDATE deliverables 
         SET approval_status = 'approved', approved_by = ?, approved_at = ?, reject_reason = NULL, update_time = ?
-        WHERE id IN ({$placeholders})
+        WHERE id IN ({$placeholders}) AND approval_status = 'pending'
     ", $params);
     
     echo json_encode(['success' => true, 'message' => '批量通过成功', 'count' => count($fileIds)], JSON_UNESCAPED_UNICODE);
@@ -580,7 +561,7 @@ function handleBatchReject($user, $isManager) {
     Db::execute("
         UPDATE deliverables 
         SET approval_status = 'rejected', approved_by = ?, approved_at = ?, reject_reason = ?, update_time = ?
-        WHERE id IN ({$placeholders})
+        WHERE id IN ({$placeholders}) AND approval_status = 'pending'
     ", $params);
     
     echo json_encode(['success' => true, 'message' => '批量驳回成功', 'count' => count($fileIds)], JSON_UNESCAPED_UNICODE);
@@ -591,10 +572,12 @@ function handleBatchReject($user, $isManager) {
  */
 function handleStats($user, $isManager, $isTechManager) {
     $conditions = ["d.deleted_at IS NULL"];
+    $statsParams = [];
     
     if (!$isManager) {
         // 非管理员只看自己的
-        $conditions[] = "d.submitted_by = " . (int)$user['id'];
+        $conditions[] = "d.submitted_by = ?";
+        $statsParams[] = (int)$user['id'];
     } elseif ($isTechManager) {
         // 技术主管只看技术人员的
         $conditions[] = "u.role = 'tech'";
@@ -611,7 +594,7 @@ function handleStats($user, $isManager, $isTechManager) {
         LEFT JOIN users u ON d.submitted_by = u.id
         WHERE {$whereClause}
     ";
-    $stats = Db::queryOne($sql);
+    $stats = Db::queryOne($sql, $statsParams);
     
     echo json_encode([
         'success' => true,

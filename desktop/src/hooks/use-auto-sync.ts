@@ -35,29 +35,33 @@ export function useAutoSync() {
 
   // 获取所有项目列表
   const fetchProjects = useCallback(async () => {
-    if (!serverUrl || !token) return [];
+    const { serverUrl: sUrl } = useSettingsStore.getState();
+    const { token: t } = useAuthStore.getState();
+    if (!sUrl || !t) return [];
     
     try {
-      const data: any = await http.get('desktop_project_stage.php');
+      const data = await http.get<{ projects: any[] }>('desktop_project_stage.php');
       return data.success ? data.data?.projects || [] : [];
     } catch (err) {
       console.error('[AutoSync] 获取项目列表失败:', err);
       return [];
     }
-  }, [serverUrl, token]);
+  }, []);
 
   // 获取项目文件列表
   const fetchProjectFiles = useCallback(async (projectId: number) => {
-    if (!serverUrl || !token) return null;
+    const { serverUrl: sUrl } = useSettingsStore.getState();
+    const { token: t } = useAuthStore.getState();
+    if (!sUrl || !t) return null;
     
     try {
-      const data: any = await http.get(`desktop_project_files.php?project_id=${projectId}`);
+      const data = await http.get<any>(`desktop_project_files.php?project_id=${projectId}`);
       return data.success ? data.data : null;
     } catch (err) {
       console.error('[AutoSync] 获取文件列表失败:', err);
       return null;
     }
-  }, [serverUrl, token]);
+  }, []);
 
   // 扫描本地文件夹
   const scanLocalFolder = useCallback(async (folderPath: string): Promise<LocalFile[]> => {
@@ -79,36 +83,25 @@ export function useAutoSync() {
     assetType: 'works' | 'models',
     projectId?: number
   ) => {
-    if (!serverUrl || !token) return false;
+    const currentServerUrl = useSettingsStore.getState().serverUrl;
+    const currentToken = useAuthStore.getState().token;
+    if (!currentServerUrl || !currentToken) return false;
     
     try {
       const meta = await getFileMetadata(filePath);
       const fileSize = meta.size;
       
-      // 1. 初始化分片上传（使用新的本地缓存API）
-      const initRes = await fetch(`${serverUrl}/api/desktop_chunk_upload.php`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          action: 'init',
-          group_code: groupCode,
-          project_id: projectId || 0,
-          asset_type: assetType,
-          filename: fileName,
-          filesize: fileSize,
-          mime_type: 'application/octet-stream',
-        }),
-      });
-      const initData = await initRes.json();
+      // 1. 初始化分片上传
+      const initResult = await http.post<{ upload_id: string; part_size: number; total_parts: number }>(
+        'desktop_chunk_upload.php',
+        { action: 'init', group_code: groupCode, project_id: projectId || 0, asset_type: assetType, filename: fileName, filesize: fileSize, mime_type: 'application/octet-stream' }
+      );
       
-      if (!initData.success || !initData.data) {
-        throw new Error(initData.error || '初始化上传失败');
+      if (!initResult.success || !initResult.data) {
+        throw new Error(initResult.error?.message || '初始化上传失败');
       }
       
-      const { upload_id, part_size, total_parts } = initData.data;
+      const { upload_id, part_size, total_parts } = initResult.data;
       
       // 2. 并发分片上传到本地缓存（3个并发）
       const CONCURRENT_UPLOADS = 3;
@@ -123,11 +116,10 @@ export function useAutoSync() {
         formData.append('part_number', partNumber.toString());
         formData.append('chunk', new Blob([chunkData as any], { type: 'application/octet-stream' }));
         
-        const uploadRes = await fetch(`${serverUrl}/api/desktop_chunk_upload.php`, {
+        // FormData 上传需要直接 fetch（http 客户端设置 Content-Type 为 JSON）
+        const uploadRes = await fetch(`${currentServerUrl}/api/desktop_chunk_upload.php`, {
           method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${token}`,
-          },
+          headers: { 'Authorization': `Bearer ${currentToken}` },
           body: formData,
         });
         
@@ -144,23 +136,15 @@ export function useAutoSync() {
         await Promise.all(batch.map(partNumber => uploadPart(partNumber)));
       }
       
-      // 3. 完成上传（服务端异步上传到S3）
-      const completeRes = await fetch(`${serverUrl}/api/desktop_chunk_upload.php`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ action: 'complete', upload_id }),
-      });
-      const completeData = await completeRes.json();
+      // 3. 完成上传
+      const completeResult = await http.post<void>('desktop_chunk_upload.php', { action: 'complete', upload_id });
       
-      return completeData.success;
+      return completeResult.success;
     } catch (err) {
       console.error('[AutoSync] 上传失败:', err);
       return false;
     }
-  }, [serverUrl, token]);
+  }, []);
 
   // 下载文件到本地
   const downloadFileToLocal = useCallback(async (
@@ -183,47 +167,43 @@ export function useAutoSync() {
   // 延迟函数
   const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
-  // 执行同步
+  // 执行同步 — 使用 getState() 获取最新值，减少依赖
   const performSync = useCallback(async () => {
-    // 只要开启自动同步且有根目录就执行（上传和下载分别检查各自的开关）
-    if (isScanningRef.current || !rootDir || !autoSync) {
+    const { rootDir: currentRootDir, autoSync: currentAutoSync } = useSettingsStore.getState();
+    const currentConfig = useSyncStore.getState().config;
+    
+    if (isScanningRef.current || !currentRootDir || !currentAutoSync) {
       return;
     }
     
     isScanningRef.current = true;
-    console.log('[AutoSync] 开始扫描...', { rootDir });
+    console.log('[AutoSync] 开始扫描...', { rootDir: currentRootDir });
     
     try {
       const allProjects = await fetchProjects();
-      // 限制：只同步前 20 个项目，避免请求过多导致服务器崩溃
       const projects = allProjects.slice(0, 20);
       console.log(`[AutoSync] 处理 ${projects.length}/${allProjects.length} 个项目`);
       
       let uploadCount = 0;
       let downloadCount = 0;
       
-      // 限制并发：每次只处理一个项目，每个项目之间间隔 500ms
       for (let i = 0; i < projects.length; i++) {
         const project = projects[i];
-        // 使用 group_code 作为本地文件夹名（与 S3 路径一致）
         const groupCode = project.group_code || `P${project.id}`;
         const groupName = sanitizeFolderName(project.group_name || '');
         const groupFolderName = groupName ? `${groupCode}_${groupName}` : groupCode;
-        // 使用项目名称作为子文件夹
         const projectName = sanitizeFolderName(project.project_name || project.project_code || `项目${project.id}`);
-        const basePath = `${rootDir}/${groupFolderName}/${projectName}`;
+        const basePath = `${currentRootDir}/${groupFolderName}/${projectName}`;
         
-        // 添加延迟，避免请求过于密集
         if (i > 0) {
           await delay(500);
         }
         
-        // 获取云端文件列表
         const cloudFiles = await fetchProjectFiles(project.id);
         if (!cloudFiles) continue;
         
-        // 自动上传：作品文件和模型文件
-        if (config.autoUpload) {
+        // 自动上传
+        if (currentConfig.autoUpload) {
           for (const category of ['作品文件', '模型文件']) {
             const localFiles = await scanLocalFolder(`${basePath}/${category}`);
             const cloudFileNames = (cloudFiles.categories?.[category]?.files || []).map((f: CloudFile) => f.filename);
@@ -244,31 +224,25 @@ export function useAutoSync() {
           }
         }
         
-        // 自动下载：客户文件
-        if (config.autoDownload) {
+        // 自动下载
+        if (currentConfig.autoDownload) {
           const customerFiles = cloudFiles.categories?.['客户文件']?.files || [];
           const localCustomerFiles = await scanLocalFolder(`${basePath}/客户文件`);
           const localFileNames = localCustomerFiles.map(f => f.name);
-          
-          console.log('[AutoSync] 客户文件列表:', customerFiles.length, '本地文件:', localFileNames.length);
           
           for (const cloudFile of customerFiles) {
             if (!localFileNames.includes(cloudFile.filename)) {
               console.log('[AutoSync] 下载客户文件:', cloudFile.filename);
               
-              // 优先使用 API 返回的 download_url（预签名URL）
               let downloadUrl = cloudFile.download_url;
               const storageKey = cloudFile.storage_key;
               
-              // 如果没有 download_url，则调用 API 获取
+              // 使用统一 http 客户端获取下载 URL
               if (!downloadUrl && storageKey) {
                 try {
-                  const downloadRes = await fetch(`${serverUrl}/api/desktop_download.php?action=get_url&storage_key=${encodeURIComponent(storageKey)}`, {
-                    headers: { 'Authorization': `Bearer ${token}` },
-                  });
-                  const downloadData = await downloadRes.json();
-                  if (downloadData.success && downloadData.data?.url) {
-                    downloadUrl = downloadData.data.url;
+                  const downloadResult = await http.get<{ url: string }>(`desktop_download.php?action=get_url&storage_key=${encodeURIComponent(storageKey)}`);
+                  if (downloadResult.success && downloadResult.data?.url) {
+                    downloadUrl = downloadResult.data.url;
                   }
                 } catch (e) {
                   console.error('[AutoSync] 获取下载URL失败:', e);
@@ -298,7 +272,7 @@ export function useAutoSync() {
     } finally {
       isScanningRef.current = false;
     }
-  }, [rootDir, autoSync, config, fetchProjects, fetchProjectFiles, scanLocalFolder, uploadFile, downloadFileToLocal, serverUrl, token, toast]);
+  }, [fetchProjects, fetchProjectFiles, scanLocalFolder, uploadFile, downloadFileToLocal, toast]);
 
   // 启动/停止自动同步
   useEffect(() => {

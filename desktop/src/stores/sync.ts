@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import { getStorageKey } from '@/lib/instanceId';
 
 export interface LocalGroup {
   groupCode: string;
@@ -174,7 +175,7 @@ export const useSyncStore = create<SyncState>()(
       clearConflicts: () => set({ conflicts: [] }),
     }),
     {
-      name: 'sync-storage',
+      name: getStorageKey('sync-storage'),
     }
   )
 );

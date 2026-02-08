@@ -367,6 +367,39 @@ function handleDirect($user) {
         
         $result = uploadToS3($pdo, $user, $uploadInfo, $file['tmp_name']);
         
+        // 检查是否使用了异步上传，需要在返回响应后执行S3上传
+        $asyncFile = $result['_async_file'] ?? null;
+        unset($result['_async_file']);
+        
+        if ($asyncFile && file_exists($asyncFile)) {
+            // 先返回响应给客户端，再后台执行S3上传
+            $response = json_encode(['success' => true, 'data' => array_merge($result, ['async' => true])]);
+            header('Content-Type: application/json; charset=utf-8');
+            header('Content-Length: ' . strlen($response));
+            echo $response;
+            
+            if (function_exists('fastcgi_finish_request')) {
+                fastcgi_finish_request();
+            } else {
+                ob_end_flush();
+                flush();
+            }
+            
+            // 后台执行S3上传
+            try {
+                $config = require __DIR__ . '/../config/storage.php';
+                $storageConfig = $config['s3'] ?? [];
+                $s3 = new S3StorageProvider($storageConfig, []);
+                $meta = json_decode(file_get_contents($asyncFile . '.json'), true);
+                $s3->putObject($meta['storage_key'], $asyncFile, ['mime_type' => $meta['mime_type']]);
+                @unlink($asyncFile . '.json');
+            } catch (Exception $e) {
+                error_log("[PDDIRECT_ASYNC] S3 upload failed: " . $e->getMessage());
+                // 缓存文件保留，等待 cron 同步
+            }
+            return;
+        }
+        
         echo json_encode([
             'success' => true,
             'data' => $result
@@ -426,7 +459,8 @@ function uploadToS3($pdo, $user, $uploadInfo, $filePath) {
     
     // 异步上传优化：先记录数据库，后台执行S3上传
     $fileSize = $uploadInfo['file_size'];
-    $mimeType = mime_content_type($filePath) ?: 'application/octet-stream';
+    // 提前获取 MIME 类型并缓存，避免后续临时文件被清理后无法读取
+    $mimeType = is_file($filePath) ? (mime_content_type($filePath) ?: 'application/octet-stream') : 'application/octet-stream';
     $useAsyncUpload = $fileSize <= 2 * 1024 * 1024 * 1024;
     $asyncUploadFile = null;
     
@@ -458,7 +492,7 @@ function uploadToS3($pdo, $user, $uploadInfo, $filePath) {
     // 确保文件夹路径存在于数据库
     ensureFolderExists($pdo, $uploadInfo['drive_id'], $folderPath);
     
-    // 记录到数据库
+    // 记录到数据库（使用缓存的 mimeType 而非再次调用 mime_content_type）
     $stmt = $pdo->prepare("
         INSERT INTO drive_files 
         (drive_id, user_id, filename, original_filename, folder_path, storage_key, file_size, file_type, upload_source, uploader_ip, create_time)
@@ -472,7 +506,7 @@ function uploadToS3($pdo, $user, $uploadInfo, $filePath) {
         $folderPath,
         $storageKey,
         $uploadInfo['file_size'],
-        mime_content_type($filePath) ?: '',
+        $mimeType,
         $_SERVER['REMOTE_ADDR'] ?? '',
         time()
     ]);

@@ -99,10 +99,13 @@ export default function FloatingWindowV2() {
     const setupSettingsListener = async () => {
       unlisten = await onEvent<SettingsSyncPayload>(EVENTS.SETTINGS_SYNC, (payload) => {
         console.log('[FloatingWindow] 收到设置同步:', payload);
-        if (payload.serverUrl && payload.serverUrl !== serverUrl) {
+        // 使用 getState() 获取最新值，避免 stale closure
+        const currentServerUrl = useSettingsStore.getState().serverUrl;
+        const currentRootDir = useSettingsStore.getState().rootDir;
+        if (payload.serverUrl && payload.serverUrl !== currentServerUrl) {
           setServerUrl(payload.serverUrl);
         }
-        if (payload.rootDir && payload.rootDir !== rootDir) {
+        if (payload.rootDir && payload.rootDir !== currentRootDir) {
           setRootDir(payload.rootDir);
         }
       });
@@ -163,7 +166,7 @@ export default function FloatingWindowV2() {
   const [newTaskTitle, setNewTaskTitle] = useState('');
   const [newTaskProjectId, setNewTaskProjectId] = useState<number | null>(null);
   const [newTaskProjectName, setNewTaskProjectName] = useState<string>('');
-  const [newTaskDate, setNewTaskDate] = useState(new Date().toISOString().split('T')[0]);
+  const [newTaskDate, setNewTaskDate] = useState(new Date().toLocaleDateString('sv-SE'));
   const [newTaskPriority, setNewTaskPriority] = useState<'high' | 'medium' | 'low'>('medium');
   const [newTaskNeedHelp, setNewTaskNeedHelp] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -176,9 +179,9 @@ export default function FloatingWindowV2() {
   const [assignTaskDate, setAssignTaskDate] = useState(new Date().toISOString().split('T')[0]);
   const [teamMembers, setTeamMembers] = useState<Array<{ id: number; name: string }>>([]);
   
-  // 通知状态
-  const [lastFormCount, setLastFormCount] = useState<number>(0);
-  const [lastEvalCount, setLastEvalCount] = useState<number>(0);
+  // 通知状态 - 使用 ref 避免 stale closure
+  const lastFormCountRef = useRef<number>(0);
+  const lastEvalCountRef = useRef<number>(0);
   
   // 轮询刷新倒计时
   const [refreshCountdown, setRefreshCountdown] = useState(10);
@@ -190,6 +193,11 @@ export default function FloatingWindowV2() {
   const loadProjectsInFlightRef = useRef(false);
   const loadMessagesInFlightRef = useRef(false);
   const checkNotificationsInFlightRef = useRef(false);
+  
+  // 使用 ref 存储最新函数引用，避免轮询 stale closure
+  const loadTasksRef = useRef<typeof loadTasks>();
+  const loadProjectsRef = useRef<typeof loadProjects>();
+  const checkDeadlineRemindersRef = useRef<typeof checkDeadlineReminders>();
   const [floatingIconSize, setFloatingIconSize] = useState(() => {
     try {
       const stored = localStorage.getItem('floating_settings');
@@ -348,6 +356,13 @@ export default function FloatingWindowV2() {
     });
   };
 
+  // 同步函数引用到 ref，避免轮询 stale closure
+  useEffect(() => {
+    loadTasksRef.current = loadTasks;
+    loadProjectsRef.current = loadProjects;
+    checkDeadlineRemindersRef.current = checkDeadlineReminders;
+  });
+
   // 10秒轮询刷新（替代 WebSocket）
   useEffect(() => {
     if (!serverUrl || !token) return;
@@ -355,24 +370,68 @@ export default function FloatingWindowV2() {
     // 首次加载时检查截止日期
     checkDeadlineReminders();
     
-    // 每秒更新倒计时
-    const countdownInterval = setInterval(() => {
-      setRefreshCountdown(prev => {
-        if (prev <= 1) {
-          // 倒计时结束，刷新数据（只刷新任务和项目，消息不自动刷新避免覆盖已读状态）
-          loadTasks();
-          loadProjects();
-          // 消息只检查数量变化，不重新加载列表（避免覆盖本地已读状态）
-          // loadMessages(); // 移除：避免每10秒刷新导致已读状态被覆盖
-          // 每次轮询时检查截止日期（函数内部会限制频率）
-          checkDeadlineReminders();
-          return 10; // 重置为10秒
-        }
-        return prev - 1;
-      });
-    }, 1000);
+    let countdownInterval: NodeJS.Timeout | null = null;
     
-    return () => clearInterval(countdownInterval);
+    // 每秒更新倒计时，仅在窗口可见时执行
+    const startPolling = async () => {
+      const win = getCurrentWindow();
+      const isVisible = await win.isVisible();
+      
+      if (!isVisible) {
+        // 窗口隐藏时，清除定时器
+        if (countdownInterval) {
+          clearInterval(countdownInterval);
+          countdownInterval = null;
+        }
+        return;
+      }
+      
+      // 窗口可见时，启动或继续轮询
+      if (!countdownInterval) {
+        countdownInterval = setInterval(async () => {
+          // 每次轮询前检查窗口是否可见
+          const win = getCurrentWindow();
+          const isVisible = await win.isVisible();
+          if (!isVisible) return;
+          
+          setRefreshCountdown(prev => {
+            if (prev <= 1) {
+              // 倒计时结束，刷新数据（只刷新任务和项目，消息不自动刷新避免覆盖已读状态）
+              // 通过 ref.current 调用，避免 stale closure
+              if (loadTasksRef.current) loadTasksRef.current();
+              if (loadProjectsRef.current) loadProjectsRef.current();
+              // 消息只检查数量变化，不重新加载列表（避免覆盖本地已读状态）
+              // loadMessages(); // 移除：避免每10秒刷新导致已读状态被覆盖
+              // 每次轮询时检查截止日期（函数内部会限制频率）
+              if (checkDeadlineRemindersRef.current) checkDeadlineRemindersRef.current();
+              return 10; // 重置为10秒
+            }
+            return prev - 1;
+          });
+        }, 1000);
+      }
+    };
+    
+    // 启动轮询
+    startPolling();
+    
+    // 监听窗口可见性变化
+    const win = getCurrentWindow();
+    const unlisten = win.onVisibilityChanged((visible) => {
+      if (visible) {
+        startPolling();
+      } else {
+        if (countdownInterval) {
+          clearInterval(countdownInterval);
+          countdownInterval = null;
+        }
+      }
+    });
+    
+    return () => {
+      if (countdownInterval) clearInterval(countdownInterval);
+      unlisten.then(fn => fn());
+    };
   }, [serverUrl, token]);
   
   // 窗口控制
@@ -657,12 +716,13 @@ export default function FloatingWindowV2() {
         deadline: newTaskDate ? Math.floor(new Date(newTaskDate + 'T12:00:00').getTime() / 1000) : null,
         priority: newTaskPriority,
         status: 'pending',
+        need_help: newTaskNeedHelp ? 1 : 0,
       });
       if (data.success) {
         // 重置表单
         setNewTaskTitle('');
         setNewTaskProjectId(null);
-        setNewTaskDate(new Date().toISOString().split('T')[0]);
+        setNewTaskDate(new Date().toLocaleDateString('sv-SE'));
         setNewTaskPriority('medium');
         setNewTaskNeedHelp(false);
         setNewTaskProjectName('');
@@ -755,21 +815,23 @@ export default function FloatingWindowV2() {
       if (data.success) {
         const { form_count = 0, eval_count = 0, new_tasks = [] } = data.data || {};
         
-        // 需求表单变动提醒
+        // 需求表单变动提醒 - 使用 ref.current 避免 stale closure
+        const lastFormCount = lastFormCountRef.current;
         if (form_count > lastFormCount && lastFormCount > 0) {
           const count = form_count - lastFormCount;
           sendDesktopNotification('📋 需求表单更新', `有 ${count} 个新的需求表单`);
           toast.info('需求表单更新', `有 ${count} 个新的需求表单`);
         }
-        setLastFormCount(form_count);
+        lastFormCountRef.current = form_count;
         
-        // 评价表单变动提醒
+        // 评价表单变动提醒 - 使用 ref.current 避免 stale closure
+        const lastEvalCount = lastEvalCountRef.current;
         if (eval_count > lastEvalCount && lastEvalCount > 0) {
           const count = eval_count - lastEvalCount;
           sendDesktopNotification('⭐ 评价表单更新', `有 ${count} 个新的评价`);
           toast.info('评价表单更新', `有 ${count} 个新的评价`);
         }
-        setLastEvalCount(eval_count);
+        lastEvalCountRef.current = eval_count;
         
         // 新任务提醒
         if (new_tasks.length > 0) {
@@ -900,7 +962,7 @@ export default function FloatingWindowV2() {
   const _handleMarkRead = async (msgId: string) => {
     if (!serverUrl || !token) return;
     try {
-      await http.post('desktop_notifications.php', { action: 'mark_read', notification_id: msgId });
+      await http.post('desktop_notifications.php', { action: 'mark_read', id: msgId });
       // 更新本地状态
       setMessages(prev => prev.map(m => m.id === msgId ? { ...m, is_read: true } : m));
       setUnreadCount(prev => Math.max(0, prev - 1));
@@ -962,19 +1024,27 @@ export default function FloatingWindowV2() {
         const logicalHeight = Math.round(physicalSize.height / factor);
         prevSizeRef.current = { width: logicalWidth, height: logicalHeight };
         
-        // 进入悬浮球模式
-        await win.setResizable(false);
-        await win.setSize(new LogicalSize(floatingIconSize, floatingIconSize));
-        await win.setAlwaysOnTop(true);
+        // 进入悬浮球模式：先设置最小尺寸为图标尺寸，再设置窗口大小
+        await win.setMinSize(new LogicalSize(floatingIconSize, floatingIconSize));
+        // 使用 setTimeout 确保 setMinSize 在 setSize 之前生效
+        setTimeout(async () => {
+          await win.setResizable(false);
+          await win.setSize(new LogicalSize(floatingIconSize, floatingIconSize));
+          await win.setAlwaysOnTop(true);
+        }, 50);
       } else {
-        // 恢复正常模式
+        // 恢复正常模式：先恢复最小尺寸，再恢复窗口大小
         const prev = prevSizeRef.current;
         const restoreWidth = prev?.width ?? 360;
         const restoreHeight = prev?.height ?? 700;
-        await win.setSize(new LogicalSize(restoreWidth, restoreHeight));
-        prevSizeRef.current = null;
-        await win.setResizable(true);
-        await win.setAlwaysOnTop(isPinned);
+        await win.setMinSize(new LogicalSize(350, 600));
+        // 使用 setTimeout 确保 setMinSize 在 setSize 之前生效
+        setTimeout(async () => {
+          await win.setSize(new LogicalSize(restoreWidth, restoreHeight));
+          prevSizeRef.current = null;
+          await win.setResizable(true);
+          await win.setAlwaysOnTop(isPinned);
+        }, 50);
       }
       setIsMiniMode(!isMiniMode);
     } catch (err) {
@@ -1449,7 +1519,7 @@ export default function FloatingWindowV2() {
                 ] as const).map((item) => (
                   <button
                     key={item.key}
-                    onClick={() => { setMessageTypeFilter(item.key); setTimeout(() => loadMessages(), 0); }}
+                    onClick={() => { setMessageTypeFilter(item.key); }}
                     className={`px-2 py-1 text-[10px] rounded transition-colors ${
                       messageTypeFilter === item.key
                         ? 'bg-blue-500 text-white'
@@ -1465,7 +1535,7 @@ export default function FloatingWindowV2() {
                 {(['all', 'today', 'yesterday'] as const).map((filter) => (
                   <button
                     key={filter}
-                    onClick={() => { setMessageFilter(filter); setShowDatePicker(false); setTimeout(() => loadMessages(), 0); }}
+                    onClick={() => { setMessageFilter(filter); setShowDatePicker(false); }}
                     className={`px-2 py-1 text-[10px] rounded transition-colors ${
                       messageFilter === filter
                         ? 'bg-green-500 text-white'
@@ -1770,8 +1840,23 @@ export default function FloatingWindowV2() {
                         className="flex items-center gap-2 flex-1 cursor-pointer"
                         onClick={() => {
                           if (messageSelectMode) return;
+                          // 表单消息：先打开主窗口，再打开表单详情
                           if (msg.type === 'form' && msg.data?.form_id) {
-                            requestOpenFormDetail(0, msg.data.form_id);
+                            openMainWindowAndNavigate(() => requestOpenFormDetail(0, msg.data.form_id));
+                          }
+                          // 任务消息：打开任务详情
+                          else if (msg.type === 'task' && msg.data?.task_id) {
+                            openMainWindowAndNavigate(() => requestOpenTaskDetail(msg.data.task_id));
+                          }
+                          // 项目消息：打开项目详情
+                          else if (msg.type === 'project' && msg.data?.project_code) {
+                            // 需要根据 project_code 找到项目 ID，或直接使用 project_code
+                            // 这里假设可以通过 project_code 导航，需要查看 requestOpenProjectDetail 的实现
+                            // 暂时先尝试通过 project_code 导航
+                            const project = projects.find(p => p.project_code === msg.data?.project_code);
+                            if (project) {
+                              openMainWindowAndNavigate(() => requestOpenProjectDetail(project.id));
+                            }
                           }
                         }}
                       >

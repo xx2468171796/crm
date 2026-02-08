@@ -4,6 +4,7 @@ import { FileText, Search, RefreshCw, Clock, CheckCircle, AlertCircle, ChevronRi
 import { useAuthStore } from '@/stores/auth';
 import { useSettingsStore } from '@/stores/settings';
 import { usePermissionsStore } from '@/stores/permissions';
+import { useToast } from '@/hooks/use-toast';
 import TimeRangeFilter, { TimeRange } from '@/components/TimeRangeFilter';
 import FormDetailModal from '@/components/FormDetailModal';
 
@@ -43,6 +44,7 @@ export default function FormListPage() {
   const { token } = useAuthStore();
   const { serverUrl } = useSettingsStore();
   const { canManageProjects } = usePermissionsStore();
+  const { toast } = useToast();
 
   const [loading, setLoading] = useState(true);
   const [forms, setForms] = useState<FormItem[]>([]);
@@ -126,6 +128,11 @@ export default function FormListPage() {
   // 处理表单状态
   const handleStatusChange = async (formId: number, newStatus: string) => {
     if (!serverUrl || !token) return;
+    // 权限检查
+    if (!isManager) {
+      toast({ title: '权限不足', description: '只有管理员可以修改表单状态', variant: 'destructive' });
+      return;
+    }
     try {
       const response = await fetch(`${serverUrl}/api/desktop_forms.php?action=process`, {
         method: 'POST',
@@ -138,9 +145,13 @@ export default function FormListPage() {
       const data = await response.json();
       if (data.success) {
         loadForms();
+        toast({ title: '状态更新成功', variant: 'default' });
+      } else {
+        toast({ title: '更新失败', description: data.error || '未知错误', variant: 'destructive' });
       }
     } catch (error) {
       console.error('更新状态失败:', error);
+      toast({ title: '更新失败', description: '网络错误', variant: 'destructive' });
     }
   };
 
@@ -203,7 +214,10 @@ export default function FormListPage() {
             <select
               value={`${sortBy}_${sortOrder}`}
               onChange={(e) => {
-                const [by, order] = e.target.value.split('_') as ['create_time' | 'update_time', 'desc' | 'asc'];
+                const value = e.target.value;
+                const lastIndex = value.lastIndexOf('_');
+                const by = value.substring(0, lastIndex) as 'create_time' | 'update_time';
+                const order = value.substring(lastIndex + 1) as 'desc' | 'asc';
                 setSortBy(by);
                 setSortOrder(order);
               }}

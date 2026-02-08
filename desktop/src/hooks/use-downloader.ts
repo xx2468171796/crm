@@ -22,8 +22,7 @@ interface StorageKeyDownloadResponse {
 }
 
 export function useDownloader() {
-  const { addDownloadTask, updateDownloadTask, downloadTasks } = useSyncStore();
-  const { maxConcurrentUploads, rootDir } = useSettingsStore();
+  const { addDownloadTask, updateDownloadTask } = useSyncStore();
   const activeDownloads = useRef<Set<string>>(new Set());
   const abortControllers = useRef<Map<string, AbortController>>(new Map());
 
@@ -53,24 +52,34 @@ export function useDownloader() {
   }, []);
 
   const startDownload = useCallback(async (taskId: string) => {
-    const task = downloadTasks.find(t => t.id === taskId);
+    // 使用 getState() 获取最新 task，避免 stale closure
+    const currentTasks = useSyncStore.getState().downloadTasks;
+    const task = currentTasks.find(t => t.id === taskId);
     if (!task || activeDownloads.current.has(taskId)) return;
 
     activeDownloads.current.add(taskId);
-    const abortController = new AbortController();
-    abortControllers.current.set(taskId, abortController);
 
     try {
       updateDownloadTask(taskId, { status: 'downloading' });
 
-      await fetch(task.localPath.replace(/[^/]+$/, ''), {
-        signal: abortController.signal,
-      }).catch(() => null);
+      // 获取 presignedUrl（通过 task 的扩展属性）
+      const presignedUrl = (task as any).presignedUrl;
+      if (!presignedUrl) {
+        throw new Error('缺少下载 URL，请重新创建下载任务');
+      }
 
+      // 使用 startDownloadWithUrl 来实际下载
+      // 直接调用 startDownloadWithUrl 逻辑以避免循环依赖
       const dirPath = task.localPath.replace(/[^/\\]+$/, '');
       await ensureDirectory(dirPath);
 
-      const downloadResponse = await fetch(task.localPath, {
+      const accelerationUrl = useSettingsStore.getState().accelerationNodeUrl;
+      const finalUrl = applyAcceleration(presignedUrl, accelerationUrl);
+
+      const abortController = new AbortController();
+      abortControllers.current.set(taskId, abortController);
+
+      const downloadResponse = await fetch(finalUrl, {
         signal: abortController.signal,
       });
 
@@ -129,7 +138,7 @@ export function useDownloader() {
       activeDownloads.current.delete(taskId);
       abortControllers.current.delete(taskId);
     }
-  }, [downloadTasks, updateDownloadTask]);
+  }, [updateDownloadTask]);
 
   const pauseDownload = useCallback((taskId: string) => {
     const controller = abortControllers.current.get(taskId);
@@ -158,7 +167,8 @@ export function useDownloader() {
     filename: string,
     filesize: number
   ) => {
-    if (!rootDir) {
+    const currentRootDir = useSettingsStore.getState().rootDir;
+    if (!currentRootDir) {
       toast({ title: '请先在设置中选择同步目录', variant: 'destructive' });
       throw new Error('未设置同步目录');
     }
@@ -166,7 +176,7 @@ export function useDownloader() {
     try {
       const { presigned_url } = await getDownloadUrl(resourceId);
 
-      const localPath = `${rootDir}/${groupCode}/客户文件/${relPath}`;
+      const localPath = `${currentRootDir}/${groupCode}/客户文件/${relPath}`;
 
       const task: DownloadTask = {
         id: `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
@@ -186,8 +196,10 @@ export function useDownloader() {
 
       addDownloadTask(task);
 
-      const runningCount = downloadTasks.filter(t => t.status === 'downloading').length;
-      if (runningCount < maxConcurrentUploads) {
+      const currentTasks = useSyncStore.getState().downloadTasks;
+      const currentMaxConcurrent = useSettingsStore.getState().maxConcurrentUploads;
+      const runningCount = currentTasks.filter(t => t.status === 'downloading').length;
+      if (runningCount < currentMaxConcurrent) {
         startDownloadWithUrl(task.id, presigned_url);
       }
 
@@ -201,10 +213,11 @@ export function useDownloader() {
       });
       throw error;
     }
-  }, [rootDir, addDownloadTask, downloadTasks, maxConcurrentUploads, getDownloadUrl]);
+  }, [addDownloadTask, getDownloadUrl, startDownloadWithUrl]);
 
   const startDownloadWithUrl = useCallback(async (taskId: string, presignedUrl: string) => {
-    const task = downloadTasks.find(t => t.id === taskId);
+    const currentTasks = useSyncStore.getState().downloadTasks;
+    const task = currentTasks.find(t => t.id === taskId);
     if (!task || activeDownloads.current.has(taskId)) return;
 
     activeDownloads.current.add(taskId);
@@ -280,13 +293,15 @@ export function useDownloader() {
       activeDownloads.current.delete(taskId);
       abortControllers.current.delete(taskId);
     }
-  }, [downloadTasks, updateDownloadTask]);
+  }, [updateDownloadTask]);
 
   const processQueue = useCallback(() => {
-    const runningCount = downloadTasks.filter(t => t.status === 'downloading').length;
-    const pendingTasks = downloadTasks.filter(t => t.status === 'pending');
+    const currentTasks = useSyncStore.getState().downloadTasks;
+    const currentMaxConcurrent = useSettingsStore.getState().maxConcurrentUploads;
+    const runningCount = currentTasks.filter(t => t.status === 'downloading').length;
+    const pendingTasks = currentTasks.filter(t => t.status === 'pending');
 
-    const slotsAvailable = maxConcurrentUploads - runningCount;
+    const slotsAvailable = currentMaxConcurrent - runningCount;
     for (let i = 0; i < Math.min(slotsAvailable, pendingTasks.length); i++) {
       const task = pendingTasks[i];
       const presignedUrl = (task as any).presignedUrl;
@@ -294,7 +309,7 @@ export function useDownloader() {
         startDownloadWithUrl(task.id, presignedUrl);
       }
     }
-  }, [downloadTasks, maxConcurrentUploads, startDownloadWithUrl]);
+  }, [startDownloadWithUrl]);
 
   // 通过 storage_key 下载文件（用于远程文件列表）
   const queueDownloadByStorageKey = useCallback(async (
@@ -305,7 +320,8 @@ export function useDownloader() {
     filename: string,
     filesize: number
   ) => {
-    if (!rootDir) {
+    const currentRootDir = useSettingsStore.getState().rootDir;
+    if (!currentRootDir) {
       toast({ title: '请先在设置中选择同步目录', variant: 'destructive' });
       throw new Error('未设置同步目录');
     }
@@ -314,7 +330,7 @@ export function useDownloader() {
       const { presigned_url } = await getDownloadUrlByStorageKey(storageKey);
 
       const assetTypeDir = assetType === 'works' ? '作品文件' : '模型文件';
-      const localPath = `${rootDir}/${groupCode}_${groupCode}/${assetTypeDir}/${relPath}`.replace(/\//g, '\\');
+      const localPath = `${currentRootDir}/${groupCode}_${groupCode}/${assetTypeDir}/${relPath}`.replace(/\//g, '\\');
 
       const task: DownloadTask = {
         id: `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
@@ -334,8 +350,10 @@ export function useDownloader() {
 
       addDownloadTask(task);
 
-      const runningCount = downloadTasks.filter(t => t.status === 'downloading').length;
-      if (runningCount < maxConcurrentUploads) {
+      const currentTasks = useSyncStore.getState().downloadTasks;
+      const currentMaxConcurrent = useSettingsStore.getState().maxConcurrentUploads;
+      const runningCount = currentTasks.filter(t => t.status === 'downloading').length;
+      if (runningCount < currentMaxConcurrent) {
         startDownloadWithUrl(task.id, presigned_url);
       }
 
@@ -349,7 +367,7 @@ export function useDownloader() {
       });
       throw error;
     }
-  }, [rootDir, addDownloadTask, downloadTasks, maxConcurrentUploads, getDownloadUrlByStorageKey, startDownloadWithUrl]);
+  }, [addDownloadTask, getDownloadUrlByStorageKey, startDownloadWithUrl]);
 
   return {
     queueDownload,

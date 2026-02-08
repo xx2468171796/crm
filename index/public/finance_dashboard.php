@@ -561,7 +561,7 @@ if ($dueEnd !== '') {
     }
 }
 
-// 按实收日期筛选（只显示在指定时间内有收款的合同）
+// 按实收日期筛选
 if ($receiptStart !== '' || $receiptEnd !== '') {
     $receiptCondition = '1=1';
     if ($receiptStart !== '') {
@@ -572,7 +572,13 @@ if ($receiptStart !== '' || $receiptEnd !== '') {
         $receiptCondition .= ' AND r.received_date <= :receipt_end';
         $params['receipt_end'] = $receiptEnd . ' 23:59:59';
     }
-    $sql .= ' AND EXISTS (SELECT 1 FROM finance_receipts r WHERE r.contract_id = c.id AND ' . $receiptCondition . ')';
+    if ($viewMode === 'installment') {
+        // 分期视图：筛选在该时间段内有收款的分期
+        $sql .= ' AND EXISTS (SELECT 1 FROM finance_receipts r WHERE r.installment_id = i.id AND r.amount_applied > 0 AND ' . $receiptCondition . ')';
+    } else {
+        // 合同视图：筛选在该时间段内有收款的合同
+        $sql .= ' AND EXISTS (SELECT 1 FROM finance_receipts r WHERE r.contract_id = c.id AND r.amount_applied > 0 AND ' . $receiptCondition . ')';
+    }
 }
 
 if ($viewMode === 'contract') {
@@ -654,7 +660,9 @@ if ($viewMode === 'contract' || $viewMode === 'installment') {
         $sumParams['focus_user_id'] = $focusUserId;
     }
     // 按实收日期筛选
+    $useReceiptPeriodSum = false;
     if ($receiptStart !== '' || $receiptEnd !== '') {
+        $useReceiptPeriodSum = true;
         $receiptCondition = '1=1';
         if ($receiptStart !== '') {
             $receiptCondition .= ' AND r.received_date >= :receipt_start';
@@ -667,6 +675,66 @@ if ($viewMode === 'contract' || $viewMode === 'installment') {
         $sumSql .= ' AND EXISTS (SELECT 1 FROM finance_receipts r WHERE r.contract_id = c.id AND ' . $receiptCondition . ')';
     }
     $sumRow = Db::queryOne($sumSql, $sumParams) ?: $sumRow;
+    
+    // 当按实收时间筛选时，单独计算该时间段内的实际收款总额
+    if ($useReceiptPeriodSum) {
+        $receiptSumParams = [];
+        $receiptSumSql = 'SELECT COALESCE(SUM(r.amount_applied), 0) AS period_paid
+            FROM finance_receipts r
+            INNER JOIN finance_contracts c ON c.id = r.contract_id
+            INNER JOIN customers cu ON cu.id = r.customer_id
+            WHERE r.amount_applied > 0';
+        if ($user['role'] === 'sales') {
+            $receiptSumSql .= ' AND c.sales_user_id = :sales_user_id';
+            $receiptSumParams['sales_user_id'] = (int)$user['id'];
+        }
+        if ($keyword !== '') {
+            $receiptSumSql .= ' AND (cu.name LIKE :kw OR cu.mobile LIKE :kw OR cu.customer_code LIKE :kw OR c.contract_no LIKE :kw OR cu.customer_group LIKE :kw)';
+            $receiptSumParams['kw'] = '%' . $keyword . '%';
+        }
+        if ($status !== '') {
+            $receiptSumSql .= ' AND c.status = :status';
+            $receiptSumParams['status'] = $status;
+        }
+        if (!empty($salesUserIds)) {
+            $ps = [];
+            foreach ($salesUserIds as $idx => $uid) {
+                $k = 'rsum_sales_' . $idx;
+                $ps[] = ':' . $k;
+                $receiptSumParams[$k] = $uid;
+            }
+            $receiptSumSql .= ' AND c.sales_user_id IN (' . implode(',', $ps) . ')';
+        } elseif (!empty($ownerUserIds)) {
+            $ps = [];
+            foreach ($ownerUserIds as $idx => $uid) {
+                $k = 'rsum_owner_' . $idx;
+                $ps[] = ':' . $k;
+                $receiptSumParams[$k] = $uid;
+            }
+            $receiptSumSql .= ' AND cu.owner_user_id IN (' . implode(',', $ps) . ')';
+        }
+        if ($focusUserType !== '' && $focusUserId > 0) {
+            if ($focusUserType === 'sales') {
+                $receiptSumSql .= ' AND c.sales_user_id = :focus_user_id';
+            } else {
+                $receiptSumSql .= ' AND cu.owner_user_id = :focus_user_id';
+            }
+            $receiptSumParams['focus_user_id'] = $focusUserId;
+        }
+        if ($receiptStart !== '') {
+            $receiptSumSql .= ' AND r.received_date >= :receipt_start';
+            $receiptSumParams['receipt_start'] = $receiptStart . ' 00:00:00';
+        }
+        if ($receiptEnd !== '') {
+            $receiptSumSql .= ' AND r.received_date <= :receipt_end';
+            $receiptSumParams['receipt_end'] = $receiptEnd . ' 23:59:59';
+        }
+        $periodPaidRow = Db::queryOne($receiptSumSql, $receiptSumParams);
+        if ($periodPaidRow) {
+            $sumRow['sum_paid'] = (float)($periodPaidRow['period_paid'] ?? 0);
+            $sumRow['sum_unpaid'] = max(0, $sumRow['sum_due'] - $sumRow['sum_paid']);
+        }
+    }
     
     // 按货币分别统计（用于前端汇率转换）
     $sumByCurrencySql = str_replace(
@@ -682,6 +750,165 @@ if ($viewMode === 'contract' || $viewMode === 'installment') {
             'sum_paid' => (float)($cr['sum_paid'] ?? 0),
             'sum_unpaid' => (float)($cr['sum_unpaid'] ?? 0),
         ];
+    }
+    
+    // 当按实收时间筛选时，按货币分组重新计算该时间段内的实际收款
+    if ($useReceiptPeriodSum) {
+        $receiptByCurrencySql = 'SELECT c.currency, COALESCE(SUM(r.amount_applied), 0) AS period_paid
+            FROM finance_receipts r
+            INNER JOIN finance_contracts c ON c.id = r.contract_id
+            INNER JOIN customers cu ON cu.id = r.customer_id
+            WHERE r.amount_applied > 0';
+        $receiptByCurrencyParams = [];
+        if ($user['role'] === 'sales') {
+            $receiptByCurrencySql .= ' AND c.sales_user_id = :sales_user_id';
+            $receiptByCurrencyParams['sales_user_id'] = (int)$user['id'];
+        }
+        if ($keyword !== '') {
+            $receiptByCurrencySql .= ' AND (cu.name LIKE :kw OR cu.mobile LIKE :kw OR cu.customer_code LIKE :kw OR c.contract_no LIKE :kw OR cu.customer_group LIKE :kw)';
+            $receiptByCurrencyParams['kw'] = '%' . $keyword . '%';
+        }
+        if ($status !== '') {
+            $receiptByCurrencySql .= ' AND c.status = :status';
+            $receiptByCurrencyParams['status'] = $status;
+        }
+        if (!empty($salesUserIds)) {
+            $ps = [];
+            foreach ($salesUserIds as $idx => $uid) {
+                $k = 'rbc_sales_' . $idx;
+                $ps[] = ':' . $k;
+                $receiptByCurrencyParams[$k] = $uid;
+            }
+            $receiptByCurrencySql .= ' AND c.sales_user_id IN (' . implode(',', $ps) . ')';
+        } elseif (!empty($ownerUserIds)) {
+            $ps = [];
+            foreach ($ownerUserIds as $idx => $uid) {
+                $k = 'rbc_owner_' . $idx;
+                $ps[] = ':' . $k;
+                $receiptByCurrencyParams[$k] = $uid;
+            }
+            $receiptByCurrencySql .= ' AND cu.owner_user_id IN (' . implode(',', $ps) . ')';
+        }
+        if ($focusUserType !== '' && $focusUserId > 0) {
+            if ($focusUserType === 'sales') {
+                $receiptByCurrencySql .= ' AND c.sales_user_id = :focus_user_id';
+            } else {
+                $receiptByCurrencySql .= ' AND cu.owner_user_id = :focus_user_id';
+            }
+            $receiptByCurrencyParams['focus_user_id'] = $focusUserId;
+        }
+        if ($receiptStart !== '') {
+            $receiptByCurrencySql .= ' AND r.received_date >= :receipt_start';
+            $receiptByCurrencyParams['receipt_start'] = $receiptStart . ' 00:00:00';
+        }
+        if ($receiptEnd !== '') {
+            $receiptByCurrencySql .= ' AND r.received_date <= :receipt_end';
+            $receiptByCurrencyParams['receipt_end'] = $receiptEnd . ' 23:59:59';
+        }
+        $receiptByCurrencySql .= ' GROUP BY c.currency';
+        $receiptCurrencyRows = Db::query($receiptByCurrencySql, $receiptByCurrencyParams);
+        // 更新 sumByCurrency 中的 sum_paid 和 sum_unpaid
+        $periodPaidByCurrency = [];
+        foreach ($receiptCurrencyRows as $rcr) {
+            $code = $rcr['currency'] ?: 'TWD';
+            $periodPaidByCurrency[$code] = (float)($rcr['period_paid'] ?? 0);
+        }
+        foreach ($sumByCurrency as $code => &$vals) {
+            $vals['sum_paid'] = $periodPaidByCurrency[$code] ?? 0;
+            $vals['sum_unpaid'] = max(0, $vals['sum_due'] - $vals['sum_paid']);
+        }
+        unset($vals);
+    }
+    
+    // 新单/复购统计（按货币分组）- 基于实际收款记录
+    $orderTypeByCurrency = ['new_order' => [], 'repurchase' => []];
+    // 使用 finance_receipts 表统计实际收款，按收款所属合同是否为首单分类
+    $orderTypeSql = 'SELECT 
+        c.currency,
+        CASE WHEN c.id = fc.first_contract_id THEN "new" ELSE "repurchase" END AS order_type,
+        COALESCE(SUM(r.amount_applied), 0) AS sum_paid
+    FROM finance_receipts r
+    INNER JOIN finance_contracts c ON c.id = r.contract_id
+    INNER JOIN customers cu ON cu.id = r.customer_id
+    INNER JOIN (
+        SELECT customer_id, MIN(id) AS first_contract_id
+        FROM finance_contracts
+        GROUP BY customer_id
+    ) fc ON fc.customer_id = c.customer_id
+    WHERE r.amount_applied > 0';
+    $orderTypeParams = [];
+    if ($user['role'] === 'sales') {
+        $orderTypeSql .= ' AND c.sales_user_id = :sales_user_id';
+        $orderTypeParams['sales_user_id'] = (int)$user['id'];
+    }
+    if ($keyword !== '') {
+        $orderTypeSql .= ' AND (cu.name LIKE :kw OR cu.mobile LIKE :kw OR cu.customer_code LIKE :kw OR c.contract_no LIKE :kw OR cu.customer_group LIKE :kw)';
+        $orderTypeParams['kw'] = '%' . $keyword . '%';
+    }
+    if ($customerGroup !== '') {
+        $orderTypeSql .= ' AND cu.customer_group LIKE :cg';
+        $orderTypeParams['cg'] = '%' . $customerGroup . '%';
+    }
+    if ($activityTag !== '') {
+        $orderTypeSql .= ' AND cu.activity_tag = :activity_tag';
+        $orderTypeParams['activity_tag'] = $activityTag;
+    }
+    // 按签约时间筛选
+    if ($dueStart !== '') {
+        $orderTypeSql .= ' AND c.sign_date >= :due_start';
+        $orderTypeParams['due_start'] = $dueStart;
+    }
+    if ($dueEnd !== '') {
+        $orderTypeSql .= ' AND c.sign_date <= :due_end';
+        $orderTypeParams['due_end'] = $dueEnd;
+    }
+    // 按收款时间筛选（关键：这样可以统计某个时间段内的实收）
+    if ($receiptStart !== '') {
+        $orderTypeSql .= ' AND r.received_date >= :receipt_start';
+        $orderTypeParams['receipt_start'] = $receiptStart . ' 00:00:00';
+    }
+    if ($receiptEnd !== '') {
+        $orderTypeSql .= ' AND r.received_date <= :receipt_end';
+        $orderTypeParams['receipt_end'] = $receiptEnd . ' 23:59:59';
+    }
+    if ($status !== '') {
+        $orderTypeSql .= ' AND c.status = :status';
+        $orderTypeParams['status'] = $status;
+    }
+    if (!empty($salesUserIds)) {
+        $ps = [];
+        foreach ($salesUserIds as $idx => $uid) {
+            $k = 'ot_sales_' . $idx;
+            $ps[] = ':' . $k;
+            $orderTypeParams[$k] = $uid;
+        }
+        $orderTypeSql .= ' AND c.sales_user_id IN (' . implode(',', $ps) . ')';
+    } elseif (!empty($ownerUserIds)) {
+        $ps = [];
+        foreach ($ownerUserIds as $idx => $uid) {
+            $k = 'ot_owner_' . $idx;
+            $ps[] = ':' . $k;
+            $orderTypeParams[$k] = $uid;
+        }
+        $orderTypeSql .= ' AND cu.owner_user_id IN (' . implode(',', $ps) . ')';
+    }
+    if ($focusUserType !== '' && $focusUserId > 0) {
+        if ($focusUserType === 'sales') {
+            $orderTypeSql .= ' AND c.sales_user_id = :focus_user_id';
+        } else {
+            $orderTypeSql .= ' AND cu.owner_user_id = :focus_user_id';
+        }
+        $orderTypeParams['focus_user_id'] = $focusUserId;
+    }
+    $orderTypeSql .= ' GROUP BY c.currency, order_type';
+    $orderTypeRows = Db::query($orderTypeSql, $orderTypeParams);
+    foreach ($orderTypeRows as $otr) {
+        $code = $otr['currency'] ?: 'TWD';
+        $type = $otr['order_type'] === 'new' ? 'new_order' : 'repurchase';
+        if (!isset($orderTypeByCurrency[$type][$code])) {
+            $orderTypeByCurrency[$type][$code] = 0;
+        }
+        $orderTypeByCurrency[$type][$code] += (float)($otr['sum_paid'] ?? 0);
     }
 }
 
@@ -938,7 +1165,12 @@ finance_sidebar_start('finance_dashboard');
             
             <!-- 常用筛选（始终显示） -->
             <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
-                <input type="hidden" name="view_mode" value="<?= htmlspecialchars($viewMode) ?>">
+                <!-- 视图切换按钮组 -->
+                <div class="btn-group btn-group-sm" role="group">
+                    <button type="button" onclick="switchViewMode('contract')" class="btn <?= $viewMode === 'contract' ? 'btn-primary' : 'btn-outline-primary' ?>">合同视图</button>
+                    <button type="button" onclick="switchViewMode('installment')" class="btn <?= $viewMode === 'installment' ? 'btn-primary' : 'btn-outline-primary' ?>">分期视图</button>
+                </div>
+                <input type="hidden" name="view_mode" id="viewModeInput" value="<?= htmlspecialchars($viewMode) ?>">
                 <input type="text" class="form-control form-control-sm" name="keyword" placeholder="客户/合同号/项目编号/群名称" value="<?= htmlspecialchars($keyword) ?>" style="width:220px;">
                 <select class="form-select form-select-sm" name="status" style="width:auto;">
                     <option value="">全部状态</option>
@@ -1063,67 +1295,71 @@ finance_sidebar_start('finance_dashboard');
 
 <?php if ($viewMode !== 'staff_summary'): ?>
 <!-- 汇总统计卡片 -->
-<div class="row g-2 mb-3">
-    <div class="col-6 col-md-2">
+<div class="d-flex flex-wrap gap-2 mb-3">
+    <div class="flex-fill" style="min-width: 100px;">
         <div class="card border-0 bg-primary bg-opacity-10 h-100">
-            <div class="card-body py-2 px-3">
-                <div class="d-flex align-items-center">
-                    <div class="rounded-circle bg-primary bg-opacity-25 p-2 me-2">
-                        <i class="bi bi-file-earmark-text text-primary"></i>
-                    </div>
-                    <div>
-                        <div class="text-muted small">合同数</div>
-                        <div class="fw-bold fs-5"><?= number_format((int)($sumRow['contract_count'] ?? 0)) ?></div>
-                    </div>
-                </div>
+            <div class="card-body py-2 px-2">
+                <div class="text-muted small">合同数</div>
+                <div class="fw-bold fs-5"><?= number_format((int)($sumRow['contract_count'] ?? 0)) ?></div>
             </div>
         </div>
     </div>
-    <div class="col-6 col-md-2">
+    <div class="flex-fill" style="min-width: 80px;">
         <div class="card border-0 bg-info bg-opacity-10 h-100">
-            <div class="card-body py-2 px-3">
-                <div class="d-flex align-items-center">
-                    <div class="rounded-circle bg-info bg-opacity-25 p-2 me-2">
-                        <i class="bi bi-calendar-check text-info"></i>
-                    </div>
-                    <div>
-                        <div class="text-muted small">分期数</div>
-                        <div class="fw-bold fs-5"><?= number_format((int)($sumRow['installment_count'] ?? 0)) ?></div>
-                    </div>
-                </div>
+            <div class="card-body py-2 px-2">
+                <div class="text-muted small">分期数</div>
+                <div class="fw-bold fs-5"><?= number_format((int)($sumRow['installment_count'] ?? 0)) ?></div>
             </div>
         </div>
     </div>
-    <div class="col-6 col-md-2">
+    <div class="flex-fill" style="min-width: 120px;">
         <div class="card border-0 bg-secondary bg-opacity-10 h-100">
-            <div class="card-body py-2 px-3">
+            <div class="card-body py-2 px-2">
                 <div class="text-muted small">应收合计</div>
                 <div class="fw-bold text-dark" id="sumDueDisplay"><?= number_format((float)($sumRow['sum_due'] ?? 0), 2) ?></div>
                 <small id="sumDueCurrency" class="text-secondary"></small>
             </div>
         </div>
     </div>
-    <div class="col-6 col-md-2">
+    <div class="flex-fill" style="min-width: 120px;">
         <div class="card border-0 bg-success bg-opacity-10 h-100">
-            <div class="card-body py-2 px-3">
+            <div class="card-body py-2 px-2">
                 <div class="text-muted small">已收合计</div>
-                <div class="fw-bold text-success fs-4" id="sumPaidDisplay"><?= number_format((float)($sumRow['sum_paid'] ?? 0), 2) ?></div>
+                <div class="fw-bold text-success" id="sumPaidDisplay"><?= number_format((float)($sumRow['sum_paid'] ?? 0), 2) ?></div>
                 <small id="sumPaidCurrency" class="text-secondary"></small>
             </div>
         </div>
     </div>
-    <div class="col-6 col-md-2">
+    <div class="flex-fill" style="min-width: 120px;">
         <div class="card border-0 bg-danger bg-opacity-10 h-100">
-            <div class="card-body py-2 px-3">
+            <div class="card-body py-2 px-2">
                 <div class="text-muted small">未收合计</div>
-                <div class="fw-bold text-danger fs-5" id="sumUnpaidDisplay"><?= number_format((float)($sumRow['sum_unpaid'] ?? 0), 2) ?></div>
+                <div class="fw-bold text-danger" id="sumUnpaidDisplay"><?= number_format((float)($sumRow['sum_unpaid'] ?? 0), 2) ?></div>
                 <small id="sumUnpaidCurrency" class="text-secondary"></small>
             </div>
         </div>
     </div>
-    <div class="col-12 col-md-2">
+    <div class="flex-fill" style="min-width: 120px;">
+        <div class="card border-0 h-100" style="background-color: rgba(255, 193, 7, 0.1);">
+            <div class="card-body py-2 px-2">
+                <div class="text-muted small">新单合计</div>
+                <div class="fw-bold" style="color: #d39e00;" id="sumNewOrderDisplay">-</div>
+                <small id="sumNewOrderCurrency" class="text-secondary"></small>
+            </div>
+        </div>
+    </div>
+    <div class="flex-fill" style="min-width: 120px;">
+        <div class="card border-0 h-100" style="background-color: rgba(128, 0, 128, 0.1);">
+            <div class="card-body py-2 px-2">
+                <div class="text-muted small">复购合计</div>
+                <div class="fw-bold" style="color: #800080;" id="sumRepurchaseDisplay">-</div>
+                <small id="sumRepurchaseCurrency" class="text-secondary"></small>
+            </div>
+        </div>
+    </div>
+    <div class="flex-fill" style="min-width: 180px;">
         <div class="card border-0 bg-light h-100">
-            <div class="card-body py-2 px-3">
+            <div class="card-body py-2 px-2">
                 <div class="d-flex flex-column gap-1">
                     <select class="form-select form-select-sm" id="dashAmountMode">
                         <option value="original">原始(TWD)</option>
@@ -1152,6 +1388,8 @@ finance_sidebar_start('finance_dashboard');
 (function() {
     // 按货币分别统计的金额
     const sumByCurrency = <?= json_encode($sumByCurrency, JSON_UNESCAPED_UNICODE) ?>;
+    // 新单/复购按货币分别统计
+    const orderTypeByCurrency = <?= json_encode($orderTypeByCurrency ?? ['new_order' => [], 'repurchase' => []], JSON_UNESCAPED_UNICODE) ?>;
     let rates = {};  // 各货币汇率
     
     fetch(API_URL + '/exchange_rate_list.php').then(r => r.json()).then(res => {
@@ -1185,7 +1423,7 @@ finance_sidebar_start('finance_dashboard');
     
     function updateAmountDisplay() {
         const mode = document.getElementById('dashAmountMode')?.value || 'fixed';
-        let due = 0, paid = 0, unpaid = 0, currency = '';
+        let due = 0, paid = 0, unpaid = 0, newOrder = 0, repurchase = 0, currency = '';
         const useFloating = (mode === 'floating');
         
         if (mode === 'original') {
@@ -1194,6 +1432,13 @@ finance_sidebar_start('finance_dashboard');
                 due += convertToTarget(sumByCurrency[code].sum_due, code, 'TWD', false);
                 paid += convertToTarget(sumByCurrency[code].sum_paid, code, 'TWD', false);
                 unpaid += convertToTarget(sumByCurrency[code].sum_unpaid, code, 'TWD', false);
+            });
+            // 新单/复购统计
+            Object.keys(orderTypeByCurrency.new_order || {}).forEach(code => {
+                newOrder += convertToTarget(orderTypeByCurrency.new_order[code], code, 'TWD', false);
+            });
+            Object.keys(orderTypeByCurrency.repurchase || {}).forEach(code => {
+                repurchase += convertToTarget(orderTypeByCurrency.repurchase[code], code, 'TWD', false);
             });
             currency = 'TWD';
         } else {
@@ -1204,6 +1449,15 @@ finance_sidebar_start('finance_dashboard');
                 paid += sumByCurrency[code].sum_paid / rate;
                 unpaid += sumByCurrency[code].sum_unpaid / rate;
             });
+            // 新单/复购统计
+            Object.keys(orderTypeByCurrency.new_order || {}).forEach(code => {
+                const rate = getRate(code, useFloating);
+                newOrder += orderTypeByCurrency.new_order[code] / rate;
+            });
+            Object.keys(orderTypeByCurrency.repurchase || {}).forEach(code => {
+                const rate = getRate(code, useFloating);
+                repurchase += orderTypeByCurrency.repurchase[code] / rate;
+            });
             currency = 'CNY';
         }
         
@@ -1211,9 +1465,13 @@ finance_sidebar_start('finance_dashboard');
         document.getElementById('sumDueDisplay').textContent = fmt(due);
         document.getElementById('sumPaidDisplay').textContent = fmt(paid);
         document.getElementById('sumUnpaidDisplay').textContent = fmt(unpaid);
+        document.getElementById('sumNewOrderDisplay').textContent = fmt(newOrder);
+        document.getElementById('sumRepurchaseDisplay').textContent = fmt(repurchase);
         document.getElementById('sumDueCurrency').textContent = currency;
         document.getElementById('sumPaidCurrency').textContent = currency;
         document.getElementById('sumUnpaidCurrency').textContent = currency;
+        document.getElementById('sumNewOrderCurrency').textContent = currency;
+        document.getElementById('sumRepurchaseCurrency').textContent = currency;
     }
     
     // 更新表格中的金额单元格显示

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, User, FileText, MessageSquare, Check, Download, ExternalLink, Link2, Lock, RefreshCw, Clipboard, DollarSign, UserPlus, History, Star, CheckCircle, Clock, Phone, Upload, Copy, FolderOpen, Eye, Trash2, AlertTriangle, ChevronDown, ChevronUp } from 'lucide-react';
 import { useAuthStore } from '@/stores/auth';
@@ -13,7 +13,7 @@ import FormDetailModal from '@/components/FormDetailModal';
 import InputDialog from '@/components/InputDialog';
 import { useToast } from '@/hooks/use-toast';
 import { useUploader } from '@/hooks/use-uploader';
-import { isManager as checkIsManager } from '@/lib/utils';
+import { isManager as checkIsManager, formatFileSize } from '@/lib/utils';
 import { downloadFileChunked, ensureDirectory, getFileMetadata, previewFile, scanFolderRecursive } from '@/lib/tauri';
 import FileTree, { type FileNode } from '@/components/FileTree';
 import LocalFileTree from '@/components/LocalFileTree';
@@ -179,8 +179,6 @@ export default function ProjectDetailPage() {
   const { serverUrl, rootDir } = useSettingsStore();
   const isTauri = typeof window !== 'undefined' && '__TAURI__' in window;
   
-  // 调试日志
-  console.log('[ProjectDetailPage] 接收到项目ID:', id, '类型:', typeof id);
   const { canEditProjectStatus, canViewPortal, canCopyPortalLink, canViewPortalPassword, canAssignProject } = usePermissionsStore();
   const { toast } = useToast();
   
@@ -189,9 +187,6 @@ export default function ProjectDetailPage() {
   
   // 判断是否为管理员（可以设置提成）
   const isManager = checkIsManager(user?.role);
-  
-  // 调试：打印角色和管理员状态
-  console.log('[ProjectDetailPage] user.role:', user?.role, 'isManager:', isManager);
   
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<TabType>('overview');
@@ -254,6 +249,11 @@ export default function ProjectDetailPage() {
   // 文件管理（重命名/批量删除）
   const [selectedFileIds, setSelectedFileIds] = useState<Set<number>>(new Set());
   const [showBatchDeleteConfirm, setShowBatchDeleteConfirm] = useState(false);
+  
+  // 批量驳回弹窗
+  const [showBatchRejectModal, setShowBatchRejectModal] = useState(false);
+  const [batchRejectReason, setBatchRejectReason] = useState('');
+  const [pendingRejectFiles, setPendingRejectFiles] = useState<any[]>([]);
   const [renameDialogOpen, setRenameDialogOpen] = useState(false);
   const [renameTarget, setRenameTarget] = useState<{ id: number; filename: string; storageKey?: string } | null>(null);
   
@@ -278,6 +278,9 @@ export default function ProjectDetailPage() {
   
   // 文件视图模式：list（列表）或 tree（树状）
   const [fileViewMode, setFileViewMode] = useState<'list' | 'tree'>('tree');
+  
+  // Tab 切换请求 ID（用于防止竞态条件）
+  const requestIdRef = useRef(0);
   
   // 进度条折叠状态
   const [progressCollapsed, setProgressCollapsed] = useState(false);
@@ -350,12 +353,20 @@ export default function ProjectDetailPage() {
       toast({ title: '批量驳回', description: '请选择待审核的文件', variant: 'destructive' });
       return;
     }
-    const reason = prompt('请输入批量驳回原因（可选）：') || '';
+    // 打开自定义驳回弹窗
+    setPendingRejectFiles(filesToReject);
+    setBatchRejectReason('');
+    setShowBatchRejectModal(true);
+  };
+
+  const confirmBatchReject = async () => {
+    const ids = pendingRejectFiles.map((f: any) => Number(f.id)).filter((x: number) => x > 0);
+    if (ids.length === 0) return;
     try {
       const res = await fetch(`${serverUrl}/api/desktop_approval.php?action=batch_reject`, {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ file_ids: ids, reason }),
+        body: JSON.stringify({ file_ids: ids, reason: batchRejectReason }),
       });
       const data = await res.json();
       if (data.success) {
@@ -367,6 +378,10 @@ export default function ProjectDetailPage() {
       }
     } catch (err: any) {
       toast({ title: '批量驳回失败', description: err.message, variant: 'destructive' });
+    } finally {
+      setShowBatchRejectModal(false);
+      setBatchRejectReason('');
+      setPendingRejectFiles([]);
     }
   };
 
@@ -671,9 +686,11 @@ export default function ProjectDetailPage() {
 
   // 加载评价数据
   const loadEvaluation = async () => {
-    if (!serverUrl || !id) return;
+    if (!serverUrl || !id || !token) return;
     try {
-      const response = await fetch(`${serverUrl}/api/project_evaluations.php?project_id=${id}`);
+      const response = await fetch(`${serverUrl}/api/project_evaluations.php?project_id=${id}`, {
+        headers: { 'Authorization': `Bearer ${token}` },
+      });
       const data = await response.json();
       if (data.success) {
         setEvaluationData(data.data);
@@ -687,6 +704,9 @@ export default function ProjectDetailPage() {
   const loadProject = async (tab: TabType = 'overview') => {
     if (!serverUrl || !token || !id) return;
     
+    // 生成新的请求 ID
+    const currentRequestId = ++requestIdRef.current;
+    
     if (tab === 'overview') {
       setLoading(true);
     } else {
@@ -698,6 +718,11 @@ export default function ProjectDetailPage() {
         headers: { 'Authorization': `Bearer ${token}` },
       });
       const data = await response.json();
+      
+      // 检查请求是否已过期（防止竞态条件）
+      if (currentRequestId !== requestIdRef.current) {
+        return;
+      }
       
       if (!response.ok || !data.success) {
         console.error('[ProjectDetail] API错误:', data.error || response.statusText);
@@ -721,14 +746,6 @@ export default function ProjectDetailPage() {
         const isTechRole = user?.role === 'tech';
         const hasStatusEditPermission = canEditProjectStatus();
         const canEdit = hasStatusEditPermission || isTechUser || isTechRole;
-        console.log('[ProjectDetail] 权限检查:', { 
-          hasStatusEditPermission, 
-          isTechUser, 
-          isTechRole, 
-          canEdit,
-          userRole: user?.role,
-          userId: user?.id 
-        });
         setCanEditThisProject(canEdit);
         
         // 设置 tab 数据
@@ -929,24 +946,19 @@ export default function ProjectDetailPage() {
 
   // 加载多区域链接并打开弹窗
   const handleOpenLinkModal = async () => {
-    console.log('[PORTAL_LINK_DEBUG] handleOpenLinkModal called', { serverUrl, token: !!token, portal_token: customer?.portal_token });
     if (!serverUrl || !token || !customer?.portal_token) {
-      console.log('[PORTAL_LINK_DEBUG] Missing required params, returning');
       return;
     }
     
-    console.log('[PORTAL_LINK_DEBUG] Opening modal...');
     setShowLinkModal(true);
     setLoadingLinks(true);
     
     try {
       const apiUrl = `${serverUrl}/api/portal_link.php?action=get_region_urls&token=${customer.portal_token}`;
-      console.log('[PORTAL_LINK_DEBUG] Fetching:', apiUrl);
       const res = await fetch(apiUrl, {
         headers: { 'Authorization': `Bearer ${token}` },
       });
       const data = await res.json();
-      console.log('[PORTAL_LINK_DEBUG] API Response:', JSON.stringify(data));
       
       if (data.success && data.regions && data.regions.length > 0) {
         // 为每个链接添加项目ID参数
@@ -1058,18 +1070,12 @@ export default function ProjectDetailPage() {
     }
   };
 
-  // 格式化文件大小
-  const formatFileSize = (bytes: number) => {
-    if (bytes < 1024) return bytes + ' B';
-    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
-    return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
-  };
+  // formatFileSize imported from @/lib/utils
 
   const parseJsonResponse = async (res: Response, step: string) => {
     const status = res.status;
     const text = await res.text();
     const preview = text.length > 800 ? `${text.slice(0, 800)}...` : text;
-    console.log(`[Upload] ${step} HTTP ${status}`, preview);
     try {
       return JSON.parse(text);
     } catch (e: any) {
@@ -1080,7 +1086,6 @@ export default function ProjectDetailPage() {
   // 上传文件核心逻辑（使用本地缓存分片上传 API，支持进度回调）
   const uploadFile = async (file: File, category: (typeof FILE_CATEGORIES)[number]) => {
     if (!serverUrl || !token || !project) {
-      console.log('[Upload] 缺少必要参数:', { serverUrl: !!serverUrl, token: !!token, project: !!project });
       throw new Error('缺少必要参数');
     }
     
@@ -1088,11 +1093,7 @@ export default function ProjectDetailPage() {
     const assetType = category === '客户文件' ? 'customer' : category === '模型文件' ? 'models' : 'works';
     const mimeType = file.type || 'application/octet-stream';
     
-    console.log('[Upload] 开始本地缓存分片上传:', { fileName: file.name, size: file.size, category, groupCode });
     setUploadProgress({ current: 0, total: 1, filename: file.name, percent: 0 });
-    
-    // 1. 初始化分片上传（使用新的本地缓存API）
-    console.log('[Upload] 步骤1: 初始化分片上传...');
     const initRes = await fetch(`${serverUrl}/api/desktop_chunk_upload.php`, {
       method: 'POST',
       headers: {
@@ -1110,7 +1111,6 @@ export default function ProjectDetailPage() {
       }),
     });
     const initData = await parseJsonResponse(initRes, '步骤1-init');
-    console.log('[Upload] 步骤1 解析后的JSON:', initData);
     
     if (!initData.success || !initData.data) {
       throw new Error(initData.error || '初始化上传失败');
@@ -1154,7 +1154,6 @@ export default function ProjectDetailPage() {
               if (data.success) {
                 chunkProgressRef[partNumber] = chunkSize;
                 completedPartsRef.count++;
-                console.log(`[Upload] 分片 ${partNumber} 完成 (${completedPartsRef.count}/${total_parts})`);
                 const totalUploaded = Object.values(chunkProgressRef).reduce((a, b) => a + b, 0);
                 const percent = Math.round((totalUploaded / file.size) * 100);
                 setUploadProgress({ 
@@ -1214,15 +1213,12 @@ export default function ProjectDetailPage() {
     
     // 并发上传所有分片
     const partNumbers = Array.from({ length: total_parts }, (_, i) => i + 1);
-    console.log(`[Upload] 步骤2: 开始并发上传 ${total_parts} 个分片（${CONCURRENT_UPLOADS}并发）...`);
     
     for (let i = 0; i < partNumbers.length; i += CONCURRENT_UPLOADS) {
       const batch = partNumbers.slice(i, i + CONCURRENT_UPLOADS);
       await Promise.all(batch.map(partNumber => uploadPart(partNumber)));
     }
     
-    // 3. 完成分片上传（服务端异步上传到S3）
-    console.log('[Upload] 步骤3: 完成分片上传（异步上传到S3）...');
     const completeRes = await fetch(`${serverUrl}/api/desktop_chunk_upload.php`, {
       method: 'POST',
       headers: {
@@ -1235,7 +1231,6 @@ export default function ProjectDetailPage() {
       }),
     });
     const completeData = await parseJsonResponse(completeRes, '步骤3-complete');
-    console.log('[Upload] 步骤3 解析后的JSON:', completeData);
     
     if (!completeData.success) {
       throw new Error(completeData.error || '完成上传失败');
@@ -1382,7 +1377,6 @@ export default function ProjectDetailPage() {
 
   // 打开本地文件夹（使用 Rust 命令，与悬浮窗一致）
   const openLocalFolder = async (categoryName: string) => {
-    console.log('[OpenFolder] rootDir from store:', rootDir);
     if (!rootDir) {
       toast({ title: '请先在设置中配置同步根目录', variant: 'destructive' });
       return;
@@ -1395,7 +1389,6 @@ export default function ProjectDetailPage() {
       projectName: `${groupFolderName}/${projectName}`,
       subFolder: categoryName || null,
     };
-    console.log('[OpenFolder] invoke 参数:', JSON.stringify(invokeParams, null, 2));
     
     try {
       const { invoke } = await import('@tauri-apps/api/core');
@@ -1427,14 +1420,12 @@ export default function ProjectDetailPage() {
             path: f.absolute_path,
             relative_path: f.relative_path,
           }));
-          console.log(`[LocalFiles] ${category} 扫描到 ${files.length} 个文件`);
         } catch {
           result[category] = [];
         }
       }
       
       setLocalFiles(result);
-      console.log('[LocalFiles] 扫描完成:', result);
     } catch (err) {
       console.error('[LocalFiles] 扫描失败:', err);
     }
@@ -1454,7 +1445,6 @@ export default function ProjectDetailPage() {
         projectName: `${getGroupFolderName()}/${getProjectFolderName()}`,
       });
       setLocalFolderExists(folderExists);
-      console.log('[LocalFolder] 检测结果:', folderExists);
     } catch (err) {
       console.error('[LocalFolder] 检测失败:', err);
       setLocalFolderExists(false);
@@ -1526,12 +1516,12 @@ export default function ProjectDetailPage() {
             const expectedSize = file.file_size || 0;
             if (meta?.is_file && expectedSize > 0 && meta.size === expectedSize) {
               skippedCount++;
-              console.log('[InitFolder] 跳过下载（本地已存在且大小一致）:', { filename: file.filename, localPath, size: expectedSize });
+              // 本地已存在且大小一致，跳过
               continue;
             }
             if (meta?.is_file && expectedSize <= 0) {
               skippedCount++;
-              console.log('[InitFolder] 跳过下载（本地已存在，未知云端大小）:', { filename: file.filename, localPath, localSize: meta.size });
+              // 本地已存在，未知云端大小，跳过
               continue;
             }
           } catch {}
@@ -1558,7 +1548,7 @@ export default function ProjectDetailPage() {
           const result = await downloadFileChunked(taskId, downloadUrl, localPath);
           if (result.success) {
             downloadedCount++;
-            console.log('[InitFolder] 下载成功:', file.filename);
+            // 下载成功
           } else {
             console.warn('[InitFolder] 下载失败:', file.filename, result.error);
           }
@@ -1685,6 +1675,42 @@ export default function ProjectDetailPage() {
               confirmText="删除"
               cancelText="取消"
             />
+
+            {/* 批量驳回弹窗 */}
+            {showBatchRejectModal && (
+              <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+                <div className="bg-white rounded-xl w-[400px] p-6">
+                  <h2 className="text-lg font-semibold mb-4">
+                    批量驳回 ({pendingRejectFiles.length} 个文件)
+                  </h2>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">驳回原因</label>
+                    <textarea
+                      value={batchRejectReason}
+                      onChange={(e) => setBatchRejectReason(e.target.value)}
+                      placeholder="输入驳回原因（可选）"
+                      rows={3}
+                      className="w-full px-3 py-2 border rounded-lg resize-none"
+                    />
+                  </div>
+                  <div className="flex justify-end gap-3 mt-6">
+                    <button
+                      onClick={() => { setShowBatchRejectModal(false); setBatchRejectReason(''); setPendingRejectFiles([]); }}
+                      className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg"
+                    >
+                      取消
+                    </button>
+                    <button
+                      onClick={confirmBatchReject}
+                      className="px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg"
+                    >
+                      确认驳回
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {canCopyPortalLink() && customer?.portal_token && (
               <button
                 onClick={handleOpenLinkModal}
@@ -2323,7 +2349,6 @@ export default function ProjectDetailPage() {
               mode="multiple"
               value={selectedTechIds}
               onChange={async (ids, items) => {
-                console.log('选择的设计师:', ids, items);
                 setShowUserSelector(false);
                 // 调用 API 保存分配
                 try {
@@ -2844,68 +2869,72 @@ export default function ProjectDetailPage() {
                           </div>
                         </div>
                         <div className="flex items-center gap-2">
-                          {/* 调试: 显示审批状态和管理员状态 */}
-                          {categoryName === '作品文件' && normalizeApprovalStatus(file.approval_status) === 'pending' && (
+                          {/* 审批状态徽章和操作按钮（所有文件分类通用） */}
+                          {normalizeApprovalStatus(file.approval_status) === 'pending' && (
                             <>
                               <span className="px-2 py-0.5 bg-yellow-100 text-yellow-700 rounded text-xs">待审核</span>
-                              {/* 审批按钮 - 直接显示给所有用户 */}
-                              <button
-                                type="button"
-                                onClick={async () => {
-                                  try {
-                                    const res = await fetch(`${serverUrl}/api/desktop_approval.php?action=approve`, {
-                                      method: 'POST',
-                                      headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-                                      body: JSON.stringify({ file_id: file.id }),
-                                    });
-                                    const data = await res.json();
-                                    if (data.success) {
-                                      toast({ title: '审批通过', description: file.filename });
-                                      loadProject('files');
-                                    } else {
-                                      toast({ title: '审批失败', description: data.error || '未知错误', variant: 'destructive' });
-                                    }
-                                  } catch (err: any) {
-                                    toast({ title: '审批失败', description: err.message, variant: 'destructive' });
-                                  }
-                                }}
-                                className="px-2 py-0.5 bg-green-500 hover:bg-green-600 text-white rounded text-xs"
-                                title="通过"
-                              >
-                                通过
-                              </button>
-                              <button
-                                type="button"
-                                onClick={async () => {
-                                  const reason = prompt('请输入驳回原因（可选）：');
-                                  try {
-                                    const res = await fetch(`${serverUrl}/api/desktop_approval.php?action=reject`, {
-                                      method: 'POST',
-                                      headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-                                      body: JSON.stringify({ file_id: file.id, reason: reason || '' }),
-                                    });
-                                    const data = await res.json();
-                                    if (data.success) {
-                                      toast({ title: '已驳回', description: file.filename });
-                                      loadProject('files');
-                                    } else {
-                                      toast({ title: '驳回失败', description: data.error || '未知错误', variant: 'destructive' });
-                                    }
-                                  } catch (err: any) {
-                                    toast({ title: '驳回失败', description: err.message, variant: 'destructive' });
-                                  }
-                                }}
-                                className="px-2 py-0.5 bg-red-500 hover:bg-red-600 text-white rounded text-xs"
-                                title="驳回"
-                              >
-                                驳回
-                              </button>
+                              {isManager && (
+                                <>
+                                  <button
+                                    type="button"
+                                    onClick={async () => {
+                                      try {
+                                        const res = await fetch(`${serverUrl}/api/desktop_approval.php?action=approve`, {
+                                          method: 'POST',
+                                          headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+                                          body: JSON.stringify({ file_id: file.id }),
+                                        });
+                                        const data = await res.json();
+                                        if (data.success) {
+                                          toast({ title: '审批通过', description: file.filename });
+                                          loadProject('files');
+                                        } else {
+                                          toast({ title: '审批失败', description: data.error || '未知错误', variant: 'destructive' });
+                                        }
+                                      } catch (err: any) {
+                                        toast({ title: '审批失败', description: err.message, variant: 'destructive' });
+                                      }
+                                    }}
+                                    className="px-2 py-0.5 bg-green-500 hover:bg-green-600 text-white rounded text-xs"
+                                    title="通过"
+                                  >
+                                    通过
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={async () => {
+                                      const reason = prompt('请输入驳回原因（可选）：');
+                                      if (reason === null) return;
+                                      try {
+                                        const res = await fetch(`${serverUrl}/api/desktop_approval.php?action=reject`, {
+                                          method: 'POST',
+                                          headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+                                          body: JSON.stringify({ file_id: file.id, reason: reason || '' }),
+                                        });
+                                        const data = await res.json();
+                                        if (data.success) {
+                                          toast({ title: '已驳回', description: file.filename });
+                                          loadProject('files');
+                                        } else {
+                                          toast({ title: '驳回失败', description: data.error || '未知错误', variant: 'destructive' });
+                                        }
+                                      } catch (err: any) {
+                                        toast({ title: '驳回失败', description: err.message, variant: 'destructive' });
+                                      }
+                                    }}
+                                    className="px-2 py-0.5 bg-red-500 hover:bg-red-600 text-white rounded text-xs"
+                                    title="驳回"
+                                  >
+                                    驳回
+                                  </button>
+                                </>
+                              )}
                             </>
                           )}
-                          {categoryName === '作品文件' && normalizeApprovalStatus(file.approval_status) === 'approved' && (
+                          {normalizeApprovalStatus(file.approval_status) === 'approved' && (
                             <span className="px-2 py-0.5 bg-green-100 text-green-700 rounded text-xs">已通过</span>
                           )}
-                          {categoryName === '作品文件' && normalizeApprovalStatus(file.approval_status) === 'rejected' && (
+                          {normalizeApprovalStatus(file.approval_status) === 'rejected' && (
                             <>
                               <span className="px-2 py-0.5 bg-red-100 text-red-700 rounded text-xs">已驳回</span>
                               <button

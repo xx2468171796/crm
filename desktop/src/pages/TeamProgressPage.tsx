@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react';
 import { Users, CheckCircle, Clock, AlertCircle, Folder, RefreshCw, Plus, X } from 'lucide-react';
 import { useAuthStore } from '@/stores/auth';
 import { useSettingsStore } from '@/stores/settings';
+import { useToast } from '@/hooks/use-toast';
+import { isManager } from '@/lib/utils';
 
 type ViewType = 'today' | 'yesterday' | 'future' | 'help' | 'all';
 
@@ -47,6 +49,9 @@ export default function TeamProgressPage() {
     { key: 'all', label: '全部' },
   ];
 
+  const { toast } = useToast();
+  const isManagerRole = isManager(user?.role);
+  
   const loadTeamTasks = async () => {
     setLoading(true);
     try {
@@ -59,9 +64,12 @@ export default function TeamProgressPage() {
       const data = await response.json();
       if (data.success) {
         setMembers(data.data.members || []);
+      } else {
+        toast({ title: '加载失败', description: data.error || '获取团队任务失败', variant: 'destructive' });
       }
     } catch (error) {
       console.error('加载团队任务失败:', error);
+      toast({ title: '加载失败', description: '网络错误', variant: 'destructive' });
     } finally {
       setLoading(false);
     }
@@ -106,9 +114,13 @@ export default function TeamProgressPage() {
         setAssignToUserId(null);
         setAssignTaskDate(new Date().toISOString().split('T')[0]);
         loadTeamTasks();
+        toast({ title: '分配成功', variant: 'default' });
+      } else {
+        toast({ title: '分配失败', description: data.error || '未知错误', variant: 'destructive' });
       }
     } catch (error) {
       console.error('分配任务失败:', error);
+      toast({ title: '分配失败', description: '网络错误', variant: 'destructive' });
     } finally {
       setSubmitting(false);
     }
@@ -118,10 +130,8 @@ export default function TeamProgressPage() {
     setAssignToUserId(userId);
     setShowAssignModal(true);
   };
-
-  const isManager = ['admin', 'super_admin', 'manager', 'tech_manager'].includes(user?.role || '');
   
-  if (!isManager) {
+  if (!isManagerRole) {
     return (
       <div className="flex-1 flex items-center justify-center bg-gray-50">
         <div className="text-center text-gray-500">

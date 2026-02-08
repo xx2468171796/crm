@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { DollarSign, Users, FolderKanban, Download, ChevronDown, ChevronUp, Filter, X, ExternalLink } from 'lucide-react';
 import { useAuthStore } from '@/stores/auth';
@@ -362,8 +362,8 @@ export default function TechCommissionPage() {
                 </tr>
               ) : (
                 filteredData.map(user => (
-                  <>
-                    <tr key={user.tech_user_id} className="hover:bg-gray-50">
+                  <React.Fragment key={user.tech_user_id}>
+                    <tr className="hover:bg-gray-50">
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-3">
                           <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 text-white flex items-center justify-center text-sm font-medium">
@@ -413,7 +413,7 @@ export default function TechCommissionPage() {
                         </td>
                       </tr>
                     )}
-                  </>
+                  </React.Fragment>
                 ))
               )}
             </tbody>

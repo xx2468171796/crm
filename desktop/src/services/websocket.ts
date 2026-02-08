@@ -255,8 +255,9 @@ class WebSocketService {
  */
 export const fetchWsConfig = async (serverUrl: string): Promise<{ enabled: boolean; url: string }> => {
   try {
-    const response = await fetch(`${serverUrl}/api/desktop_config.php`);
-    const result = await response.json();
+    // 使用统一 HTTP 客户端（自动携带 Authorization header）
+    const { http } = await import('@/lib/http');
+    const result = await http.get<{ websocket: { enabled: boolean; url: string } }>('desktop_config.php');
     if (result.success && result.data?.websocket) {
       return {
         enabled: result.data.websocket.enabled,

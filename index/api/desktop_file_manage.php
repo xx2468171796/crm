@@ -122,18 +122,25 @@ try {
             if ($destKey !== $oldKey) {
                 $storage = storage_provider();
                 $copied = $storage->copyObject($oldKey, $destKey);
-                if ($copied) {
-                    $storage->deleteObject($oldKey);
-                    $newPath = $destKey;
-                } else {
-                    // 复制失败：只改名称
-                    $newPath = $oldKey;
+                if (!$copied) {
+                    json_error(500, '重命名失败：存储复制操作失败');
                 }
+                $newPath = $destKey;
+                // DB 更新成功后再删除旧文件
             }
         }
 
         $pdo->prepare('UPDATE deliverables SET deliverable_name = ?, file_path = ?, update_time = ? WHERE id = ?')
             ->execute([$newName, $newPath, time(), $id]);
+
+        // DB 更新成功后，删除旧的存储文件
+        if (isset($oldKey) && isset($destKey) && $destKey !== $oldKey && isset($storage)) {
+            try {
+                $storage->deleteObject($oldKey);
+            } catch (Throwable $e) {
+                error_log("[desktop_file_manage] 删除旧存储文件失败: " . $e->getMessage());
+            }
+        }
 
         echo json_encode([
             'success' => true,
@@ -291,6 +298,8 @@ try {
         $errors = [];
         $now = time();
 
+        // 先检查权限，收集可删除的文件
+        $deletableIds = [];
         foreach ($ids as $id) {
             $file = $byId[$id] ?? null;
             if (!$file) {
@@ -301,20 +310,41 @@ try {
                 $errors[] = "文件ID {$id} 无权限删除";
                 continue;
             }
+            $deletableIds[] = $id;
+        }
 
-            $pdo->prepare('UPDATE deliverables SET deleted_at = ?, deleted_by = ? WHERE id = ?')
-                ->execute([$now, (int)$user['id'], $id]);
-
-            if ((int)($file['is_folder'] ?? 0) === 0) {
-                $path = (string)($file['file_path'] ?? '');
-                if ($path !== '' && !filter_var($path, FILTER_VALIDATE_URL)) {
-                    $storage = storage_provider();
-                    $key = normalize_storage_key_no_prefix($path);
-                    $storage->deleteObject($key);
+        // 使用事务包裹批量删除
+        if (!empty($deletableIds)) {
+            $pdo->beginTransaction();
+            try {
+                foreach ($deletableIds as $id) {
+                    $file = $byId[$id];
+                    $pdo->prepare('UPDATE deliverables SET deleted_at = ?, deleted_by = ? WHERE id = ?')
+                        ->execute([$now, (int)$user['id'], $id]);
+                    $deleted++;
                 }
-            }
+                $pdo->commit();
 
-            $deleted++;
+                // 事务成功后删除存储文件（存储操作不在事务内）
+                foreach ($deletableIds as $id) {
+                    $file = $byId[$id];
+                    if ((int)($file['is_folder'] ?? 0) === 0) {
+                        $path = (string)($file['file_path'] ?? '');
+                        if ($path !== '' && !filter_var($path, FILTER_VALIDATE_URL)) {
+                            try {
+                                $storage = storage_provider();
+                                $key = normalize_storage_key_no_prefix($path);
+                                $storage->deleteObject($key);
+                            } catch (Throwable $e) {
+                                error_log("[desktop_file_manage] 删除存储文件失败 (id={$id}): " . $e->getMessage());
+                            }
+                        }
+                    }
+                }
+            } catch (Throwable $e) {
+                $pdo->rollBack();
+                throw $e;
+            }
         }
 
         echo json_encode([

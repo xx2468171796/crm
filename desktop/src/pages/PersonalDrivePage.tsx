@@ -53,6 +53,7 @@ interface UploadTask {
   uploadId?: string; // 分片上传ID
   currentChunk?: number;
   totalChunks?: number;
+  completedParts?: Set<number>; // 已完成的分片索引
 }
 
 // 分片大小：90MB
@@ -87,7 +88,8 @@ export default function PersonalDrivePage() {
   // 上传队列
   const [uploadQueue, setUploadQueue] = useState<UploadTask[]>([]);
   const [isProcessingQueue, setIsProcessingQueue] = useState(false);
-  const abortControllerRef = useRef<AbortController | null>(null);
+  // 为每个任务维护独立的 AbortController
+  const abortControllersRef = useRef<Map<string, AbortController>>(new Map());
   const uploadStartTimeRef = useRef<number>(0);
   const uploadedBytesRef = useRef<number>(0);
 
@@ -265,6 +267,7 @@ export default function PersonalDrivePage() {
       id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
       file,
       filename: file.name,
+      completedParts: new Set<number>(),
       fileSize: file.size,
       relativePath,
       status: 'pending' as const,
@@ -335,7 +338,9 @@ export default function PersonalDrivePage() {
 
     uploadStartTimeRef.current = Date.now();
     uploadedBytesRef.current = 0;
-    abortControllerRef.current = new AbortController();
+    // 为每个任务创建独立的 AbortController
+    const abortController = new AbortController();
+    abortControllersRef.current.set(task.id, abortController);
 
     try {
       if (task.fileSize <= SMALL_FILE_THRESHOLD) {
@@ -351,6 +356,8 @@ export default function PersonalDrivePage() {
         t.id === task.id ? { ...t, status: 'completed' as const, progress: 100 } : t
       ));
       loadFiles(currentPath);
+      // 清理 AbortController
+      abortControllersRef.current.delete(task.id);
     } catch (error: any) {
       if (error.name === 'AbortError') {
         // 用户取消
@@ -363,6 +370,8 @@ export default function PersonalDrivePage() {
           t.id === task.id ? { ...t, status: 'error' as const, error: error.message } : t
         ));
       }
+      // 清理 AbortController
+      abortControllersRef.current.delete(task.id);
     }
   };
 
@@ -410,8 +419,9 @@ export default function PersonalDrivePage() {
       xhr.onerror = () => reject(new Error('网络错误'));
       xhr.onabort = () => reject(new DOMException('Aborted', 'AbortError'));
 
-      // 监听取消
-      abortControllerRef.current?.signal.addEventListener('abort', () => xhr.abort());
+      // 监听取消 - 使用任务特定的 AbortController
+      const taskAbortController = abortControllersRef.current.get(task.id);
+      taskAbortController?.signal.addEventListener('abort', () => xhr.abort());
 
       const formData = new FormData();
       formData.append('file', task.file);
@@ -443,7 +453,7 @@ export default function PersonalDrivePage() {
         total_chunks: totalChunks,
         relative_path: task.relativePath,
       }),
-      signal: abortControllerRef.current?.signal,
+      signal: abortControllersRef.current.get(task.id)?.signal,
     });
     const initData = await initRes.json();
     if (!initData.success) {
@@ -458,16 +468,25 @@ export default function PersonalDrivePage() {
     // 2. 并发上传分片（3并发）
     const chunkProgress: Record<number, number> = {};
     
+    // 获取已完成的分片列表，恢复时跳过
+    const completedParts = task.completedParts || new Set<number>();
+    
     const uploadSingleChunk = async (chunkIndex: number): Promise<void> => {
-      if (abortControllerRef.current?.signal.aborted) {
+      const taskAbortController = abortControllersRef.current.get(task.id);
+      if (taskAbortController?.signal.aborted) {
         throw new DOMException('Aborted', 'AbortError');
+      }
+
+      // 如果分片已完成，跳过
+      if (completedParts.has(chunkIndex)) {
+        return;
       }
 
       const start = chunkIndex * CHUNK_SIZE;
       const end = Math.min(start + CHUNK_SIZE, task.fileSize);
       const chunk = task.file.slice(start, end);
 
-      await uploadChunkConcurrent(task.id, uploadId, chunkIndex, chunk, task.fileSize, chunkProgress);
+      await uploadChunkConcurrent(task.id, uploadId, chunkIndex, chunk, task.fileSize, chunkProgress, completedParts);
     };
 
     const chunkIndexes = Array.from({ length: totalChunks }, (_, i) => i);
@@ -484,7 +503,7 @@ export default function PersonalDrivePage() {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({ upload_id: uploadId }),
-      signal: abortControllerRef.current?.signal,
+      signal: abortControllersRef.current.get(task.id)?.signal,
     });
     const completeData = await completeRes.json();
     if (!completeData.success) {
@@ -493,7 +512,7 @@ export default function PersonalDrivePage() {
   };
   
   // 并发上传单个分片
-  const uploadChunkConcurrent = (taskId: string, uploadId: string, chunkIndex: number, chunk: Blob, totalSize: number, chunkProgress: Record<number, number>): Promise<void> => {
+  const uploadChunkConcurrent = (taskId: string, uploadId: string, chunkIndex: number, chunk: Blob, totalSize: number, chunkProgress: Record<number, number>, completedParts: Set<number>): Promise<void> => {
     return new Promise((resolve, reject) => {
       const xhr = new XMLHttpRequest();
 
@@ -524,6 +543,12 @@ export default function PersonalDrivePage() {
             const data = JSON.parse(xhr.responseText);
             if (data.success) {
               chunkProgress[chunkIndex] = chunk.size;
+              // 标记分片为已完成
+              completedParts.add(chunkIndex);
+              // 更新任务状态中的已完成分片
+              setUploadQueue(prev => prev.map(t => 
+                t.id === taskId ? { ...t, completedParts: new Set(completedParts) } : t
+              ));
               resolve();
             } else {
               reject(new Error(data.error || '分片上传失败'));
@@ -539,7 +564,8 @@ export default function PersonalDrivePage() {
       xhr.onerror = () => reject(new Error('网络错误'));
       xhr.onabort = () => reject(new DOMException('Aborted', 'AbortError'));
 
-      abortControllerRef.current?.signal.addEventListener('abort', () => xhr.abort());
+      const taskAbortController = abortControllersRef.current.get(taskId);
+      taskAbortController?.signal.addEventListener('abort', () => xhr.abort());
 
       const formData = new FormData();
       formData.append('upload_id', uploadId);
@@ -560,7 +586,8 @@ export default function PersonalDrivePage() {
 
     if (task.status === 'uploading') {
       // 暂停
-      abortControllerRef.current?.abort();
+      const abortController = abortControllersRef.current.get(taskId);
+      abortController?.abort();
     } else if (task.status === 'paused' || task.status === 'error') {
       // 继续/重试
       setUploadQueue(prev => prev.map(t => 
@@ -573,8 +600,11 @@ export default function PersonalDrivePage() {
   const cancelUpload = (taskId: string) => {
     const task = uploadQueue.find(t => t.id === taskId);
     if (task?.status === 'uploading') {
-      abortControllerRef.current?.abort();
+      const abortController = abortControllersRef.current.get(taskId);
+      abortController?.abort();
     }
+    // 清理 AbortController
+    abortControllersRef.current.delete(taskId);
     setUploadQueue(prev => prev.filter(t => t.id !== taskId));
   };
 

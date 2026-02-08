@@ -936,7 +936,7 @@ $prepayTotalBalance = (float)($prepayStats['total_balance'] ?? 0);
 $prepayMonthIn = (float)($prepayStats['month_in'] ?? 0);
 $prepayMonthOut = (float)($prepayStats['month_out'] ?? 0);
 
-finance_sidebar_start('finance_dashboard');
+finance_sidebar_start('finance_fee_dashboard');
 ?>
 
 

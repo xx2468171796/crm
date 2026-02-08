@@ -434,6 +434,17 @@ function exportDashboard() {
 }
 
 // ==================== 筛选器功能 ====================
+
+// 视图切换（保持筛选条件）
+function switchViewMode(mode) {
+    const input = document.getElementById('viewModeInput');
+    if (input) {
+        input.value = mode;
+    }
+    // 调用筛选函数来应用新的视图模式
+    applyDashboardFilters();
+}
+
 // Ajax动态筛选
 function applyDashboardFilters() {
     const form = document.getElementById('dashFilterForm');
@@ -447,7 +458,7 @@ function applyDashboardFilters() {
     params.set('page', 'finance_dashboard');
     
     // 获取表单中的所有输入
-    const viewMode = form.querySelector('select[name="view_mode"]')?.value || 'contract';
+    const viewMode = form.querySelector('input[name="view_mode"]')?.value || form.querySelector('select[name="view_mode"]')?.value || 'contract';
     params.set('view_mode', viewMode);
     
     const keyword = form.querySelector('input[name="keyword"]')?.value || '';

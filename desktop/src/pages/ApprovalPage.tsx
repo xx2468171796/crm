@@ -1,4 +1,4 @@
-﻿import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { FileCheck, Clock, CheckCircle, XCircle, RefreshCw, Check, X, Image, File, Table, Grid, Filter } from 'lucide-react';
 import { useAuthStore } from '@/stores/auth';
 import { useSettingsStore } from '@/stores/settings';
@@ -7,6 +7,8 @@ import { useToast } from '@/hooks/use-toast';
 import ApprovalTable from '@/components/ApprovalTable';
 import ApprovalFilters from '@/components/ApprovalFilters';
 import FilePreviewModal, { type PreviewFile } from '@/components/FilePreviewModal';
+import { formatFileSize } from '@/lib/utils';
+import { http } from '@/lib/http';
 
 interface FileItem {
   id: number;
@@ -115,12 +117,10 @@ export default function ApprovalPage() {
       if (filters.startDate) params.append('start_date', filters.startDate);
       if (filters.endDate) params.append('end_date', filters.endDate);
       
-      const url = `${serverUrl}/api/desktop_approval.php?${params.toString()}`;
-      const response = await fetch(url, { headers: { 'Authorization': `Bearer ${token}` } });
-      const data = await response.json();
-      if (data.success) {
-        setFiles(data.data.items || []);
-        setStats(data.data.stats || { pending: 0, approved: 0, rejected: 0 });
+      const result = await http.get<{ items: FileItem[]; stats: Stats }>(`desktop_approval.php?${params.toString()}`);
+      if (result.success && result.data) {
+        setFiles(result.data.items || []);
+        setStats(result.data.stats || { pending: 0, approved: 0, rejected: 0 });
       }
     } catch (error) {
       console.error('加载文件列表失败:', error);
@@ -137,17 +137,12 @@ export default function ApprovalPage() {
   // 单个通过
   const handleApprove = async (fileId: number) => {
     try {
-      const response = await fetch(`${serverUrl}/api/desktop_approval.php?action=approve`, {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ file_id: fileId }),
-      });
-      const data = await response.json();
-      if (data.success) {
+      const result = await http.post<void>('desktop_approval.php?action=approve', { file_id: fileId });
+      if (result.success) {
         toast({ title: '成功', description: '审批通过' });
         loadFiles();
       } else {
-        toast({ title: '错误', description: data.error || '操作失败', variant: 'destructive' });
+        toast({ title: '错误', description: result.error?.message || '操作失败', variant: 'destructive' });
       }
     } catch (error) {
       console.error('审批失败:', error);
@@ -159,19 +154,14 @@ export default function ApprovalPage() {
   const handleReject = async () => {
     if (!singleRejectId) return;
     try {
-      const response = await fetch(`${serverUrl}/api/desktop_approval.php?action=reject`, {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ file_id: singleRejectId, reason: rejectReason }),
-      });
-      const data = await response.json();
-      if (data.success) {
+      const result = await http.post<void>('desktop_approval.php?action=reject', { file_id: singleRejectId, reason: rejectReason });
+      if (result.success) {
         setShowRejectModal(false);
         setRejectReason('');
         setSingleRejectId(null);
         loadFiles();
       } else {
-        toast({ title: '错误', description: data.error || '操作失败', variant: 'destructive' });
+        toast({ title: '错误', description: result.error?.message || '操作失败', variant: 'destructive' });
       }
     } catch (error) {
       console.error('驳回失败:', error);
@@ -182,18 +172,13 @@ export default function ApprovalPage() {
   const handleBatchApprove = async () => {
     if (selectedIds.size === 0) return;
     try {
-      const response = await fetch(`${serverUrl}/api/desktop_approval.php?action=batch_approve`, {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ file_ids: Array.from(selectedIds) }),
-      });
-      const data = await response.json();
-      if (data.success) {
+      const result = await http.post<void>('desktop_approval.php?action=batch_approve', { file_ids: Array.from(selectedIds) });
+      if (result.success) {
         toast({ title: '成功', description: `批量通过${selectedIds.size}个文件` });
         setSelectedIds(new Set());
         loadFiles();
       } else {
-        toast({ title: '错误', description: data.error || '操作失败', variant: 'destructive' });
+        toast({ title: '错误', description: result.error?.message || '操作失败', variant: 'destructive' });
       }
     } catch (error) {
       console.error('批量通过失败:', error);
@@ -205,20 +190,15 @@ export default function ApprovalPage() {
   const handleBatchReject = async () => {
     if (selectedIds.size === 0) return;
     try {
-      const response = await fetch(`${serverUrl}/api/desktop_approval.php?action=batch_reject`, {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ file_ids: Array.from(selectedIds), reason: rejectReason }),
-      });
-      const data = await response.json();
-      if (data.success) {
+      const result = await http.post<void>('desktop_approval.php?action=batch_reject', { file_ids: Array.from(selectedIds), reason: rejectReason });
+      if (result.success) {
         toast({ title: '成功', description: `批量驳回${selectedIds.size}个文件` });
         setShowRejectModal(false);
         setRejectReason('');
         setSelectedIds(new Set());
         loadFiles();
       } else {
-        toast({ title: '错误', description: data.error || '操作失败', variant: 'destructive' });
+        toast({ title: '错误', description: result.error?.message || '操作失败', variant: 'destructive' });
       }
     } catch (error) {
       console.error('批量驳回失败:', error);
@@ -231,18 +211,13 @@ export default function ApprovalPage() {
     if (selectedIds.size === 0) return;
     if (!confirm(`确定要删除选中的 ${selectedIds.size} 个文件吗？此操作不可恢复！`)) return;
     try {
-      const response = await fetch(`${serverUrl}/api/desktop_file_manage.php`, {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'batch_delete', ids: Array.from(selectedIds) }),
-      });
-      const data = await response.json();
-      if (data.success) {
-        toast({ title: '成功', description: `已删除 ${data.data?.deleted_count ?? selectedIds.size} 个文件` });
+      const result = await http.post<{ deleted_count?: number }>('desktop_file_manage.php', { action: 'batch_delete', ids: Array.from(selectedIds) });
+      if (result.success) {
+        toast({ title: '成功', description: `已删除 ${result.data?.deleted_count ?? selectedIds.size} 个文件` });
         setSelectedIds(new Set());
         loadFiles();
       } else {
-        toast({ title: '错误', description: data.error || '删除失败', variant: 'destructive' });
+        toast({ title: '错误', description: result.error?.message || '删除失败', variant: 'destructive' });
       }
     } catch (error) {
       console.error('批量删除失败:', error);
@@ -264,12 +239,8 @@ export default function ApprovalPage() {
   };
 
 
-  // 格式化文件大小
-  const formatSize = (bytes: number) => {
-    if (bytes < 1024) return bytes + ' B';
-    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
-    return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
-  };
+  // 使用统一的 formatFileSize
+  const formatSize = formatFileSize;
 
   // 获取状态徽章
   const getStatusBadge = (status: number) => {
@@ -387,7 +358,10 @@ export default function ApprovalPage() {
             </button>
           )}
           <button
-            onClick={() => setActiveTab('my_files')}
+            onClick={() => { 
+              setActiveTab('my_files'); 
+              setFilters(prev => ({ ...prev, status: 'all' }));
+            }}
             className={`pb-2 text-sm font-medium border-b-2 transition-colors ${
               activeTab === 'my_files'
                 ? 'border-blue-500 text-blue-600'
