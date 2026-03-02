@@ -339,6 +339,9 @@ if (!$isExternalAccess) {
                         <a class="nav-link active" data-tab="first_contact">首通</a>
                     </li>
                     <li class="nav-item">
+                        <a class="nav-link" data-tab="requirement">📝 需求文档</a>
+                    </li>
+                    <li class="nav-item">
                         <a class="nav-link" data-tab="objection">异议处理</a>
                     </li>
                     <li class="nav-item">
@@ -376,6 +379,37 @@ if (!$isExternalAccess) {
                         require_once __DIR__ . '/../core/permission.php'; 
                     ?>
                     <?php include __DIR__ . '/../views/customer/first_contact.php'; ?>
+                </div>
+
+                <!-- 需求文档模块 -->
+                <div class="tab-content-section" id="tab-requirement" style="display: flex; flex-direction: column; flex: 1;">
+                    <div style="padding: 20px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                            <h4 style="margin: 0;">📝 客户需求文档</h4>
+                            <a href="?page=customer_requirement_editor&customer_id=<?= $customerId ?>"
+                               class="btn btn-primary"
+                               target="_blank">
+                                <i class="fas fa-edit"></i> 编辑需求文档
+                            </a>
+                        </div>
+
+                        <div id="requirement-preview" style="
+                            border: 1px solid #ddd;
+                            border-radius: 8px;
+                            padding: 20px;
+                            background: #fafafa;
+                            min-height: 400px;
+                            max-height: 600px;
+                            overflow-y: auto;
+                        ">
+                            <p style="color: #999; text-align: center; padding: 50px 20px;">
+                                加载中...
+                            </p>
+                        </div>
+
+                        <div id="requirement-status" style="margin-top: 15px; font-size: 12px; color: #666;">
+                        </div>
+                    </div>
                 </div>
 
                 <!-- 异议处理模块 -->
@@ -771,6 +805,15 @@ window.switchTab = function(tabName) {
             }
         }, 300);
     }
+
+    // 如果切换到需求文档Tab，加载需求文档
+    if (tabName === 'requirement') {
+        setTimeout(function() {
+            if (typeof loadRequirementDocument === 'function') {
+                loadRequirementDocument();
+            }
+        }, 100);
+    }
     <?php endif; ?>
 };
 
@@ -792,6 +835,73 @@ window.refreshObjectionData = function() {
             console.error('刷新异议处理数据失败:', status, error);
         }
     });
+}
+
+// 加载需求文档
+window.loadRequirementDocument = function() {
+    const customerId = <?= $customerId ?>;
+    if (!customerId) return;
+
+    const previewDiv = document.getElementById('requirement-preview');
+    const statusDiv = document.getElementById('requirement-status');
+
+    if (!previewDiv) return;
+
+    // 显示加载状态
+    previewDiv.innerHTML = '<div style="text-align: center; padding: 50px; color: #999;"><i class="fas fa-spinner fa-spin"></i> 加载中...</div>';
+
+    $.ajax({
+        url: '/api/customer_requirements.php?action=get&customer_id=' + customerId,
+        type: 'GET',
+        dataType: 'json',
+        success: function(response) {
+            if (response.success) {
+                const data = response.data;
+
+                // 渲染Markdown内容
+                if (data.content && data.content.trim() !== '') {
+                    if (typeof marked !== 'undefined' && typeof marked.parse === 'function') {
+                        previewDiv.innerHTML = marked.parse(data.content);
+                    } else {
+                        // 如果marked.js未加载，显示纯文本
+                        previewDiv.innerHTML = '<pre style="white-space: pre-wrap; word-wrap: break-word;">' +
+                            escapeHtml(data.content) + '</pre>';
+                    }
+                } else {
+                    previewDiv.innerHTML = '<div style="text-align: center; padding: 50px; color: #999;">' +
+                        '<i class="fas fa-file-alt" style="font-size: 48px; margin-bottom: 15px;"></i><br>' +
+                        '暂无需求文档<br><br>' +
+                        '<a href="customer_requirement_editor.php?customer_id=' + customerId + '" class="btn btn-primary">' +
+                        '<i class="fas fa-edit"></i> 创建需求文档</a></div>';
+                }
+
+                // 更新状态信息
+                if (statusDiv && data.update_time) {
+                    let statusHtml = '<small class="text-muted">';
+                    statusHtml += '最后更新: ' + data.update_time;
+                    if (data.updater_name) {
+                        statusHtml += ' by ' + data.updater_name;
+                    }
+                    statusHtml += '</small>';
+                    statusDiv.innerHTML = statusHtml;
+                }
+            } else {
+                previewDiv.innerHTML = '<div class="alert alert-danger">加载失败: ' +
+                    (response.error || '未知错误') + '</div>';
+            }
+        },
+        error: function(xhr, status, error) {
+            console.error('加载需求文档失败:', status, error);
+            previewDiv.innerHTML = '<div class="alert alert-danger">加载失败，请稍后重试</div>';
+        }
+    });
+}
+
+// HTML转义函数
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
 }
 
 // 异议处理历史区域交互
@@ -1692,6 +1802,7 @@ if (!$isExternalAccess) {
     <script src="<?= Url::js('copy-to-image.js') ?>"></script>
     <script src="<?= Url::js('attachment-upload.js') ?>"></script>
     <script src="<?= Url::js('recording.js') ?>?v=<?= time() ?>"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <script>
     // 视图模式管理（外部访问时）
     (function() {

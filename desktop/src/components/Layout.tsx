@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Kanban, ListTodo, FileCheck, FolderSync, DollarSign, Settings, LogOut, User, ClipboardList, PanelRightOpen, Users, FolderKanban, Pin, PinOff, HardDrive } from 'lucide-react';
+import { LayoutDashboard, Kanban, ListTodo, FileCheck, FolderSync, DollarSign, Settings, LogOut, User, ClipboardList, PanelRightOpen, Users, FolderKanban, Pin, PinOff, HardDrive, FileText } from 'lucide-react';
 import { useAuthStore } from '@/stores/auth';
 import { cn, canViewFinance } from '@/lib/utils';
 import { onEvent, EVENTS } from '@/lib/windowEvents';
@@ -14,6 +14,7 @@ const navItems = [
   { to: '/project-kanban', icon: Kanban, label: '项目看板' },
   { to: '/forms', icon: ClipboardList, label: '表单处理' },
   { to: '/tasks', icon: ListTodo, label: '任务管理' },
+  { to: '/requirements', icon: FileText, label: '需求管理' },
   { to: '/team-tasks', icon: Users, label: '团队任务', managerOnly: true },
   { to: '/team-projects', icon: FolderKanban, label: '团队项目', managerOnly: true },
   { to: '/tech-commission', icon: DollarSign, label: '技术提成', managerOnly: true },

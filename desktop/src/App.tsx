@@ -90,6 +90,7 @@ import TeamProjectsPage from '@/pages/TeamProjectsPage';
 import TechCommissionPage from '@/pages/TechCommissionPage';
 import FileSyncPage from '@/pages/FileSyncPage';
 import PersonalDrivePage from '@/pages/PersonalDrivePage';
+import RequirementsPage from '@/pages/RequirementsPage';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
@@ -180,6 +181,7 @@ function App() {
           <Route path="tech-commission" element={<TechCommissionPage />} />
           <Route path="file-sync" element={<FileSyncPage />} />
           <Route path="personal-drive" element={<PersonalDrivePage />} />
+          <Route path="requirements" element={<RequirementsPage />} />
         </Route>
       </Routes>
       <Toaster />
