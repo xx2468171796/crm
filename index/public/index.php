@@ -190,6 +190,9 @@ $routes = [
     
     // 个人网盘管理
     'admin_personal_drives' => __DIR__ . '/admin_personal_drives.php',
+
+    // 客户需求文档
+    'customer_requirement_editor' => __DIR__ . '/customer_requirement_editor.php',
 ];
 
 if (!isset($routes[$page])) {
