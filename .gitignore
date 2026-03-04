@@ -79,3 +79,19 @@ output/
 *.bak
 .windsurfrules
 storage/upload_cache/
+
+# Cursor 编辑器
+.cursor/
+
+# Windsurf/Cascade 技能文件（本地工作区）
+.windsurf/
+SKILL.md
+design.md
+tasks.md
+spec.md
+proposals.md
+config.yaml
+AGENTS.md
+openspec-*.md
+opsx-*.md
+
