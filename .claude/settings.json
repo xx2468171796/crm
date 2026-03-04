@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(mysql -h188.209.141.219 -ucrm20260116 -pJKHAiinysrhR2YWM crm20260116 -e \"SHOW TABLES LIKE ''%customer%'';\")",
+      "Bash(ls -la /opt/1panel/www/sites/188.209.141.2198086/index/*.sql)",
+      "Bash(php scripts/run_requirements_migration.php)",
+      "Read(//usr/**)",
+      "Bash(php scripts/execute_migration.php)",
+      "Bash(docker ps --format \"table {{.Names}}\\\\t{{.Image}}\\\\t{{.Status}}\")",
+      "Bash(docker exec -i 1Panel-mysql-cluster-y5bj mysql -u crm20260116 -pJKHAiinysrhR2YWM crm20260116 -e \"SHOW TABLES LIKE ''customer_requirements%'';\")",
+      "Bash(docker exec -i 1Panel-mysql-cluster-y5bj mysql -u crm20260116 -pJKHAiinysrhR2YWM crm20260116 -e \"DESCRIBE customer_requirements;\")",
+      "Bash(chmod 755 /opt/1panel/www/sites/188.209.141.2198086/index/public/uploads/requirements)",
+      "Bash(npm install)",
+      "Bash(git add desktop/package.json desktop/package-lock.json desktop/src/App.tsx desktop/src/components/Layout.tsx desktop/src/index.css desktop/src/pages/RequirementsPage.tsx index/api/customer_requirements.php index/api/desktop_requirements.php index/migrations/create_customer_requirements_table.sql index/public/customer_requirement_editor.php index/public/customer_detail.php index/public/css/customer-detail.css index/REQUIREMENTS_FEATURE.md)",
+      "Bash(git commit:*)",
+      "Bash(git push origin master)",
+      "Bash(git add index/public/index.php index/scripts/execute_migration.php index/scripts/run_requirements_migration.php)"
+    ]
+  }
+}
