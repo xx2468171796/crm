@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, User, Phone, MessageSquare, FileText, DollarSign, Folder, ChevronRight, Link2, Save, UserPlus, RefreshCw, Copy } from 'lucide-react';
+import { ArrowLeft, User, Phone, MessageSquare, FileText, DollarSign, Folder, ChevronRight, Link2, Save, UserPlus, RefreshCw, Copy, Palette, ExternalLink } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useAuthStore } from '@/stores/auth';
 import { useSettingsStore } from '@/stores/settings';
@@ -58,6 +58,7 @@ const SIDEBAR_TABS: SidebarTab[] = [
   { key: 'files', label: '文件管理', icon: <Folder className="w-4 h-4" /> },
   { key: 'finance', label: '财务', icon: <DollarSign className="w-4 h-4" /> },
   { key: 'projects', label: '项目', icon: <Folder className="w-4 h-4" /> },
+  { key: 'design_questionnaire', label: '设计问卷', icon: <Palette className="w-4 h-4" /> },
 ];
 
 export default function CustomerDetailPage() {
@@ -289,6 +290,69 @@ export default function CustomerDetailPage() {
                 ))}
               </div>
             )}
+          </div>
+        );
+      case 'design_questionnaire':
+        return (
+          <div className="bg-white rounded-xl border">
+            <div className="p-4 border-b flex items-center justify-between">
+              <h3 className="text-sm font-semibold text-gray-800 flex items-center gap-2">
+                <Palette className="w-4 h-4 text-indigo-600" />
+                设计对接资料问卷
+              </h3>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={async () => {
+                    try {
+                      const res = await fetch(`${serverUrl}/api/desktop_design_questionnaire.php?action=generate_token`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                        body: JSON.stringify({ customer_id: Number(id) }),
+                      });
+                      const data = await res.json();
+                      if (data.success && data.data?.token) {
+                        const url = `${serverUrl}/design_questionnaire.php?token=${data.data.token}`;
+                        navigator.clipboard.writeText(url);
+                        toast({ title: '已复制', description: '问卷外部链接已复制到剪贴板' });
+                      }
+                    } catch {
+                      toast({ title: '失败', description: '获取链接失败', variant: 'destructive' });
+                    }
+                  }}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-gray-600 hover:bg-gray-100 rounded-lg border"
+                >
+                  <Copy className="w-3.5 h-3.5" />
+                  复制外部链接
+                </button>
+                <button
+                  onClick={async () => {
+                    try {
+                      const res = await fetch(`${serverUrl}/api/desktop_design_questionnaire.php?action=generate_token`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                        body: JSON.stringify({ customer_id: Number(id) }),
+                      });
+                      const data = await res.json();
+                      if (data.success && data.data?.token) {
+                        const url = `${serverUrl}/design_questionnaire.php?token=${data.data.token}`;
+                        window.open(url, '_blank');
+                      }
+                    } catch {
+                      toast({ title: '失败', description: '打开问卷失败', variant: 'destructive' });
+                    }
+                  }}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"
+                >
+                  <ExternalLink className="w-3.5 h-3.5" />
+                  打开问卷
+                </button>
+              </div>
+            </div>
+            <div className="p-8 text-center">
+              <Palette className="w-16 h-16 mx-auto mb-4 text-indigo-200" />
+              <p className="text-gray-500 mb-4">点击「打开问卷」在浏览器中查看和编辑设计对接资料</p>
+              <p className="text-xs text-gray-400">问卷数据与客户绑定，销售和设计师均可通过外部链接访问</p>
+            </div>
           </div>
         );
       default:

@@ -365,6 +365,9 @@ if (!$isExternalAccess) {
                     <li class="nav-item">
                         <a class="nav-link" data-tab="projects">项目</a>
                     </li>
+                    <li class="nav-item">
+                        <a class="nav-link" data-tab="design_questionnaire">🎨 设计问卷</a>
+                    </li>
                 </ul>
             </div>
 
@@ -450,6 +453,45 @@ if (!$isExternalAccess) {
                 <!-- 项目模块 -->
                 <div class="tab-content-section" id="tab-projects" style="display: flex; flex-direction: column; flex: 1;">
                     <?php include __DIR__ . '/../views/customer/projects.php'; ?>
+                </div>
+
+                <!-- 设计问卷模块 -->
+                <div class="tab-content-section" id="tab-design_questionnaire" style="display: flex; flex-direction: column; flex: 1;">
+                    <div style="padding: 20px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                            <h4 style="margin: 0;">🎨 设计对接资料问卷</h4>
+                            <div style="display: flex; gap: 10px;">
+                                <?php if (!$isNew): ?>
+                                <button type="button" class="btn btn-outline-primary btn-sm" id="btnCopyQuestionnaireLink" onclick="copyQuestionnaireLink()">
+                                    <i class="bi bi-link-45deg"></i> 复制外部链接
+                                </button>
+                                <a href="/design_questionnaire.php?customer_id=<?= $customerId ?>" 
+                                   class="btn btn-primary btn-sm" target="_blank">
+                                    <i class="bi bi-pencil-square"></i> 编辑问卷
+                                </a>
+                                <?php endif; ?>
+                            </div>
+                        </div>
+
+                        <?php if ($isNew): ?>
+                        <div class="alert alert-info">请先保存客户信息后再填写设计问卷。</div>
+                        <?php else: ?>
+                        <div id="questionnaire-preview" style="
+                            border: 1px solid #ddd;
+                            border-radius: 8px;
+                            padding: 20px;
+                            background: #fafafa;
+                            min-height: 300px;
+                            max-height: 600px;
+                            overflow-y: auto;
+                        ">
+                            <p style="color: #999; text-align: center; padding: 50px 20px;">
+                                加载中...
+                            </p>
+                        </div>
+                        <div id="questionnaire-status" style="margin-top: 10px; font-size: 12px; color: #666;"></div>
+                        <?php endif; ?>
+                    </div>
                 </div>
             </div>
         </div>
@@ -814,6 +856,15 @@ window.switchTab = function(tabName) {
             }
         }, 100);
     }
+
+    // 如果切换到设计问卷Tab，加载问卷数据
+    if (tabName === 'design_questionnaire') {
+        setTimeout(function() {
+            if (typeof loadDesignQuestionnaire === 'function') {
+                loadDesignQuestionnaire();
+            }
+        }, 100);
+    }
     <?php endif; ?>
 };
 
@@ -896,6 +947,173 @@ window.loadRequirementDocument = function() {
         }
     });
 }
+
+// 加载设计问卷
+window.loadDesignQuestionnaire = function() {
+    const customerId = <?= $customerId ?>;
+    if (!customerId) return;
+
+    const previewDiv = document.getElementById('questionnaire-preview');
+    const statusDiv = document.getElementById('questionnaire-status');
+    if (!previewDiv) return;
+
+    previewDiv.innerHTML = '<div style="text-align: center; padding: 50px; color: #999;"><i class="bi bi-hourglass-split"></i> 加载中...</div>';
+
+    $.ajax({
+        url: '/api/design_questionnaire.php?action=get&customer_id=' + customerId,
+        type: 'GET',
+        dataType: 'json',
+        success: function(response) {
+            if (response.success && response.data) {
+                const d = response.data;
+                let html = '<div style="font-size:14px; line-height:1.8;">';
+
+                // 标签映射
+                const serviceMap = {floor_plan:'平面图方案设计', rendering:'效果图设计', construction:'施工图设计', exterior:'外立面造型设计'};
+                const houseMap = {rough:'毛坯房', decorated:'精装房', renovation:'旧屋翻新', commercial:'商业空间'};
+                const styleMap = {has_reference:'已有明确参考图', rough_idea:'有大致意向', no_idea:'请设计师建议'};
+                const budgetMap = {economy:'经济型', standard:'标准型', premium:'高端订制', custom:'自定义'};
+                const contactMap = {line:'LINE', wechat:'微信', phone:'电话', email:'邮件'};
+                const commMap = {text:'文字讯息', voice:'语音讯息', call:'电话沟通', image:'图片/截图说明'};
+                const focusMap = {entertainment:'影音娱乐', cooking:'烹饪美食', work_home:'居家办公', reading:'阅读放松', fitness:'健身运动', kids:'亲子活动'};
+
+                function section(title, items) {
+                    let s = '<div style="margin-bottom:16px; padding:12px 16px; background:#f8f9fa; border-radius:8px; border-left:4px solid #6366f1;">';
+                    s += '<strong style="color:#6366f1;">' + title + '</strong>';
+                    s += '<div style="margin-top:8px;">';
+                    items.forEach(function(item) {
+                        if (item[1] !== null && item[1] !== undefined && item[1] !== '' && !(Array.isArray(item[1]) && item[1].length === 0)) {
+                            let val = item[1];
+                            if (Array.isArray(val)) {
+                                const map = item[2] || {};
+                                val = val.map(function(v) { return map[v] || v; }).join('、');
+                            } else if (typeof item[2] === 'object' && item[2][val]) {
+                                val = item[2][val];
+                            }
+                            s += '<div><span style="color:#666; min-width:120px; display:inline-block;">' + item[0] + '：</span><span>' + val + '</span></div>';
+                        }
+                    });
+                    s += '</div></div>';
+                    return s;
+                }
+
+                html += section('一、基本资讯', [
+                    ['客户姓名', d.client_name],
+                    ['联系方式', d.contact_method, contactMap],
+                    ['联系电话/ID', d.contact_phone],
+                    ['方便联系时间', d.contact_time],
+                    ['沟通方式', d.communication_style, commMap]
+                ]);
+
+                html += section('二、设计服务内容', [
+                    ['服务项目', d.service_items, serviceMap],
+                    ['效果图类型', d.rendering_type, {single_3d:'单张3D效果图', '720_panorama':'720°全景环景图'}]
+                ]);
+
+                html += section('三、空间细节', [
+                    ['设计总面积', d.total_area ? d.total_area + (d.area_unit === 'ping' ? ' 坪' : ' ㎡') : null],
+                    ['房屋现况', d.house_status, houseMap],
+                    ['阳台/厨卫包含', d.include_balcony_kitchen == 1 ? '是' : (d.include_balcony_kitchen == 0 ? '否' : null)],
+                    ['天花板/墙体拆改', d.ceiling_wall_modify, {yes:'是', no:'否', designer_suggest:'听从设计师建议'}],
+                    ['水电重新配管', d.rewire_plumbing, {yes:'是', no:'否'}]
+                ]);
+
+                html += section('四、风格偏好', [
+                    ['风格成熟度', d.style_maturity, styleMap],
+                    ['风格描述', d.style_description],
+                    ['色系偏好', d.color_preference],
+                    ['设计禁忌', d.design_taboo]
+                ]);
+
+                html += section('五、生活习惯', [
+                    ['常住成员', d.household_members],
+                    ['特殊功能需求', d.special_function_needs],
+                    ['生活重心', d.life_focus, focusMap]
+                ]);
+
+                html += section('六、预算', [
+                    ['预算类型', d.budget_type, budgetMap],
+                    ['预算范围', d.budget_range],
+                    ['交付节点', d.delivery_deadline]
+                ]);
+
+                html += section('七、原始资料', [
+                    ['原始平面图', d.has_floor_plan == 1 ? '✅ 已备' : '❌ 未备'],
+                    ['现场照片', d.has_site_photos == 1 ? '✅ 已备' : '❌ 未备'],
+                    ['关键尺寸', d.has_key_dimensions == 1 ? '✅ 已备' : '❌ 未备']
+                ]);
+
+                if (d.extra_notes) {
+                    html += section('八、其他备注', [['备注', d.extra_notes]]);
+                }
+
+                // 参考图片
+                if (d.reference_images && d.reference_images.length > 0) {
+                    html += '<div style="margin-bottom:16px;"><strong>参考图片：</strong><div style="display:flex; flex-wrap:wrap; gap:8px; margin-top:8px;">';
+                    d.reference_images.forEach(function(img) {
+                        html += '<img src="' + img + '" style="width:80px; height:80px; object-fit:cover; border-radius:6px; border:1px solid #ddd; cursor:pointer;" onclick="window.open(this.src)">';
+                    });
+                    html += '</div></div>';
+                }
+
+                html += '</div>';
+                previewDiv.innerHTML = html;
+
+                if (statusDiv && d.update_time) {
+                    statusDiv.innerHTML = '<small class="text-muted">最后更新: ' + d.update_time + (d.updater_name ? ' by ' + d.updater_name : '') + ' | 版本 v' + d.version + '</small>';
+                }
+            } else {
+                previewDiv.innerHTML = '<div style="text-align: center; padding: 50px; color: #999;">' +
+                    '<i class="bi bi-palette" style="font-size: 48px; margin-bottom: 15px; display:block;"></i>' +
+                    '暂无设计问卷<br><br>' +
+                    '<a href="/design_questionnaire.php?customer_id=' + customerId + '" class="btn btn-primary" target="_blank">' +
+                    '<i class="bi bi-plus-circle"></i> 创建设计问卷</a></div>';
+            }
+        },
+        error: function() {
+            previewDiv.innerHTML = '<div class="alert alert-danger">加载失败，请稍后重试</div>';
+        }
+    });
+};
+
+// 复制问卷外部链接
+window.copyQuestionnaireLink = function() {
+    const customerId = <?= $customerId ?>;
+    if (!customerId) return;
+
+    // 先获取或生成token
+    $.ajax({
+        url: '/api/design_questionnaire.php?action=generate_token',
+        type: 'POST',
+        contentType: 'application/json',
+        data: JSON.stringify({ customer_id: customerId }),
+        dataType: 'json',
+        success: function(response) {
+            if (response.success && response.data && response.data.token) {
+                const url = window.location.origin + '/design_questionnaire.php?token=' + response.data.token;
+                navigator.clipboard.writeText(url).then(function() {
+                    showAlertModal('✅ 问卷外部链接已复制到剪贴板！', 'success');
+                }).catch(function() {
+                    // 回退方案
+                    const textarea = document.createElement('textarea');
+                    textarea.value = url;
+                    textarea.style.position = 'fixed';
+                    textarea.style.opacity = 0;
+                    document.body.appendChild(textarea);
+                    textarea.select();
+                    document.execCommand('copy');
+                    document.body.removeChild(textarea);
+                    showAlertModal('✅ 问卷外部链接已复制！', 'success');
+                });
+            } else {
+                showAlertModal('生成链接失败: ' + (response.message || '未知错误'), 'error');
+            }
+        },
+        error: function() {
+            showAlertModal('请求失败，请稍后重试', 'error');
+        }
+    });
+};
 
 // HTML转义函数
 function escapeHtml(text) {
