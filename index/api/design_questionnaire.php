@@ -72,8 +72,10 @@ function handleGet($user) {
     }
 
     $questionnaire = Db::queryOne('
-        SELECT dq.*, u1.realname as creator_name, u2.realname as updater_name
+        SELECT dq.*, c.customer_group, c.name as customer_name, c.alias as customer_alias,
+               u1.realname as creator_name, u2.realname as updater_name
         FROM design_questionnaires dq
+        JOIN customers c ON dq.customer_id = c.id
         LEFT JOIN users u1 ON dq.create_user_id = u1.id
         LEFT JOIN users u2 ON dq.update_user_id = u2.id
         WHERE dq.customer_id = ?
@@ -345,6 +347,7 @@ function formatQuestionnaireData($row) {
         'token' => $row['token'] ?? '',
         'customer_name' => $row['customer_name'] ?? $row['client_name'] ?? '',
         'customer_alias' => $row['customer_alias'] ?? '',
+        'customer_group' => $row['customer_group'] ?? '',
         'version' => (int)($row['version'] ?? 1),
         'create_time' => $row['create_time'] ? date('Y-m-d H:i:s', $row['create_time']) : null,
         'update_time' => $row['update_time'] ? date('Y-m-d H:i:s', $row['update_time']) : null,

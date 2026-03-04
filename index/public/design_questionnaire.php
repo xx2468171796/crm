@@ -18,11 +18,12 @@ $isInternal = false;
 $user = null;
 $questionnaire = null;
 $customerName = '';
+$customerGroup = '';
 
 if ($isExternal) {
     // 外部通过token访问
     $questionnaire = Db::queryOne('
-        SELECT dq.*, c.name as customer_name, c.alias as customer_alias
+        SELECT dq.*, c.name as customer_name, c.alias as customer_alias, c.customer_group
         FROM design_questionnaires dq
         JOIN customers c ON dq.customer_id = c.id
         WHERE dq.token = ? AND dq.status = 1
@@ -35,6 +36,7 @@ if ($isExternal) {
     }
     $customerId = (int)$questionnaire['customer_id'];
     $customerName = $questionnaire['customer_alias'] ?: $questionnaire['customer_name'];
+    $customerGroup = $questionnaire['customer_group'] ?? '';
 } else {
     // 内部访问需要登录
     $user = current_user();
@@ -46,22 +48,24 @@ if ($isExternal) {
 
     if ($customerId > 0) {
         $questionnaire = Db::queryOne('
-            SELECT dq.*, c.name as customer_name, c.alias as customer_alias
+            SELECT dq.*, c.name as customer_name, c.alias as customer_alias, c.customer_group
             FROM design_questionnaires dq
             JOIN customers c ON dq.customer_id = c.id
             WHERE dq.customer_id = ?
         ', [$customerId]);
 
         if (!$questionnaire) {
-            $customer = Db::queryOne('SELECT id, name, alias FROM customers WHERE id = ? AND deleted_at IS NULL', [$customerId]);
+            $customer = Db::queryOne('SELECT id, name, alias, customer_group FROM customers WHERE id = ? AND deleted_at IS NULL', [$customerId]);
             if (!$customer) {
                 echo '<!DOCTYPE html><html><head><meta charset="UTF-8"></head><body><h2>客户不存在</h2></body></html>';
                 exit;
             }
             $customerName = $customer['alias'] ?: $customer['name'];
+            $customerGroup = $customer['customer_group'] ?? '';
             $token = '';
         } else {
             $customerName = $questionnaire['customer_alias'] ?: $questionnaire['customer_name'];
+            $customerGroup = $questionnaire['customer_group'] ?? '';
             $token = $questionnaire['token'];
         }
     }
@@ -569,13 +573,13 @@ $pageTitle = $customerName ? "设计对接资料问卷 - {$customerName}" : '设
     <?php endif; ?>
 
     <form id="questionnaireForm" autocomplete="off">
-        <!-- 一、基本资讯与联络方式 -->
+        <!-- 一、基本资讯 -->
         <div class="section-card">
             <div class="section-header">
                 <div class="section-number">1</div>
                 <div>
-                    <div class="section-title">基本资讯与联络方式</div>
-                    <div class="section-subtitle">Basic Information & Contact</div>
+                    <div class="section-title">基本资讯</div>
+                    <div class="section-subtitle">Basic Information</div>
                 </div>
             </div>
             <div class="section-body">
@@ -587,8 +591,15 @@ $pageTitle = $customerName ? "设计对接资料问卷 - {$customerName}" : '设
                            value="<?= htmlspecialchars($questionnaire['client_name'] ?? $customerName ?? '') ?>"
                            <?= $readonly ? 'readonly' : '' ?>>
                 </div>
+                <?php if (!empty($customerGroup)): ?>
                 <div class="form-group">
-                    <label class="form-label">常用联系方式 <span class="required">*</span></label>
+                    <label class="form-label">客户群名称</label>
+                    <input type="text" class="form-control" value="<?= htmlspecialchars($customerGroup) ?>" readonly style="background:#f8f9fa;">
+                </div>
+                <?php endif; ?>
+                <?php if ($isInternal): ?>
+                <div class="form-group">
+                    <label class="form-label">常用联系方式</label>
                     <div class="checkbox-group">
                         <?php
                         $contactMethods = $questionnaire['contact_method'] ?? [];
@@ -647,6 +658,7 @@ $pageTitle = $customerName ? "设计对接资料问卷 - {$customerName}" : '设
                         <?php endforeach; ?>
                     </div>
                 </div>
+                <?php endif; ?>
             </div>
         </div>
 

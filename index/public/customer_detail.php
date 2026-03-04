@@ -999,10 +999,7 @@ window.loadDesignQuestionnaire = function() {
 
                 html += section('一、基本资讯', [
                     ['客户姓名', d.client_name],
-                    ['联系方式', d.contact_method, contactMap],
-                    ['联系电话/ID', d.contact_phone],
-                    ['方便联系时间', d.contact_time],
-                    ['沟通方式', d.communication_style, commMap]
+                    ['客户群名称', d.customer_group || null]
                 ]);
 
                 html += section('二、设计服务内容', [

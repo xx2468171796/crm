@@ -358,6 +358,7 @@ function layout_header(string $title = 'ANKOTTI 客户跟进系统', bool $showN
                 <?php if (canOrAdmin(PermissionCode::PROJECT_VIEW)): ?>
                 <li class="nav-item"><a class="nav-link" href="index.php?page=project_kanban">项目</a></li>
                 <?php endif; ?>
+                <li class="nav-item"><a class="nav-link" href="index.php?page=design_questionnaire_board">🎨 设计问卷</a></li>
                 <li class="nav-item dropdown">
                     <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">收入</a>
                     <ul class="dropdown-menu">

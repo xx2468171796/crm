@@ -169,6 +169,9 @@ $routes = [
     'project_kanban'  => __DIR__ . '/project_kanban.php',
     'project_detail'  => __DIR__ . '/project_detail.php',
     
+    // 设计问卷看板
+    'design_questionnaire_board' => __DIR__ . '/design_questionnaire_board.php',
+    
     // 技术提成
     'tech_my_projects'       => __DIR__ . '/tech_my_projects.php',
     'tech_commission_manage' => __DIR__ . '/tech_commission_manage.php',
