@@ -104,6 +104,7 @@ $pageTitle = $customerName ? "设计对接资料问卷 - {$customerName}" : '设
     <title><?= htmlspecialchars($pageTitle) ?></title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css" rel="stylesheet">
+    <script src="/js/opencc-lite.js"></script>
     <style>
         :root {
             --primary: #6366f1;
@@ -129,17 +130,101 @@ $pageTitle = $customerName ? "设计对接资料问卷 - {$customerName}" : '设
 
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: #f5f7fa;
             min-height: 100vh;
             color: var(--gray-700);
             padding: 0;
             margin: 0;
         }
 
+        .bg-decoration {
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            pointer-events: none;
+            z-index: 0;
+            overflow: hidden;
+        }
+
+        .bg-decoration::before {
+            content: '';
+            position: absolute;
+            top: -30%; right: -20%;
+            width: 80%; height: 80%;
+            background: radial-gradient(ellipse at center, rgba(99,102,241,0.18) 0%, rgba(139,92,246,0.10) 30%, rgba(139,92,246,0.03) 50%, transparent 70%);
+            filter: blur(60px);
+        }
+
+        .bg-decoration::after {
+            content: '';
+            position: absolute;
+            bottom: -30%; left: -20%;
+            width: 70%; height: 70%;
+            background: radial-gradient(ellipse at center, rgba(168,85,247,0.14) 0%, rgba(236,72,153,0.08) 30%, rgba(236,72,153,0.02) 50%, transparent 70%);
+            filter: blur(80px);
+        }
+
+        .bg-decoration-extra {
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        .bg-decoration-extra::before {
+            content: '';
+            position: fixed;
+            bottom: -20%; right: -10%;
+            width: 50%; height: 50%;
+            background: radial-gradient(ellipse at center, rgba(251,191,36,0.10) 0%, rgba(251,146,60,0.05) 40%, transparent 70%);
+            filter: blur(70px);
+        }
+
+        .bg-decoration-extra::after {
+            content: '';
+            position: fixed;
+            top: 20%; left: 30%;
+            width: 40%; height: 40%;
+            background: radial-gradient(ellipse at center, rgba(14,165,233,0.06) 0%, transparent 60%);
+            filter: blur(100px);
+        }
+
+        .page-header, .main-content, .footer-bar {
+            position: relative;
+            z-index: 1;
+        }
+
+        .lang-toggle {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 14px;
+            border: 1.5px solid var(--gray-200);
+            border-radius: 20px;
+            font-size: 13px;
+            font-weight: 500;
+            cursor: pointer;
+            background: white;
+            color: var(--gray-700);
+            transition: all 0.2s;
+            user-select: none;
+        }
+
+        .lang-toggle:hover {
+            border-color: var(--primary);
+            color: var(--primary);
+        }
+
+        .lang-toggle.active {
+            border-color: var(--primary);
+            background: var(--primary-bg);
+            color: var(--primary);
+        }
+
         .page-header {
-            background: rgba(255,255,255,0.95);
+            background: rgba(255,255,255,0.85);
             backdrop-filter: blur(20px);
-            border-bottom: 1px solid var(--gray-200);
+            -webkit-backdrop-filter: blur(20px);
+            border-bottom: 1px solid rgba(255,255,255,0.3);
             padding: 16px 0;
             position: sticky;
             top: 0;
@@ -208,7 +293,10 @@ $pageTitle = $customerName ? "设计对接资料问卷 - {$customerName}" : '设
         }
 
         .section-card {
-            background: rgba(255,255,255,0.97);
+            background: rgba(255,255,255,0.85);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            border: 1px solid rgba(255,255,255,0.3);
             border-radius: var(--radius);
             box-shadow: var(--shadow);
             margin-bottom: 24px;
@@ -459,9 +547,10 @@ $pageTitle = $customerName ? "设计对接资料问卷 - {$customerName}" : '设
             bottom: 0;
             left: 0;
             right: 0;
-            background: rgba(255,255,255,0.95);
+            background: rgba(255,255,255,0.85);
             backdrop-filter: blur(20px);
-            border-top: 1px solid var(--gray-200);
+            -webkit-backdrop-filter: blur(20px);
+            border-top: 1px solid rgba(255,255,255,0.3);
             padding: 14px 0;
             z-index: 100;
         }
@@ -542,6 +631,10 @@ $pageTitle = $customerName ? "设计对接资料问卷 - {$customerName}" : '设
 </head>
 <body>
 
+<!-- 背景装饰 -->
+<div class="bg-decoration"></div>
+<div class="bg-decoration-extra"></div>
+
 <!-- Header -->
 <div class="page-header">
     <div class="container">
@@ -555,6 +648,10 @@ $pageTitle = $customerName ? "设计对接资料问卷 - {$customerName}" : '设
             </div>
         </div>
         <div class="header-actions">
+            <button class="lang-toggle" id="langToggle" onclick="toggleLang()" title="简体/繁体切换">
+                <i class="bi bi-translate"></i>
+                <span id="langLabel">繁</span>
+            </button>
             <div class="save-status" id="saveStatus">
                 <i class="bi bi-cloud-check"></i>
                 <span>就绪</span>
@@ -1347,6 +1444,65 @@ document.querySelectorAll('input, textarea, select').forEach(el => {
 
 // 初始化进度
 updateProgress();
+
+// ==================== 简繁转换 ====================
+let isTraditional = false;
+
+function toggleLang() {
+    const cc = window.OpenCCLite;
+    if (!cc) {
+        showToast('简繁转换模块未加载', 'error');
+        return;
+    }
+
+    isTraditional = !isTraditional;
+    const btn = document.getElementById('langToggle');
+    const label = document.getElementById('langLabel');
+
+    if (isTraditional) {
+        // 简体 → 繁体
+        cc.convertElement(document.body);
+        btn.classList.add('active');
+        label.textContent = '简';
+        btn.title = '切換為簡體';
+    } else {
+        // 繁体 → 简体：重新加载页面恢复原始简体文本
+        // OpenCCLite 的 convertElement 会修改 DOM 文本节点
+        // 反向转换可能不完美，所以用 toSimplified 处理
+        convertToSimplified(document.body);
+        btn.classList.remove('active');
+        label.textContent = '繁';
+        btn.title = '简体/繁体切换';
+    }
+}
+
+function convertToSimplified(element) {
+    const cc = window.OpenCCLite;
+    if (!cc) return;
+    const excludeTags = ['INPUT', 'TEXTAREA', 'SCRIPT', 'STYLE', 'SELECT'];
+    const walker = document.createTreeWalker(
+        element,
+        NodeFilter.SHOW_TEXT,
+        {
+            acceptNode: function(node) {
+                const parent = node.parentElement;
+                if (parent && excludeTags.includes(parent.tagName)) {
+                    return NodeFilter.FILTER_REJECT;
+                }
+                return NodeFilter.FILTER_ACCEPT;
+            }
+        }
+    );
+    const textNodes = [];
+    while (walker.nextNode()) {
+        textNodes.push(walker.currentNode);
+    }
+    textNodes.forEach(function(node) {
+        if (node.textContent.trim()) {
+            node.textContent = cc.toSimplified(node.textContent);
+        }
+    });
+}
 </script>
 
 <style>
