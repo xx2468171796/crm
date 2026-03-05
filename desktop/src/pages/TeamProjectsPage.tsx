@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { FolderKanban, RefreshCw, AlertTriangle, Clock, CheckCircle } from 'lucide-react';
 import { useAuthStore } from '@/stores/auth';
 import { useSettingsStore } from '@/stores/settings';
+import { isManager } from '@/lib/utils';
 
 interface Project {
   id: number;
@@ -84,7 +85,6 @@ export default function TeamProjectsPage() {
     return `剩余 ${project.remaining_days} 天`;
   };
 
-  const { toast } = useToast();
   const isManagerRole = isManager(user?.role);
   
   if (!isManagerRole) {

@@ -90,6 +90,9 @@ $apiBase = $isExternal
 $getApiBase = $isExternal
     ? '/api/design_questionnaire.php?action=external_get&token=' . urlencode($token)
     : '/api/design_questionnaire.php?action=get&customer_id=' . $customerId;
+$uploadApiBase = $isExternal
+    ? '/api/design_questionnaire.php?action=external_upload_file&token=' . urlencode($token)
+    : '/api/design_questionnaire.php?action=upload_file';
 
 $pageTitle = $customerName ? "设计对接资料问卷 - {$customerName}" : '设计对接资料问卷';
 ?>
@@ -1040,6 +1043,18 @@ $pageTitle = $customerName ? "设计对接资料问卷 - {$customerName}" : '设
                         </label>
                     </div>
                 </div>
+                <div class="form-group mt-3">
+                    <label class="form-label">上传原始资料文件</label>
+                    <?php if (!$readonly): ?>
+                    <div class="file-upload-area" onclick="document.getElementById('originalFileInput').click()">
+                        <i class="bi bi-cloud-arrow-up d-block"></i>
+                        <p>点击上传平面图、现场照片、尺寸图等文件</p>
+                        <p class="text-muted" style="font-size:12px;">支持所有常见文件格式，单个最大 50MB</p>
+                    </div>
+                    <input type="file" id="originalFileInput" multiple style="display:none" onchange="handleFileUpload(this.files)">
+                    <?php endif; ?>
+                    <div id="uploadedFilesList" class="mt-2"></div>
+                </div>
             </div>
         </div>
 
@@ -1094,6 +1109,7 @@ const IS_READONLY = <?= $readonly ? 'true' : 'false' ?>;
 const CUSTOMER_ID = <?= $customerId ?>;
 const TOKEN = '<?= htmlspecialchars($token ?? '') ?>';
 const API_SAVE = '<?= $apiBase ?>';
+const API_UPLOAD = '<?= $uploadApiBase ?>';
 
 // 显示/隐藏效果图类型
 document.querySelectorAll('input[name="service_items[]"]').forEach(cb => {
@@ -1191,10 +1207,12 @@ async function handleImageUpload(files) {
     for (const file of files) {
         const formData = new FormData();
         formData.append('image', file);
-        formData.append('action', 'upload_image');
+        if (!IS_EXTERNAL) {
+            formData.append('customer_id', CUSTOMER_ID);
+        }
 
         try {
-            const resp = await fetch('/api/customer_requirements.php?action=upload_image', {
+            const resp = await fetch(API_UPLOAD, {
                 method: 'POST',
                 body: formData
             });
@@ -1209,12 +1227,70 @@ async function handleImageUpload(files) {
                 document.getElementById('referenceImages').appendChild(img);
                 showToast('图片上传成功', 'success');
             } else {
-                showToast('上传失败: ' + result.error, 'error');
+                showToast('上传失败: ' + (result.message || result.error), 'error');
             }
         } catch (e) {
             showToast('上传失败', 'error');
         }
     }
+}
+
+// 通用文件上传（原始资料）
+async function handleFileUpload(files) {
+    const listEl = document.getElementById('uploadedFilesList');
+    for (const file of files) {
+        // 显示上传中状态
+        const itemId = 'upload-' + Date.now() + '-' + Math.random().toString(36).substr(2, 5);
+        const itemEl = document.createElement('div');
+        itemEl.id = itemId;
+        itemEl.className = 'uploaded-file-item';
+        itemEl.style.cssText = 'display:flex;align-items:center;gap:8px;padding:8px 12px;background:#f8f9fa;border-radius:8px;margin-bottom:6px;font-size:14px;';
+        itemEl.innerHTML = '<i class="bi bi-arrow-repeat spin" style="color:var(--primary)"></i> <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + file.name + '</span><span class="text-muted" style="font-size:12px;">' + formatFileSize(file.size) + '</span>';
+        listEl.appendChild(itemEl);
+
+        const formData = new FormData();
+        formData.append('file', file);
+        if (!IS_EXTERNAL) {
+            formData.append('customer_id', CUSTOMER_ID);
+        }
+
+        try {
+            const resp = await fetch(API_UPLOAD, {
+                method: 'POST',
+                body: formData
+            });
+            const result = await resp.json();
+            if (result.success) {
+                const el = document.getElementById(itemId);
+                if (el) {
+                    const isImage = result.data.mime_type && result.data.mime_type.startsWith('image/');
+                    const icon = isImage ? 'bi-image' : 'bi-file-earmark-check';
+                    el.innerHTML = '<i class="bi ' + icon + '" style="color:var(--success)"></i> <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + result.data.filename + '</span><span class="text-muted" style="font-size:12px;">' + formatFileSize(result.data.size) + '</span><i class="bi bi-check-circle-fill" style="color:var(--success)"></i>';
+                }
+                showToast('文件上传成功: ' + file.name, 'success');
+            } else {
+                const el = document.getElementById(itemId);
+                if (el) {
+                    el.innerHTML = '<i class="bi bi-exclamation-circle" style="color:var(--danger)"></i> <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + file.name + '</span><span class="text-muted" style="font-size:12px;color:var(--danger)">上传失败</span>';
+                }
+                showToast('上传失败: ' + (result.message || result.error), 'error');
+            }
+        } catch (e) {
+            const el = document.getElementById(itemId);
+            if (el) {
+                el.innerHTML = '<i class="bi bi-exclamation-circle" style="color:var(--danger)"></i> <span style="flex:1;">' + file.name + '</span><span style="color:var(--danger);font-size:12px;">上传失败</span>';
+            }
+            showToast('上传失败: ' + file.name, 'error');
+        }
+    }
+    // 清空 input 以便重复选择同一文件
+    document.getElementById('originalFileInput').value = '';
+}
+
+function formatFileSize(bytes) {
+    if (bytes < 1024) return bytes + ' B';
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+    return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
 }
 
 // 保存问卷

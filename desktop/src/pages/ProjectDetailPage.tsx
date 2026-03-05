@@ -2348,7 +2348,7 @@ export default function ProjectDetailPage() {
               onClose={() => setShowUserSelector(false)}
               mode="multiple"
               value={selectedTechIds}
-              onChange={async (ids, items) => {
+              onChange={async (ids, _items) => {
                 setShowUserSelector(false);
                 // 调用 API 保存分配
                 try {

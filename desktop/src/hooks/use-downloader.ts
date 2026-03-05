@@ -25,6 +25,7 @@ export function useDownloader() {
   const { addDownloadTask, updateDownloadTask } = useSyncStore();
   const activeDownloads = useRef<Set<string>>(new Set());
   const abortControllers = useRef<Map<string, AbortController>>(new Map());
+  const startDownloadWithUrlRef = useRef<(taskId: string, presignedUrl: string) => Promise<void>>();
 
   const getDownloadUrl = useCallback(async (resourceId: number): Promise<DownloadUrlResponse> => {
     const response = await http.post<DownloadUrlResponse>('desktop_download_url.php', {
@@ -200,7 +201,7 @@ export function useDownloader() {
       const currentMaxConcurrent = useSettingsStore.getState().maxConcurrentUploads;
       const runningCount = currentTasks.filter(t => t.status === 'downloading').length;
       if (runningCount < currentMaxConcurrent) {
-        startDownloadWithUrl(task.id, presigned_url);
+        startDownloadWithUrlRef.current?.(task.id, presigned_url);
       }
 
       return task.id;
@@ -213,9 +214,9 @@ export function useDownloader() {
       });
       throw error;
     }
-  }, [addDownloadTask, getDownloadUrl, startDownloadWithUrl]);
+  }, [addDownloadTask, getDownloadUrl]);
 
-  const startDownloadWithUrl = useCallback(async (taskId: string, presignedUrl: string) => {
+  const startDownloadWithUrl = useCallback(async (taskId: string, presignedUrl: string): Promise<void> => {
     const currentTasks = useSyncStore.getState().downloadTasks;
     const task = currentTasks.find(t => t.id === taskId);
     if (!task || activeDownloads.current.has(taskId)) return;
@@ -294,6 +295,9 @@ export function useDownloader() {
       abortControllers.current.delete(taskId);
     }
   }, [updateDownloadTask]);
+
+  // Keep ref in sync for circular dependency
+  startDownloadWithUrlRef.current = startDownloadWithUrl;
 
   const processQueue = useCallback(() => {
     const currentTasks = useSyncStore.getState().downloadTasks;

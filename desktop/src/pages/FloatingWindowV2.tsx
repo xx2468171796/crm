@@ -417,7 +417,7 @@ export default function FloatingWindowV2() {
     
     // 监听窗口可见性变化
     const win = getCurrentWindow();
-    const unlisten = win.onVisibilityChanged((visible) => {
+    const unlisten = (win as any).onVisibilityChanged((visible: boolean) => {
       if (visible) {
         startPolling();
       } else {
@@ -430,7 +430,7 @@ export default function FloatingWindowV2() {
     
     return () => {
       if (countdownInterval) clearInterval(countdownInterval);
-      unlisten.then(fn => fn());
+      unlisten.then((fn: () => void) => fn());
     };
   }, [serverUrl, token]);
   
@@ -1842,11 +1842,11 @@ export default function FloatingWindowV2() {
                           if (messageSelectMode) return;
                           // 表单消息：先打开主窗口，再打开表单详情
                           if (msg.type === 'form' && msg.data?.form_id) {
-                            openMainWindowAndNavigate(() => requestOpenFormDetail(0, msg.data.form_id));
+                            openMainWindowAndNavigate(() => requestOpenFormDetail(0, msg.data!.form_id!));
                           }
                           // 任务消息：打开任务详情
-                          else if (msg.type === 'task' && msg.data?.task_id) {
-                            openMainWindowAndNavigate(() => requestOpenTaskDetail(msg.data.task_id));
+                          else if (msg.type === 'task' && (msg.data as any)?.task_id) {
+                            openMainWindowAndNavigate(() => requestOpenTaskDetail((msg.data as any).task_id));
                           }
                           // 项目消息：打开项目详情
                           else if (msg.type === 'project' && msg.data?.project_code) {

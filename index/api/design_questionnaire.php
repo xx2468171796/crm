@@ -16,13 +16,14 @@ require_once __DIR__ . '/../core/api_init.php';
 
 require_once __DIR__ . '/../core/db.php';
 require_once __DIR__ . '/../core/auth.php';
+require_once __DIR__ . '/../core/storage/storage_provider.php';
 
 header('Content-Type: application/json; charset=utf-8');
 
 $action = $_GET['action'] ?? $_POST['action'] ?? 'get';
 
 // 外部访问的action不需要登录
-$externalActions = ['external_get', 'external_save'];
+$externalActions = ['external_get', 'external_save', 'external_upload_file'];
 
 if (in_array($action, $externalActions)) {
     handleExternalAction($action);
@@ -50,6 +51,9 @@ try {
             break;
         case 'get_token':
             handleGetToken($user);
+            break;
+        case 'upload_file':
+            handleUploadFile($user);
             break;
         default:
             http_response_code(400);
@@ -266,6 +270,9 @@ function handleExternalAction($action) {
                 'success' => true,
                 'data' => formatQuestionnaireData($questionnaire)
             ], JSON_UNESCAPED_UNICODE);
+        } elseif ($action === 'external_upload_file') {
+            handleUploadFileWithCustomer($questionnaire['customer_id'], null);
+            return;
         } elseif ($action === 'external_save') {
             $input = json_decode(file_get_contents('php://input'), true);
             if (!$input) {
@@ -304,6 +311,134 @@ function handleExternalAction($action) {
         error_log('[API] design_questionnaire external error: ' . $e->getMessage());
         http_response_code(500);
         echo json_encode(['success' => false, 'message' => '服务器错误'], JSON_UNESCAPED_UNICODE);
+    }
+}
+
+// ==================== 文件上传 ====================
+
+function handleUploadFile($user) {
+    $customerId = (int)($_POST['customer_id'] ?? $_GET['customer_id'] ?? 0);
+    if (!$customerId) {
+        http_response_code(400);
+        echo json_encode(['success' => false, 'message' => '缺少客户ID'], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+
+    // 验证客户存在
+    $customer = Db::queryOne('SELECT id, name, customer_code FROM customers WHERE id = ? AND deleted_at IS NULL', [$customerId]);
+    if (!$customer) {
+        http_response_code(404);
+        echo json_encode(['success' => false, 'message' => '客户不存在'], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+
+    handleUploadFileWithCustomer($customerId, $user);
+}
+
+function handleUploadFileWithCustomer($customerId, $user) {
+    $fileKey = isset($_FILES['file']) ? 'file' : (isset($_FILES['image']) ? 'image' : null);
+    if (!$fileKey) {
+        http_response_code(400);
+        echo json_encode(['success' => false, 'message' => '没有上传文件'], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+
+    $file = $_FILES[$fileKey];
+
+    if ($file['error'] !== UPLOAD_ERR_OK) {
+        http_response_code(400);
+        echo json_encode(['success' => false, 'message' => '文件上传失败: 错误码 ' . $file['error']], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+
+    // 验证文件大小（最大50MB）
+    if ($file['size'] > 50 * 1024 * 1024) {
+        http_response_code(400);
+        echo json_encode(['success' => false, 'message' => '文件大小超过限制（最大50MB）'], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+
+    try {
+        $originalName = $file['name'];
+        $ext = strtolower(pathinfo($originalName, PATHINFO_EXTENSION));
+        $mimeType = mime_content_type($file['tmp_name']) ?: $file['type'] ?: 'application/octet-stream';
+
+        // 文件名加前缀 "收集表单-"
+        $prefixedName = '收集表单-' . $originalName;
+
+        // 生成S3存储路径
+        $uuid = bin2hex(random_bytes(8));
+        $storageKey = 'customer/' . $customerId . '/questionnaire/' . $uuid . '_' . $originalName;
+
+        // 上传到S3
+        $storage = storage_provider();
+        $result = $storage->putObject($storageKey, $file['tmp_name'], [
+            'mime_type' => $mimeType,
+        ]);
+
+        // 写入customer_files表
+        $uploadedBy = $user ? $user['id'] : 0;
+        $now = time();
+        $md5 = md5_file($file['tmp_name']) ?: null;
+        $folderPath = '收集表单';
+
+        // 判断是否支持预览
+        $previewMimes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/bmp', 'application/pdf'];
+        $previewSupported = in_array($mimeType, $previewMimes) ? 1 : 0;
+
+        Db::execute(
+            'INSERT INTO customer_files
+             (customer_id, category, folder_path, filename, storage_disk, storage_key, filesize, mime_type, file_ext,
+              checksum_md5, preview_supported, uploaded_by, uploaded_at, notes)
+             VALUES
+             (:customer_id, :category, :folder_path, :filename, :storage_disk, :storage_key, :filesize, :mime_type, :file_ext,
+              :checksum_md5, :preview_supported, :uploaded_by, :uploaded_at, :notes)',
+            [
+                'customer_id' => $customerId,
+                'category' => 'client_material',
+                'folder_path' => $folderPath,
+                'filename' => $prefixedName,
+                'storage_disk' => $result['disk'] ?? 's3',
+                'storage_key' => $result['storage_key'] ?? $storageKey,
+                'filesize' => $result['bytes'] ?? $file['size'],
+                'mime_type' => $mimeType,
+                'file_ext' => $ext,
+                'checksum_md5' => $md5,
+                'preview_supported' => $previewSupported,
+                'uploaded_by' => $uploadedBy,
+                'uploaded_at' => $now,
+                'notes' => '设计问卷上传',
+            ]
+        );
+
+        $fileId = (int)Db::lastInsertId();
+
+        // 生成访问URL（用于图片预览）
+        $url = '';
+        if (strpos($mimeType, 'image/') === 0) {
+            $url = $storage->getTemporaryUrl($storageKey, 86400 * 365);
+            if (!$url) {
+                $url = '/api/customer_file_stream.php?key=' . urlencode($storageKey);
+            }
+        }
+
+        echo json_encode([
+            'success' => true,
+            'data' => [
+                'file_id' => $fileId,
+                'url' => $url,
+                'filename' => $prefixedName,
+                'original_name' => $originalName,
+                'storage_key' => $storageKey,
+                'size' => $result['bytes'] ?? $file['size'],
+                'mime_type' => $mimeType,
+            ]
+        ], JSON_UNESCAPED_UNICODE);
+
+    } catch (Exception $e) {
+        error_log('[API] design_questionnaire upload_file error: ' . $e->getMessage());
+        http_response_code(500);
+        echo json_encode(['success' => false, 'message' => '文件上传失败: ' . $e->getMessage()], JSON_UNESCAPED_UNICODE);
     }
 }
 

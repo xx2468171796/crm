@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { FileText, Search, Eye, Edit2, Calendar, User, Maximize2 } from 'lucide-react';
+import { FileText, Search, Eye, Edit2, Calendar, User } from 'lucide-react';
 import { useAuthStore } from '@/stores/auth';
 import { useSettingsStore } from '@/stores/settings';
 import ReactMarkdown from 'react-markdown';

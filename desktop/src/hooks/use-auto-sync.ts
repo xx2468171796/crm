@@ -25,9 +25,9 @@ interface LocalFile {
 }
 
 export function useAutoSync() {
-  const { serverUrl, rootDir, autoSync, syncInterval } = useSettingsStore();
-  const { config } = useSyncStore();
-  const { token } = useAuthStore();
+  const { serverUrl: _serverUrl, rootDir, autoSync, syncInterval } = useSettingsStore();
+  const { config: _config } = useSyncStore();
+  const { token: _token } = useAuthStore();
   const { toast } = useToast();
   
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
