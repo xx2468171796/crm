@@ -10,6 +10,10 @@
 require_once __DIR__ . '/../core/db.php';
 require_once __DIR__ . '/../core/auth.php';
 
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
+
 $token = trim($_GET['token'] ?? '');
 $customerId = (int)($_GET['customer_id'] ?? 0);
 $readonly = isset($_GET['readonly']) && $_GET['readonly'] === '1';
@@ -37,6 +41,10 @@ if ($isExternal) {
     $customerId = (int)$questionnaire['customer_id'];
     $customerName = $questionnaire['customer_alias'] ?: $questionnaire['customer_name'];
     $customerGroup = $questionnaire['customer_group'] ?? '';
+
+    // 设置 session 标志，让 customer_file_stream.php 的 resolveShareActor 能识别
+    $_SESSION['share_verified_' . $customerId] = true;
+    $_SESSION['share_readonly_' . $customerId] = true;
 } else {
     // 内部访问需要登录
     $user = current_user();

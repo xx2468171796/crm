@@ -378,15 +378,12 @@ function handleUploadFileWithCustomer($customerId, $user) {
         }
 
         // 生成访问URL（用于图片预览）
+        // 使用 file stream proxy 而非 S3 presigned URL，避免中文路径导致 502
         $url = '';
         if (!empty($created)) {
             $first = $created[0];
-            if (isset($first['mime_type']) && strpos($first['mime_type'], 'image/') === 0 && !empty($first['storage_key'])) {
-                $storage = storage_provider();
-                $url = $storage->getTemporaryUrl($first['storage_key'], 86400 * 365);
-                if (!$url) {
-                    $url = '/api/customer_file_stream.php?key=' . urlencode($first['storage_key']);
-                }
+            if (isset($first['mime_type']) && strpos($first['mime_type'], 'image/') === 0 && !empty($first['id'])) {
+                $url = '/api/customer_file_stream.php?id=' . (int)$first['id'] . '&mode=preview';
             }
         }
 
