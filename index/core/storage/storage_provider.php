@@ -322,8 +322,8 @@ class S3StorageProvider extends AbstractStorageProvider
     private function sendRequest(string $method, string $storageKey, array $options = []): array
     {
         $objectKey = $this->applyPrefix($storageKey);
-        // PUT请求（上传）使用内网端点，GET/DELETE使用外网端点
-        $useInternal = ($method === 'PUT') && !empty($this->config['internal_endpoint']);
+        // PUT/GET请求都使用内网端点（如果可用），仅presignedUrl使用外网
+        $useInternal = !empty($this->config['internal_endpoint']);
         [$baseUrl, $hostHeader, $canonicalUri] = $this->buildRequestParts($objectKey, $useInternal);
         $query = $options['query'] ?? [];
         $canonicalQuery = $this->canonicalQueryString($query);
