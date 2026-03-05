@@ -1304,30 +1304,43 @@ function collectFormData() {
 
 let referenceImages = <?= json_encode($questionnaire['reference_images'] ?? []) ?>;
 
+// ==================== 工具 ====================
+function escAttr(s) {
+    return String(s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/'/g,'&#39;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+function escHtml(s) {
+    const d = document.createElement('div'); d.textContent = s||''; return d.innerHTML;
+}
+
 // ==================== 文件渲染 ====================
 function renderFileItem(file) {
     const el = document.createElement('div');
     el.className = 'q-file-item';
+    const fn = escAttr(file.filename);
+    const meta = escHtml(formatFileSize(file.filesize) + (file.uploaded_at ? ' · ' + file.uploaded_at : ''));
     if (file.is_image && file.preview_url) {
+        const pu = escAttr(file.preview_url);
+        const du = escAttr(file.download_url);
         el.innerHTML = `
-            <div class="q-file-thumb" onclick="openLightbox('${file.preview_url}')">
-                <img src="${file.preview_url}" alt="${file.filename}" onerror="this.parentElement.innerHTML='<i class=\'bi bi-image\' style=\'font-size:24px;color:#ccc\'></i>'">
+            <div class="q-file-thumb" onclick="openLightbox('${pu}')">
+                <img src="${pu}" alt="${fn}" onerror="this.parentElement.innerHTML='<i class=\'bi bi-image\' style=\'font-size:24px;color:#ccc\'></i>'">
                 <div class="q-file-zoom"><i class="bi bi-zoom-in"></i></div>
             </div>
             <div class="q-file-info">
-                <span class="q-file-name" title="${file.filename}">${file.filename}</span>
-                <span class="q-file-meta">${formatFileSize(file.filesize)}${file.uploaded_at ? ' · ' + file.uploaded_at : ''}</span>
+                <span class="q-file-name" title="${fn}">${escHtml(file.filename)}</span>
+                <span class="q-file-meta">${meta}</span>
             </div>
-            <a href="${file.download_url}" class="q-file-action" title="下载" download><i class="bi bi-download"></i></a>`;
+            <a href="${du}" class="q-file-action" title="下载" download><i class="bi bi-download"></i></a>`;
     } else {
         const icon = getFileIcon(file.file_ext);
+        const du = escAttr(file.download_url);
         el.innerHTML = `
             <div class="q-file-icon"><i class="bi ${icon}"></i></div>
             <div class="q-file-info">
-                <span class="q-file-name" title="${file.filename}">${file.filename}</span>
-                <span class="q-file-meta">${formatFileSize(file.filesize)}${file.uploaded_at ? ' · ' + file.uploaded_at : ''}</span>
+                <span class="q-file-name" title="${fn}">${escHtml(file.filename)}</span>
+                <span class="q-file-meta">${meta}</span>
             </div>
-            <a href="${file.download_url}" class="q-file-action" title="下载" download><i class="bi bi-download"></i></a>`;
+            <a href="${du}" class="q-file-action" title="下载" download><i class="bi bi-download"></i></a>`;
     }
     return el;
 }
@@ -1409,7 +1422,6 @@ async function handleImageUpload(files) {
             const result = await resp.json();
             if (result.success) {
                 const d = result.data;
-                referenceImages.push(d.url);
                 const fileObj = {
                     id: d.file_id, filename: d.filename, filesize: d.size,
                     mime_type: d.mime_type, file_ext: (d.filename || '').split('.').pop(),

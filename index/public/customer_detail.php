@@ -990,7 +990,7 @@ window.loadDesignQuestionnaire = function() {
                             } else if (typeof item[2] === 'object' && item[2][val]) {
                                 val = item[2][val];
                             }
-                            s += '<div><span style="color:#666; min-width:120px; display:inline-block;">' + item[0] + '：</span><span>' + val + '</span></div>';
+                            s += '<div><span style="color:#666; min-width:120px; display:inline-block;">' + escapeHtml(item[0]) + '：</span><span>' + escapeHtml(String(val)) + '</span></div>';
                         }
                     });
                     s += '</div></div>';
@@ -999,7 +999,11 @@ window.loadDesignQuestionnaire = function() {
 
                 html += section('一、基本资讯', [
                     ['客户姓名', d.client_name],
-                    ['客户群名称', d.customer_group || null]
+                    ['客户群名称', d.customer_group || null],
+                    ['联系方式', d.contact_method, contactMap],
+                    ['联系电话', d.contact_phone],
+                    ['联系时间', d.contact_time],
+                    ['沟通偏好', d.communication_style, commMap]
                 ]);
 
                 html += section('二、设计服务内容', [
@@ -1044,14 +1048,9 @@ window.loadDesignQuestionnaire = function() {
                     html += section('八、其他备注', [['备注', d.extra_notes]]);
                 }
 
-                // 参考图片
-                if (d.reference_images && d.reference_images.length > 0) {
-                    html += '<div style="margin-bottom:16px;"><strong>参考图片：</strong><div style="display:flex; flex-wrap:wrap; gap:8px; margin-top:8px;">';
-                    d.reference_images.forEach(function(img) {
-                        html += '<img src="' + img + '" style="width:80px; height:80px; object-fit:cover; border-radius:6px; border:1px solid #ddd; cursor:pointer;" onclick="window.open(this.src)">';
-                    });
-                    html += '</div></div>';
-                }
+                // 已上传文件（从API获取）
+                loadQuestionnaireFiles(customerId);
+
 
                 html += '</div>';
                 previewDiv.innerHTML = html;
@@ -1117,6 +1116,51 @@ function escapeHtml(text) {
     const div = document.createElement('div');
     div.textContent = text;
     return div.innerHTML;
+}
+
+// 加载问卷已上传文件（图片预览+文件下载）
+function loadQuestionnaireFiles(customerId) {
+    $.ajax({
+        url: '/api/design_questionnaire.php?action=list_files&customer_id=' + customerId,
+        type: 'GET',
+        dataType: 'json',
+        success: function(resp) {
+            if (!resp.success || !resp.data || resp.data.length === 0) return;
+            var previewDiv = document.getElementById('questionnaire-preview');
+            if (!previewDiv) return;
+
+            var images = resp.data.filter(function(f) { return f.is_image; });
+            var files = resp.data.filter(function(f) { return !f.is_image; });
+
+            var html = '<div style="margin-bottom:16px; padding:12px 16px; background:#f8f9fa; border-radius:8px; border-left:4px solid #6366f1;">';
+            html += '<strong style="color:#6366f1;">已上传文件</strong><div style="margin-top:8px;">';
+
+            if (images.length > 0) {
+                html += '<div style="margin-bottom:8px;"><span style="color:#666;">参考图片：</span></div>';
+                html += '<div style="display:flex; flex-wrap:wrap; gap:8px; margin-bottom:12px;">';
+                images.forEach(function(img) {
+                    html += '<img src="' + escapeHtml(img.preview_url) + '" style="width:80px; height:80px; object-fit:cover; border-radius:6px; border:1px solid #ddd; cursor:pointer;" onclick="window.open(this.src)" onerror="this.style.display=\'none\'" title="' + escapeHtml(img.filename) + '">';
+                });
+                html += '</div>';
+            }
+
+            if (files.length > 0) {
+                html += '<div style="margin-bottom:4px;"><span style="color:#666;">资料文件：</span></div>';
+                files.forEach(function(f) {
+                    var sizeStr = f.filesize < 1024*1024 ? (f.filesize/1024).toFixed(1)+' KB' : (f.filesize/(1024*1024)).toFixed(1)+' MB';
+                    html += '<div style="display:flex; align-items:center; gap:6px; padding:4px 0;">';
+                    html += '<i class="bi bi-file-earmark" style="color:#6366f1;"></i>';
+                    html += '<a href="' + escapeHtml(f.download_url) + '" download style="flex:1; color:#333; text-decoration:none; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">' + escapeHtml(f.filename) + '</a>';
+                    html += '<span style="color:#999; font-size:12px;">' + sizeStr + '</span>';
+                    html += '<a href="' + escapeHtml(f.download_url) + '" download title="下载" style="color:#6366f1;"><i class="bi bi-download"></i></a>';
+                    html += '</div>';
+                });
+            }
+
+            html += '</div></div>';
+            previewDiv.insertAdjacentHTML('beforeend', html);
+        }
+    });
 }
 
 // 异议处理历史区域交互
