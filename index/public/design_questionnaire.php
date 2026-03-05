@@ -1404,22 +1404,80 @@ async function loadExistingFiles() {
 // 页面加载时获取已上传文件
 loadExistingFiles();
 
+// ==================== 通用 XHR 上传（带进度条） ====================
+function xhrUpload(formData, onProgress) {
+    return new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open('POST', API_UPLOAD, true);
+        xhr.upload.addEventListener('progress', (e) => {
+            if (e.lengthComputable && onProgress) {
+                onProgress(Math.round(e.loaded / e.total * 100), e.loaded, e.total);
+            }
+        });
+        xhr.addEventListener('load', () => {
+            try {
+                resolve(JSON.parse(xhr.responseText));
+            } catch (e) {
+                reject(new Error('解析响应失败'));
+            }
+        });
+        xhr.addEventListener('error', () => reject(new Error('网络错误')));
+        xhr.addEventListener('abort', () => reject(new Error('上传已取消')));
+        xhr.send(formData);
+    });
+}
+
+function createProgressItem(name, size, container) {
+    const itemId = 'upload-' + Date.now() + '-' + Math.random().toString(36).substr(2, 5);
+    const itemEl = document.createElement('div');
+    itemEl.id = itemId;
+    itemEl.className = 'q-file-item q-file-uploading';
+    itemEl.innerHTML =
+        '<div class="q-file-icon"><i class="bi bi-arrow-repeat spin"></i></div>' +
+        '<div class="q-file-info" style="flex:1">' +
+            '<span class="q-file-name">' + escHtml(name) + '</span>' +
+            '<div class="q-upload-progress-wrap">' +
+                '<div class="q-upload-progress-bar"><div class="q-upload-progress-fill" style="width:0%"></div></div>' +
+                '<span class="q-file-meta q-upload-pct">0%</span>' +
+            '</div>' +
+        '</div>';
+    container.appendChild(itemEl);
+    return itemId;
+}
+
+function updateProgress(itemId, pct, loaded, total) {
+    const el = document.getElementById(itemId);
+    if (!el) return;
+    const fill = el.querySelector('.q-upload-progress-fill');
+    const pctEl = el.querySelector('.q-upload-pct');
+    if (fill) fill.style.width = pct + '%';
+    if (pctEl) pctEl.textContent = pct + '% · ' + formatFileSize(loaded) + ' / ' + formatFileSize(total);
+}
+
+function markUploadError(itemId, name) {
+    const el = document.getElementById(itemId);
+    if (!el) return;
+    el.className = 'q-file-item q-file-error';
+    el.innerHTML = '<div class="q-file-icon"><i class="bi bi-exclamation-circle"></i></div><div class="q-file-info"><span class="q-file-name">' + escHtml(name) + '</span><span class="q-file-meta" style="color:var(--danger)">上传失败</span></div>';
+}
+
 // ==================== 图片上传 ====================
 async function handleImageUpload(files) {
+    const container = document.getElementById('referenceImages');
     for (const file of files) {
         if (file.size > MAX_IMAGE_SIZE) {
             showToast('图片 ' + file.name + ' 超过20MB限制，请压缩后重试', 'error');
             continue;
         }
+
+        const itemId = createProgressItem(file.name, file.size, container);
+
         const formData = new FormData();
         formData.append('image', file);
-        if (!IS_EXTERNAL) {
-            formData.append('customer_id', CUSTOMER_ID);
-        }
+        if (!IS_EXTERNAL) formData.append('customer_id', CUSTOMER_ID);
 
         try {
-            const resp = await fetch(API_UPLOAD, { method: 'POST', body: formData });
-            const result = await resp.json();
+            const result = await xhrUpload(formData, (pct, loaded, total) => updateProgress(itemId, pct, loaded, total));
             if (result.success) {
                 const d = result.data;
                 const fileObj = {
@@ -1430,12 +1488,15 @@ async function handleImageUpload(files) {
                     download_url: '/api/customer_file_stream.php?id=' + d.file_id + '&mode=download',
                     uploaded_at: null
                 };
-                document.getElementById('referenceImages').appendChild(renderFileItem(fileObj));
+                const el = document.getElementById(itemId);
+                if (el) el.replaceWith(renderFileItem(fileObj));
                 showToast('图片上传成功', 'success');
             } else {
+                markUploadError(itemId, file.name);
                 showToast('上传失败: ' + (result.message || result.error), 'error');
             }
         } catch (e) {
+            markUploadError(itemId, file.name);
             showToast('上传失败', 'error');
         }
     }
@@ -1449,23 +1510,15 @@ async function handleFileUpload(files) {
             showToast('文件 ' + file.name + ' 超过1GB限制', 'error');
             continue;
         }
-        // 显示上传中状态
-        const itemId = 'upload-' + Date.now() + '-' + Math.random().toString(36).substr(2, 5);
-        const itemEl = document.createElement('div');
-        itemEl.id = itemId;
-        itemEl.className = 'q-file-item q-file-uploading';
-        itemEl.innerHTML = '<div class="q-file-icon"><i class="bi bi-arrow-repeat spin"></i></div><div class="q-file-info"><span class="q-file-name">' + file.name + '</span><span class="q-file-meta">' + formatFileSize(file.size) + ' · 上传中...</span></div>';
-        listEl.appendChild(itemEl);
+
+        const itemId = createProgressItem(file.name, file.size, listEl);
 
         const formData = new FormData();
         formData.append('file', file);
-        if (!IS_EXTERNAL) {
-            formData.append('customer_id', CUSTOMER_ID);
-        }
+        if (!IS_EXTERNAL) formData.append('customer_id', CUSTOMER_ID);
 
         try {
-            const resp = await fetch(API_UPLOAD, { method: 'POST', body: formData });
-            const result = await resp.json();
+            const result = await xhrUpload(formData, (pct, loaded, total) => updateProgress(itemId, pct, loaded, total));
             if (result.success) {
                 const d = result.data;
                 const isImage = d.mime_type && d.mime_type.startsWith('image/');
@@ -1478,22 +1531,14 @@ async function handleFileUpload(files) {
                     uploaded_at: null
                 };
                 const el = document.getElementById(itemId);
-                if (el) { el.replaceWith(renderFileItem(fileObj)); }
+                if (el) el.replaceWith(renderFileItem(fileObj));
                 showToast('文件上传成功: ' + file.name, 'success');
             } else {
-                const el = document.getElementById(itemId);
-                if (el) {
-                    el.className = 'q-file-item q-file-error';
-                    el.innerHTML = '<div class="q-file-icon"><i class="bi bi-exclamation-circle"></i></div><div class="q-file-info"><span class="q-file-name">' + file.name + '</span><span class="q-file-meta" style="color:var(--danger)">上传失败</span></div>';
-                }
+                markUploadError(itemId, file.name);
                 showToast('上传失败: ' + (result.message || result.error), 'error');
             }
         } catch (e) {
-            const el = document.getElementById(itemId);
-            if (el) {
-                el.className = 'q-file-item q-file-error';
-                el.innerHTML = '<div class="q-file-icon"><i class="bi bi-exclamation-circle"></i></div><div class="q-file-info"><span class="q-file-name">' + file.name + '</span><span class="q-file-meta" style="color:var(--danger)">上传失败</span></div>';
-            }
+            markUploadError(itemId, file.name);
             showToast('上传失败: ' + file.name, 'error');
         }
     }
@@ -1632,7 +1677,11 @@ function convertToSimplified(element) {
     border-radius: 10px; margin-bottom: 8px; transition: box-shadow .2s;
 }
 .q-file-item:hover { box-shadow: 0 2px 8px rgba(0,0,0,.06); }
-.q-file-uploading { opacity: .7; }
+.q-file-uploading { opacity: .85; }
+.q-upload-progress-wrap { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
+.q-upload-progress-bar { flex: 1; height: 6px; background: #e8ecf0; border-radius: 3px; overflow: hidden; }
+.q-upload-progress-fill { height: 100%; background: linear-gradient(90deg, #6366f1, #818cf8); border-radius: 3px; transition: width .2s ease; }
+.q-upload-pct { font-size: 11px; color: #6366f1; white-space: nowrap; min-width: 60px; }
 .q-file-error { border-color: #f5c6cb; background: #fff5f5; }
 
 /* 图片缩略图 */

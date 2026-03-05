@@ -5081,7 +5081,7 @@ dependencies = [
 
 [[package]]
 name = "tech-resource-sync"
-version = "1.6.21"
+version = "1.6.95"
 dependencies = [
  "chrono",
  "clipboard-rs",

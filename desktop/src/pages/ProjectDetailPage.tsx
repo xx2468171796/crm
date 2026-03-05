@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, User, FileText, MessageSquare, Check, Download, ExternalLink, Link2, Lock, RefreshCw, Clipboard, DollarSign, UserPlus, History, Star, CheckCircle, Clock, Phone, Upload, Copy, FolderOpen, Eye, Trash2, AlertTriangle, ChevronDown, ChevronUp } from 'lucide-react';
+import { ArrowLeft, User, FileText, MessageSquare, Check, Download, ExternalLink, Link2, Lock, RefreshCw, Clipboard, DollarSign, UserPlus, History, Star, CheckCircle, Clock, Phone, Upload, Copy, FolderOpen, Eye, Trash2, AlertTriangle, ChevronDown, ChevronUp, Palette } from 'lucide-react';
 import { useAuthStore } from '@/stores/auth';
 import { useSettingsStore } from '@/stores/settings';
 import { usePermissionsStore } from '@/stores/permissions';
@@ -2202,6 +2202,68 @@ export default function ProjectDetailPage() {
                     )}
                   </div>
                 </div>
+
+                {/* 设计问卷按钮 */}
+                {customer && (
+                  <div className="bg-white rounded-xl p-4 border flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Palette className="w-4 h-4 text-indigo-600" />
+                      <span className="text-sm font-semibold text-gray-800">设计对接资料问卷</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={async () => {
+                          try {
+                            const res = await fetch(`${serverUrl}/api/desktop_design_questionnaire.php?action=generate_token`, {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                              body: JSON.stringify({ customer_id: customer.id }),
+                            });
+                            const data = await res.json();
+                            if (data.success && data.data?.token) {
+                              const url = `${serverUrl}/design_questionnaire.php?token=${data.data.token}`;
+                              navigator.clipboard.writeText(url);
+                              toast({ title: '已复制', description: '问卷外部链接已复制到剪贴板' });
+                            }
+                          } catch {
+                            toast({ title: '失败', description: '获取链接失败', variant: 'destructive' });
+                          }
+                        }}
+                        className="flex items-center gap-1 px-2.5 py-1.5 text-xs text-gray-600 hover:bg-gray-100 rounded-lg border"
+                      >
+                        <Copy className="w-3.5 h-3.5" />
+                        复制链接
+                      </button>
+                      <button
+                        onClick={async () => {
+                          try {
+                            const res = await fetch(`${serverUrl}/api/desktop_design_questionnaire.php?action=generate_token`, {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                              body: JSON.stringify({ customer_id: customer.id }),
+                            });
+                            const data = await res.json();
+                            if (data.success && data.data?.token) {
+                              const url = `${serverUrl}/design_questionnaire.php?token=${data.data.token}`;
+                              try {
+                                const { open } = await import('@tauri-apps/plugin-shell');
+                                await open(url);
+                              } catch {
+                                window.open(url, '_blank');
+                              }
+                            }
+                          } catch {
+                            toast({ title: '失败', description: '打开问卷失败', variant: 'destructive' });
+                          }
+                        }}
+                        className="flex items-center gap-1 px-2.5 py-1.5 text-xs bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"
+                      >
+                        <ExternalLink className="w-3.5 h-3.5" />
+                        打开问卷
+                      </button>
+                    </div>
+                  </div>
+                )}
 
                 {/* 设计负责人卡片 */}
                 <div className="bg-white rounded-xl p-5 border">

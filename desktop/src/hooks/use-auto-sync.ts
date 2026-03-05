@@ -229,14 +229,23 @@ export function useAutoSync() {
           const customerFiles = cloudFiles.categories?.['客户文件']?.files || [];
           const localCustomerFiles = await scanLocalFolder(`${basePath}/客户文件`);
           const localFileNames = localCustomerFiles.map(f => f.name);
-          
+
+          // 也扫描收集表单子目录
+          const localQuestionnaireFiles = await scanLocalFolder(`${basePath}/客户文件/收集表单`);
+          const localQuestionnaireFileNames = localQuestionnaireFiles.map(f => f.name);
+
           for (const cloudFile of customerFiles) {
-            if (!localFileNames.includes(cloudFile.filename)) {
-              console.log('[AutoSync] 下载客户文件:', cloudFile.filename);
-              
+            const relativePath = cloudFile.relative_path || cloudFile.filename;
+            const isQuestionnaire = relativePath.startsWith('收集表单/');
+            const checkName = isQuestionnaire ? cloudFile.filename : cloudFile.filename;
+            const checkList = isQuestionnaire ? localQuestionnaireFileNames : localFileNames;
+
+            if (!checkList.includes(checkName)) {
+              console.log('[AutoSync] 下载客户文件:', relativePath);
+
               let downloadUrl = cloudFile.download_url;
               const storageKey = cloudFile.storage_key;
-              
+
               // 使用统一 http 客户端获取下载 URL
               if (!downloadUrl && storageKey) {
                 try {
@@ -248,9 +257,9 @@ export function useAutoSync() {
                   console.error('[AutoSync] 获取下载URL失败:', e);
                 }
               }
-              
+
               if (downloadUrl) {
-                const localPath = `${basePath}/客户文件/${cloudFile.filename}`;
+                const localPath = `${basePath}/客户文件/${relativePath}`;
                 const success = await downloadFileToLocal(downloadUrl, localPath);
                 if (success) downloadCount++;
               } else {

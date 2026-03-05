@@ -190,7 +190,53 @@ try {
             }
         }
     }
-    
+
+    // ========== 追加问卷上传的文件（存在 customer_files 表, folder_path='收集表单'）==========
+    if ($customerId) {
+        $questionnaireFiles = Db::query(
+            "SELECT id, filename, filesize, mime_type, file_ext, storage_key, uploaded_at
+             FROM customer_files
+             WHERE customer_id = ? AND folder_path = '收集表单' AND deleted_at IS NULL
+             ORDER BY id DESC",
+            [$customerId]
+        );
+
+        if (!empty($questionnaireFiles)) {
+            $uploadService = isset($uploadService) ? $uploadService : new MultipartUploadService();
+
+            foreach ($questionnaireFiles as $qf) {
+                $storageKey = $qf['storage_key'] ?? '';
+                $downloadUrl = '';
+
+                if ($storageKey) {
+                    try {
+                        $downloadUrl = $uploadService->getDownloadPresignedUrl($storageKey, 3600);
+                    } catch (Exception $e) {
+                        error_log("[desktop_project_files] 问卷文件下载URL生成失败: " . $e->getMessage());
+                    }
+                }
+
+                $filename = $qf['filename'];
+                $ext = strtolower($qf['file_ext'] ?: pathinfo($filename, PATHINFO_EXTENSION));
+                $imageExts = ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp'];
+                $thumbnailUrl = (in_array($ext, $imageExts) && $downloadUrl) ? $downloadUrl : '';
+
+                $result['客户文件']['files'][] = [
+                    'filename' => $filename,
+                    'relative_path' => '收集表单/' . $filename,
+                    'file_size' => (int)($qf['filesize'] ?? 0),
+                    'storage_key' => $storageKey,
+                    'download_url' => $downloadUrl,
+                    'thumbnail_url' => $thumbnailUrl,
+                    'last_modified' => $qf['uploaded_at'] ? date('c', $qf['uploaded_at']) : null,
+                ];
+            }
+
+            $result['客户文件']['count'] = count($result['客户文件']['files']);
+            $result['客户文件']['tree'] = buildFileTree($result['客户文件']['files']);
+        }
+    }
+
     echo json_encode([
         'success' => true,
         'data' => [

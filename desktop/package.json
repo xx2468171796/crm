@@ -1,6 +1,6 @@
 {
   "name": "tech-resource-sync",
-  "version": "1.6.95",
+  "version": "1.6.98",
   "private": true,
   "type": "module",
   "scripts": {

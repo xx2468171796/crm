@@ -377,14 +377,7 @@ function handleUploadFileWithCustomer($customerId, $user) {
 
         $created = $service->uploadFiles($customerId, $user, $filesPayload, $payload);
 
-        // 异步上传处理
-        $asyncFiles = $service->getAsyncUploadFiles();
-        if (!empty($asyncFiles)) {
-            $service->processAsyncUploads();
-        }
-
         // 生成访问URL（用于图片预览）
-        // 使用 file stream proxy 而非 S3 presigned URL，避免中文路径导致 502
         $url = '';
         if (!empty($created)) {
             $first = $created[0];
@@ -394,7 +387,9 @@ function handleUploadFileWithCustomer($customerId, $user) {
         }
 
         $firstFile = $created[0] ?? [];
-        echo json_encode([
+
+        // 先返回响应给前端（文件已入库+缓存到SSD）
+        $response = json_encode([
             'success' => true,
             'data' => [
                 'file_id'       => $firstFile['id'] ?? 0,
@@ -406,6 +401,28 @@ function handleUploadFileWithCustomer($customerId, $user) {
                 'mime_type'     => $firstFile['mime_type'] ?? '',
             ]
         ], JSON_UNESCAPED_UNICODE);
+
+        // 清除输出缓冲，先返回响应
+        while (ob_get_level() > 0) {
+            ob_end_clean();
+        }
+        header('Content-Type: application/json; charset=utf-8');
+        header('Content-Length: ' . strlen($response));
+        header('Connection: close');
+        header('X-Accel-Buffering: no');
+        echo $response;
+
+        if (function_exists('fastcgi_finish_request')) {
+            fastcgi_finish_request();
+        } else {
+            flush();
+        }
+
+        // 异步上传到S3（前端已收到响应，不阻塞）
+        $asyncFiles = $service->getAsyncUploadFiles();
+        if (!empty($asyncFiles)) {
+            $service->processAsyncUploads();
+        }
 
     } catch (Exception $e) {
         error_log('[API] design_questionnaire upload_file error: ' . $e->getMessage());
