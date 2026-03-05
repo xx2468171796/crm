@@ -997,7 +997,7 @@ $pageTitle = $customerName ? "设计对接资料问卷 - {$customerName}" : '设
                         $refImages = $questionnaire['reference_images'] ?? [];
                         if (is_array($refImages)):
                             foreach ($refImages as $img): ?>
-                        <img src="<?= htmlspecialchars($img) ?>" class="uploaded-file-thumb" alt="参考图" onclick="window.open(this.src)">
+                        <img src="<?= htmlspecialchars($img) ?>" class="uploaded-file-thumb" alt="参考图" onclick="window.open(this.src)" onerror="this.style.display='none'">
                         <?php endforeach;
                         endif; ?>
                     </div>
@@ -1335,6 +1335,7 @@ async function handleImageUpload(files) {
                 img.className = 'uploaded-file-thumb';
                 img.alt = '参考图';
                 img.onclick = () => window.open(img.src);
+                img.onerror = () => { img.style.display = 'none'; };
                 document.getElementById('referenceImages').appendChild(img);
                 showToast('图片上传成功', 'success');
             } else {
