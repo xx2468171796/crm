@@ -24,6 +24,7 @@ class CustomerFileService
     private const DEFAULT_MAX_BATCH_BYTES = 2147483648; // 2GB
     private const FIRST_CONTACT_ATTACHMENT_FOLDER = '首通附件';
     private const OBJECTION_ATTACHMENT_FOLDER = '异议附件';
+    private const QUESTIONNAIRE_FOLDER = '收集表单';
 
     private StorageProviderInterface $storage;
     private CustomerFileLogger $logger;
@@ -358,11 +359,13 @@ class CustomerFileService
             $uploadSource = $payload['upload_source'] ?? '';
             $folderPath = $folderPaths[$index] ?? '';
             
-            // 如果是首通附件或异议附件，设置特殊的文件夹路径
+            // 如果是首通附件或异议附件或问卷附件，设置特殊的文件夹路径
             if ($uploadSource === 'first_contact') {
                 $folderPath = self::FIRST_CONTACT_ATTACHMENT_FOLDER;
             } elseif ($uploadSource === 'objection') {
                 $folderPath = self::OBJECTION_ATTACHMENT_FOLDER;
+            } elseif ($uploadSource === 'questionnaire') {
+                $folderPath = self::QUESTIONNAIRE_FOLDER;
             }
             
             $finalFilename = $this->generateFinalFilename($file['name'], $category, $ext, $isFolderUpload, $uploadSource);
@@ -1391,11 +1394,13 @@ class CustomerFileService
     {
         $base = $this->sanitizeFilenameBase(pathinfo($originalName, PATHINFO_FILENAME));
         
-        // 如果是首通附件或异议附件，添加特殊前缀
+        // 如果是首通附件或异议附件或问卷附件，添加特殊前缀
         if ($uploadSource === 'first_contact') {
             $base = self::FIRST_CONTACT_ATTACHMENT_FOLDER . '-' . $base;
         } elseif ($uploadSource === 'objection') {
             $base = self::OBJECTION_ATTACHMENT_FOLDER . '-' . $base;
+        } elseif ($uploadSource === 'questionnaire') {
+            $base = self::QUESTIONNAIRE_FOLDER . '-' . $base;
         } elseif ($category === 'client_material' && !$isFolderUpload) {
             // 如果是文件夹上传，不自动分类（不添加图片/视频/文件前缀）
             $prefix = $this->resolveClientPrefix($ext);

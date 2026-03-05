@@ -17,6 +17,7 @@ require_once __DIR__ . '/../core/api_init.php';
 require_once __DIR__ . '/../core/db.php';
 require_once __DIR__ . '/../core/auth.php';
 require_once __DIR__ . '/../core/storage/storage_provider.php';
+require_once __DIR__ . '/../services/CustomerFileService.php';
 
 header('Content-Type: application/json; charset=utf-8');
 
@@ -324,18 +325,11 @@ function handleUploadFile($user) {
         exit;
     }
 
-    // 验证客户存在
-    $customer = Db::queryOne('SELECT id, name, customer_code FROM customers WHERE id = ? AND deleted_at IS NULL', [$customerId]);
-    if (!$customer) {
-        http_response_code(404);
-        echo json_encode(['success' => false, 'message' => '客户不存在'], JSON_UNESCAPED_UNICODE);
-        exit;
-    }
-
     handleUploadFileWithCustomer($customerId, $user);
 }
 
 function handleUploadFileWithCustomer($customerId, $user) {
+    // 将单个文件包装成 $_FILES['files'] 格式供 CustomerFileService 使用
     $fileKey = isset($_FILES['file']) ? 'file' : (isset($_FILES['image']) ? 'image' : null);
     if (!$fileKey) {
         http_response_code(400);
@@ -343,95 +337,70 @@ function handleUploadFileWithCustomer($customerId, $user) {
         exit;
     }
 
-    $file = $_FILES[$fileKey];
+    $srcFile = $_FILES[$fileKey];
 
-    if ($file['error'] !== UPLOAD_ERR_OK) {
-        http_response_code(400);
-        echo json_encode(['success' => false, 'message' => '文件上传失败: 错误码 ' . $file['error']], JSON_UNESCAPED_UNICODE);
-        exit;
-    }
+    // 构造 $_FILES['files'] 标准数组格式
+    $filesPayload = [
+        'name'     => [$srcFile['name']],
+        'type'     => [$srcFile['type']],
+        'tmp_name' => [$srcFile['tmp_name']],
+        'error'    => [$srcFile['error']],
+        'size'     => [$srcFile['size']],
+    ];
 
-    // 验证文件大小（最大50MB）
-    if ($file['size'] > 50 * 1024 * 1024) {
-        http_response_code(400);
-        echo json_encode(['success' => false, 'message' => '文件大小超过限制（最大50MB）'], JSON_UNESCAPED_UNICODE);
-        exit;
+    // 外部用户没有登录态，使用系统用户身份（admin, id=0 → 由 create_user_id 获取）
+    if (!$user) {
+        $owner = Db::queryOne('SELECT create_user_id FROM customers WHERE id = ? AND deleted_at IS NULL', [$customerId]);
+        $ownerId = $owner ? (int)$owner['create_user_id'] : 1;
+        $user = Db::queryOne('SELECT * FROM users WHERE id = ?', [$ownerId]);
+        if (!$user) {
+            $user = ['id' => 1, 'role' => 'admin', 'realname' => '系统'];
+        }
     }
 
     try {
-        $originalName = $file['name'];
-        $ext = strtolower(pathinfo($originalName, PATHINFO_EXTENSION));
-        $mimeType = mime_content_type($file['tmp_name']) ?: $file['type'] ?: 'application/octet-stream';
+        $service = new CustomerFileService();
+        $payload = [
+            'category'      => 'client_material',
+            'notes'         => '设计问卷上传',
+            'folder_paths'  => [],
+            'folder_root'   => '',
+            'upload_mode'   => '',
+            'upload_source' => 'questionnaire',
+        ];
 
-        // 文件名加前缀 "收集表单-"
-        $prefixedName = '收集表单-' . $originalName;
+        $created = $service->uploadFiles($customerId, $user, $filesPayload, $payload);
 
-        // 生成S3存储路径
-        $uuid = bin2hex(random_bytes(8));
-        $storageKey = 'customer/' . $customerId . '/questionnaire/' . $uuid . '_' . $originalName;
-
-        // 上传到S3
-        $storage = storage_provider();
-        $result = $storage->putObject($storageKey, $file['tmp_name'], [
-            'mime_type' => $mimeType,
-        ]);
-
-        // 写入customer_files表
-        $uploadedBy = $user ? $user['id'] : 0;
-        $now = time();
-        $md5 = md5_file($file['tmp_name']) ?: null;
-        $folderPath = '收集表单';
-
-        // 判断是否支持预览
-        $previewMimes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/bmp', 'application/pdf'];
-        $previewSupported = in_array($mimeType, $previewMimes) ? 1 : 0;
-
-        Db::execute(
-            'INSERT INTO customer_files
-             (customer_id, category, folder_path, filename, storage_disk, storage_key, filesize, mime_type, file_ext,
-              checksum_md5, preview_supported, uploaded_by, uploaded_at, notes)
-             VALUES
-             (:customer_id, :category, :folder_path, :filename, :storage_disk, :storage_key, :filesize, :mime_type, :file_ext,
-              :checksum_md5, :preview_supported, :uploaded_by, :uploaded_at, :notes)',
-            [
-                'customer_id' => $customerId,
-                'category' => 'client_material',
-                'folder_path' => $folderPath,
-                'filename' => $prefixedName,
-                'storage_disk' => $result['disk'] ?? 's3',
-                'storage_key' => $result['storage_key'] ?? $storageKey,
-                'filesize' => $result['bytes'] ?? $file['size'],
-                'mime_type' => $mimeType,
-                'file_ext' => $ext,
-                'checksum_md5' => $md5,
-                'preview_supported' => $previewSupported,
-                'uploaded_by' => $uploadedBy,
-                'uploaded_at' => $now,
-                'notes' => '设计问卷上传',
-            ]
-        );
-
-        $fileId = (int)Db::lastInsertId();
+        // 异步上传处理
+        $asyncFiles = $service->getAsyncUploadFiles();
+        if (!empty($asyncFiles)) {
+            $service->processAsyncUploads();
+        }
 
         // 生成访问URL（用于图片预览）
         $url = '';
-        if (strpos($mimeType, 'image/') === 0) {
-            $url = $storage->getTemporaryUrl($storageKey, 86400 * 365);
-            if (!$url) {
-                $url = '/api/customer_file_stream.php?key=' . urlencode($storageKey);
+        if (!empty($created)) {
+            $first = $created[0];
+            if (isset($first['mime_type']) && strpos($first['mime_type'], 'image/') === 0 && !empty($first['storage_key'])) {
+                $storage = storage_provider();
+                $url = $storage->getTemporaryUrl($first['storage_key'], 86400 * 365);
+                if (!$url) {
+                    $url = '/api/customer_file_stream.php?key=' . urlencode($first['storage_key']);
+                }
             }
         }
 
+        $firstFile = $created[0] ?? [];
         echo json_encode([
             'success' => true,
             'data' => [
-                'file_id' => $fileId,
-                'url' => $url,
-                'filename' => $prefixedName,
-                'original_name' => $originalName,
-                'storage_key' => $storageKey,
-                'size' => $result['bytes'] ?? $file['size'],
-                'mime_type' => $mimeType,
+                'file_id'       => $firstFile['id'] ?? 0,
+                'url'           => $url,
+                'filename'      => $firstFile['filename'] ?? '',
+                'original_name' => $srcFile['name'],
+                'storage_key'   => $firstFile['storage_key'] ?? '',
+                'size'          => $firstFile['filesize'] ?? $srcFile['size'],
+                'mime_type'     => $firstFile['mime_type'] ?? '',
             ]
         ], JSON_UNESCAPED_UNICODE);
 
