@@ -988,7 +988,7 @@ $pageTitle = $customerName ? "设计对接资料问卷 - {$customerName}" : '设
                     <div class="file-upload-area" onclick="document.getElementById('refImageInput').click()">
                         <i class="bi bi-cloud-arrow-up d-block"></i>
                         <p>点击上传参考图片或风格截图</p>
-                        <p class="text-muted" style="font-size:12px;">支持 JPG / PNG / WEBP，单张最大 10MB</p>
+                        <p class="text-muted" style="font-size:12px;">支持 JPG / PNG / WEBP，单张最大 20MB</p>
                     </div>
                     <input type="file" id="refImageInput" accept="image/*" multiple style="display:none" onchange="handleImageUpload(this.files)">
                     <?php endif; ?>
@@ -1154,7 +1154,7 @@ $pageTitle = $customerName ? "设计对接资料问卷 - {$customerName}" : '设
                     <div class="file-upload-area" onclick="document.getElementById('originalFileInput').click()">
                         <i class="bi bi-cloud-arrow-up d-block"></i>
                         <p>点击上传平面图、现场照片、尺寸图等文件</p>
-                        <p class="text-muted" style="font-size:12px;">支持所有常见文件格式，单个最大 50MB</p>
+                        <p class="text-muted" style="font-size:12px;">支持所有常见文件格式，单个文件最大 1GB</p>
                     </div>
                     <input type="file" id="originalFileInput" multiple style="display:none" onchange="handleFileUpload(this.files)">
                     <?php endif; ?>
@@ -1215,6 +1215,8 @@ const CUSTOMER_ID = <?= $customerId ?>;
 const TOKEN = '<?= htmlspecialchars($token ?? '') ?>';
 const API_SAVE = '<?= $apiBase ?>';
 const API_UPLOAD = '<?= $uploadApiBase ?>';
+const MAX_IMAGE_SIZE = 20 * 1024 * 1024; // 20MB
+const MAX_FILE_SIZE = 1 * 1024 * 1024 * 1024; // 1GB
 
 // 显示/隐藏效果图类型
 document.querySelectorAll('input[name="service_items[]"]').forEach(cb => {
@@ -1310,6 +1312,10 @@ let referenceImages = <?= json_encode($questionnaire['reference_images'] ?? []) 
 // 图片上传
 async function handleImageUpload(files) {
     for (const file of files) {
+        if (file.size > MAX_IMAGE_SIZE) {
+            showToast('图片 ' + file.name + ' 超过20MB限制，请压缩后重试', 'error');
+            continue;
+        }
         const formData = new FormData();
         formData.append('image', file);
         if (!IS_EXTERNAL) {
@@ -1344,6 +1350,10 @@ async function handleImageUpload(files) {
 async function handleFileUpload(files) {
     const listEl = document.getElementById('uploadedFilesList');
     for (const file of files) {
+        if (file.size > MAX_FILE_SIZE) {
+            showToast('文件 ' + file.name + ' 超过1GB限制', 'error');
+            continue;
+        }
         // 显示上传中状态
         const itemId = 'upload-' + Date.now() + '-' + Math.random().toString(36).substr(2, 5);
         const itemEl = document.createElement('div');
