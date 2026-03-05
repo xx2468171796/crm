@@ -992,15 +992,7 @@ $pageTitle = $customerName ? "设计对接资料问卷 - {$customerName}" : '设
                     </div>
                     <input type="file" id="refImageInput" accept="image/*" multiple style="display:none" onchange="handleImageUpload(this.files)">
                     <?php endif; ?>
-                    <div class="uploaded-files" id="referenceImages">
-                        <?php
-                        $refImages = $questionnaire['reference_images'] ?? [];
-                        if (is_array($refImages)):
-                            foreach ($refImages as $img): ?>
-                        <img src="<?= htmlspecialchars($img) ?>" class="uploaded-file-thumb" alt="参考图" onclick="window.open(this.src)" onerror="this.style.display='none'">
-                        <?php endforeach;
-                        endif; ?>
-                    </div>
+                    <div class="uploaded-files" id="referenceImages"></div>
                 </div>
             </div>
         </div>
@@ -1215,6 +1207,9 @@ const CUSTOMER_ID = <?= $customerId ?>;
 const TOKEN = '<?= htmlspecialchars($token ?? '') ?>';
 const API_SAVE = '<?= $apiBase ?>';
 const API_UPLOAD = '<?= $uploadApiBase ?>';
+const API_LIST_FILES = IS_EXTERNAL
+    ? '/api/design_questionnaire.php?action=external_list_files&token=' + encodeURIComponent(TOKEN)
+    : '/api/design_questionnaire.php?action=list_files&customer_id=' + CUSTOMER_ID;
 const MAX_IMAGE_SIZE = 20 * 1024 * 1024; // 20MB
 const MAX_FILE_SIZE = 1 * 1024 * 1024 * 1024; // 1GB
 
@@ -1309,7 +1304,94 @@ function collectFormData() {
 
 let referenceImages = <?= json_encode($questionnaire['reference_images'] ?? []) ?>;
 
-// 图片上传
+// ==================== 文件渲染 ====================
+function renderFileItem(file) {
+    const el = document.createElement('div');
+    el.className = 'q-file-item';
+    if (file.is_image && file.preview_url) {
+        el.innerHTML = `
+            <div class="q-file-thumb" onclick="openLightbox('${file.preview_url}')">
+                <img src="${file.preview_url}" alt="${file.filename}" onerror="this.parentElement.innerHTML='<i class=\'bi bi-image\' style=\'font-size:24px;color:#ccc\'></i>'">
+                <div class="q-file-zoom"><i class="bi bi-zoom-in"></i></div>
+            </div>
+            <div class="q-file-info">
+                <span class="q-file-name" title="${file.filename}">${file.filename}</span>
+                <span class="q-file-meta">${formatFileSize(file.filesize)}${file.uploaded_at ? ' · ' + file.uploaded_at : ''}</span>
+            </div>
+            <a href="${file.download_url}" class="q-file-action" title="下载" download><i class="bi bi-download"></i></a>`;
+    } else {
+        const icon = getFileIcon(file.file_ext);
+        el.innerHTML = `
+            <div class="q-file-icon"><i class="bi ${icon}"></i></div>
+            <div class="q-file-info">
+                <span class="q-file-name" title="${file.filename}">${file.filename}</span>
+                <span class="q-file-meta">${formatFileSize(file.filesize)}${file.uploaded_at ? ' · ' + file.uploaded_at : ''}</span>
+            </div>
+            <a href="${file.download_url}" class="q-file-action" title="下载" download><i class="bi bi-download"></i></a>`;
+    }
+    return el;
+}
+
+function getFileIcon(ext) {
+    const map = {
+        'pdf': 'bi-file-earmark-pdf', 'doc': 'bi-file-earmark-word', 'docx': 'bi-file-earmark-word',
+        'xls': 'bi-file-earmark-excel', 'xlsx': 'bi-file-earmark-excel',
+        'ppt': 'bi-file-earmark-ppt', 'pptx': 'bi-file-earmark-ppt',
+        'zip': 'bi-file-earmark-zip', 'rar': 'bi-file-earmark-zip', '7z': 'bi-file-earmark-zip',
+        'mp4': 'bi-file-earmark-play', 'mov': 'bi-file-earmark-play', 'avi': 'bi-file-earmark-play',
+        'dwg': 'bi-file-earmark-ruled', 'dxf': 'bi-file-earmark-ruled',
+        'skp': 'bi-file-earmark-ruled', 'max': 'bi-file-earmark-ruled',
+    };
+    return map[(ext || '').toLowerCase()] || 'bi-file-earmark';
+}
+
+// ==================== Lightbox ====================
+function openLightbox(url) {
+    let lb = document.getElementById('qLightbox');
+    if (!lb) {
+        lb = document.createElement('div');
+        lb.id = 'qLightbox';
+        lb.className = 'q-lightbox';
+        lb.innerHTML = '<div class="q-lightbox-backdrop" onclick="closeLightbox()"></div><div class="q-lightbox-body"><img id="qLightboxImg" src=""><button class="q-lightbox-close" onclick="closeLightbox()"><i class="bi bi-x-lg"></i></button></div>';
+        document.body.appendChild(lb);
+    }
+    document.getElementById('qLightboxImg').src = url;
+    lb.classList.add('active');
+    document.body.style.overflow = 'hidden';
+}
+function closeLightbox() {
+    const lb = document.getElementById('qLightbox');
+    if (lb) { lb.classList.remove('active'); document.body.style.overflow = ''; }
+}
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeLightbox(); });
+
+// ==================== 加载已有文件 ====================
+async function loadExistingFiles() {
+    try {
+        const resp = await fetch(API_LIST_FILES);
+        const result = await resp.json();
+        if (!result.success || !result.data) return;
+
+        const imgContainer = document.getElementById('referenceImages');
+        const fileContainer = document.getElementById('uploadedFilesList');
+
+        result.data.forEach(file => {
+            const el = renderFileItem(file);
+            if (file.is_image) {
+                imgContainer.appendChild(el);
+            } else {
+                fileContainer.appendChild(el);
+            }
+        });
+    } catch (e) {
+        console.error('加载文件列表失败', e);
+    }
+}
+
+// 页面加载时获取已上传文件
+loadExistingFiles();
+
+// ==================== 图片上传 ====================
 async function handleImageUpload(files) {
     for (const file of files) {
         if (file.size > MAX_IMAGE_SIZE) {
@@ -1323,20 +1405,20 @@ async function handleImageUpload(files) {
         }
 
         try {
-            const resp = await fetch(API_UPLOAD, {
-                method: 'POST',
-                body: formData
-            });
+            const resp = await fetch(API_UPLOAD, { method: 'POST', body: formData });
             const result = await resp.json();
             if (result.success) {
-                referenceImages.push(result.data.url);
-                const img = document.createElement('img');
-                img.src = result.data.url;
-                img.className = 'uploaded-file-thumb';
-                img.alt = '参考图';
-                img.onclick = () => window.open(img.src);
-                img.onerror = () => { img.style.display = 'none'; };
-                document.getElementById('referenceImages').appendChild(img);
+                const d = result.data;
+                referenceImages.push(d.url);
+                const fileObj = {
+                    id: d.file_id, filename: d.filename, filesize: d.size,
+                    mime_type: d.mime_type, file_ext: (d.filename || '').split('.').pop(),
+                    is_image: true,
+                    preview_url: '/api/customer_file_stream.php?id=' + d.file_id + '&mode=preview',
+                    download_url: '/api/customer_file_stream.php?id=' + d.file_id + '&mode=download',
+                    uploaded_at: null
+                };
+                document.getElementById('referenceImages').appendChild(renderFileItem(fileObj));
                 showToast('图片上传成功', 'success');
             } else {
                 showToast('上传失败: ' + (result.message || result.error), 'error');
@@ -1347,7 +1429,7 @@ async function handleImageUpload(files) {
     }
 }
 
-// 通用文件上传（原始资料）
+// ==================== 通用文件上传 ====================
 async function handleFileUpload(files) {
     const listEl = document.getElementById('uploadedFilesList');
     for (const file of files) {
@@ -1359,9 +1441,8 @@ async function handleFileUpload(files) {
         const itemId = 'upload-' + Date.now() + '-' + Math.random().toString(36).substr(2, 5);
         const itemEl = document.createElement('div');
         itemEl.id = itemId;
-        itemEl.className = 'uploaded-file-item';
-        itemEl.style.cssText = 'display:flex;align-items:center;gap:8px;padding:8px 12px;background:#f8f9fa;border-radius:8px;margin-bottom:6px;font-size:14px;';
-        itemEl.innerHTML = '<i class="bi bi-arrow-repeat spin" style="color:var(--primary)"></i> <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + file.name + '</span><span class="text-muted" style="font-size:12px;">' + formatFileSize(file.size) + '</span>';
+        itemEl.className = 'q-file-item q-file-uploading';
+        itemEl.innerHTML = '<div class="q-file-icon"><i class="bi bi-arrow-repeat spin"></i></div><div class="q-file-info"><span class="q-file-name">' + file.name + '</span><span class="q-file-meta">' + formatFileSize(file.size) + ' · 上传中...</span></div>';
         listEl.appendChild(itemEl);
 
         const formData = new FormData();
@@ -1371,35 +1452,39 @@ async function handleFileUpload(files) {
         }
 
         try {
-            const resp = await fetch(API_UPLOAD, {
-                method: 'POST',
-                body: formData
-            });
+            const resp = await fetch(API_UPLOAD, { method: 'POST', body: formData });
             const result = await resp.json();
             if (result.success) {
+                const d = result.data;
+                const isImage = d.mime_type && d.mime_type.startsWith('image/');
+                const fileObj = {
+                    id: d.file_id, filename: d.filename, filesize: d.size,
+                    mime_type: d.mime_type, file_ext: (d.filename || '').split('.').pop(),
+                    is_image: isImage,
+                    preview_url: isImage ? '/api/customer_file_stream.php?id=' + d.file_id + '&mode=preview' : null,
+                    download_url: '/api/customer_file_stream.php?id=' + d.file_id + '&mode=download',
+                    uploaded_at: null
+                };
                 const el = document.getElementById(itemId);
-                if (el) {
-                    const isImage = result.data.mime_type && result.data.mime_type.startsWith('image/');
-                    const icon = isImage ? 'bi-image' : 'bi-file-earmark-check';
-                    el.innerHTML = '<i class="bi ' + icon + '" style="color:var(--success)"></i> <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + result.data.filename + '</span><span class="text-muted" style="font-size:12px;">' + formatFileSize(result.data.size) + '</span><i class="bi bi-check-circle-fill" style="color:var(--success)"></i>';
-                }
+                if (el) { el.replaceWith(renderFileItem(fileObj)); }
                 showToast('文件上传成功: ' + file.name, 'success');
             } else {
                 const el = document.getElementById(itemId);
                 if (el) {
-                    el.innerHTML = '<i class="bi bi-exclamation-circle" style="color:var(--danger)"></i> <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + file.name + '</span><span class="text-muted" style="font-size:12px;color:var(--danger)">上传失败</span>';
+                    el.className = 'q-file-item q-file-error';
+                    el.innerHTML = '<div class="q-file-icon"><i class="bi bi-exclamation-circle"></i></div><div class="q-file-info"><span class="q-file-name">' + file.name + '</span><span class="q-file-meta" style="color:var(--danger)">上传失败</span></div>';
                 }
                 showToast('上传失败: ' + (result.message || result.error), 'error');
             }
         } catch (e) {
             const el = document.getElementById(itemId);
             if (el) {
-                el.innerHTML = '<i class="bi bi-exclamation-circle" style="color:var(--danger)"></i> <span style="flex:1;">' + file.name + '</span><span style="color:var(--danger);font-size:12px;">上传失败</span>';
+                el.className = 'q-file-item q-file-error';
+                el.innerHTML = '<div class="q-file-icon"><i class="bi bi-exclamation-circle"></i></div><div class="q-file-info"><span class="q-file-name">' + file.name + '</span><span class="q-file-meta" style="color:var(--danger)">上传失败</span></div>';
             }
             showToast('上传失败: ' + file.name, 'error');
         }
     }
-    // 清空 input 以便重复选择同一文件
     document.getElementById('originalFileInput').value = '';
 }
 
@@ -1527,6 +1612,83 @@ function convertToSimplified(element) {
 <style>
 .spin { animation: spin 1s linear infinite; }
 @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+
+/* 文件列表项 */
+.q-file-item {
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 14px; background: #fff; border: 1px solid #e8ecf0;
+    border-radius: 10px; margin-bottom: 8px; transition: box-shadow .2s;
+}
+.q-file-item:hover { box-shadow: 0 2px 8px rgba(0,0,0,.06); }
+.q-file-uploading { opacity: .7; }
+.q-file-error { border-color: #f5c6cb; background: #fff5f5; }
+
+/* 图片缩略图 */
+.q-file-thumb {
+    width: 56px; height: 56px; border-radius: 8px; overflow: hidden;
+    flex-shrink: 0; cursor: pointer; position: relative; background: #f0f2f5;
+    display: flex; align-items: center; justify-content: center;
+}
+.q-file-thumb img {
+    width: 100%; height: 100%; object-fit: cover; display: block;
+}
+.q-file-zoom {
+    position: absolute; inset: 0; background: rgba(0,0,0,.35);
+    display: flex; align-items: center; justify-content: center;
+    opacity: 0; transition: opacity .2s; color: #fff; font-size: 18px;
+}
+.q-file-thumb:hover .q-file-zoom { opacity: 1; }
+
+/* 文件图标 */
+.q-file-icon {
+    width: 42px; height: 42px; border-radius: 8px; background: #f0f4ff;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0; font-size: 20px; color: var(--primary-color, #007bff);
+}
+.q-file-error .q-file-icon { background: #fff0f0; color: var(--danger-color, #dc3545); }
+
+/* 文件信息 */
+.q-file-info { flex: 1; min-width: 0; }
+.q-file-name {
+    display: block; font-size: 13px; font-weight: 500; color: #333;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.q-file-meta { display: block; font-size: 11px; color: #999; margin-top: 2px; }
+
+/* 下载按钮 */
+.q-file-action {
+    width: 34px; height: 34px; border-radius: 8px; background: #f0f4ff;
+    display: flex; align-items: center; justify-content: center;
+    color: var(--primary-color, #007bff); text-decoration: none;
+    flex-shrink: 0; transition: background .2s;
+}
+.q-file-action:hover { background: #dce8ff; }
+
+/* Lightbox */
+.q-lightbox {
+    display: none; position: fixed; inset: 0; z-index: 10000;
+    align-items: center; justify-content: center;
+}
+.q-lightbox.active { display: flex; }
+.q-lightbox-backdrop {
+    position: absolute; inset: 0; background: rgba(0,0,0,.7);
+    cursor: pointer;
+}
+.q-lightbox-body {
+    position: relative; z-index: 1; max-width: 90vw; max-height: 90vh;
+}
+.q-lightbox-body img {
+    max-width: 90vw; max-height: 85vh; border-radius: 8px;
+    box-shadow: 0 8px 40px rgba(0,0,0,.4); display: block;
+}
+.q-lightbox-close {
+    position: absolute; top: -12px; right: -12px;
+    width: 36px; height: 36px; border-radius: 50%; border: none;
+    background: #fff; color: #333; font-size: 16px; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 2px 8px rgba(0,0,0,.2);
+}
+.q-lightbox-close:hover { background: #f0f0f0; }
 </style>
 
 </body>

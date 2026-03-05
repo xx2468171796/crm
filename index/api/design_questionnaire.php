@@ -24,7 +24,7 @@ header('Content-Type: application/json; charset=utf-8');
 $action = $_GET['action'] ?? $_POST['action'] ?? 'get';
 
 // 外部访问的action不需要登录
-$externalActions = ['external_get', 'external_save', 'external_upload_file'];
+$externalActions = ['external_get', 'external_save', 'external_upload_file', 'external_list_files'];
 
 if (in_array($action, $externalActions)) {
     handleExternalAction($action);
@@ -55,6 +55,9 @@ try {
             break;
         case 'upload_file':
             handleUploadFile($user);
+            break;
+        case 'list_files':
+            handleListFiles($user);
             break;
         default:
             http_response_code(400);
@@ -274,6 +277,9 @@ function handleExternalAction($action) {
         } elseif ($action === 'external_upload_file') {
             handleUploadFileWithCustomer($questionnaire['customer_id'], null);
             return;
+        } elseif ($action === 'external_list_files') {
+            handleListFilesForCustomer($questionnaire['customer_id']);
+            return;
         } elseif ($action === 'external_save') {
             $input = json_decode(file_get_contents('php://input'), true);
             if (!$input) {
@@ -406,6 +412,46 @@ function handleUploadFileWithCustomer($customerId, $user) {
         http_response_code(500);
         echo json_encode(['success' => false, 'message' => '文件上传失败: ' . $e->getMessage()], JSON_UNESCAPED_UNICODE);
     }
+}
+
+// ==================== 文件列表 ====================
+
+function handleListFiles($user) {
+    $customerId = (int)($_GET['customer_id'] ?? 0);
+    if (!$customerId) {
+        http_response_code(400);
+        echo json_encode(['success' => false, 'message' => '缺少客户ID'], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+    handleListFilesForCustomer($customerId);
+}
+
+function handleListFilesForCustomer($customerId) {
+    $rows = Db::query(
+        'SELECT id, filename, filesize, mime_type, file_ext, uploaded_at, folder_path
+         FROM customer_files
+         WHERE customer_id = ? AND folder_path = ? AND deleted_at IS NULL
+         ORDER BY id DESC',
+        [$customerId, '收集表单']
+    );
+
+    $files = [];
+    foreach ($rows as $row) {
+        $isImage = strpos($row['mime_type'], 'image/') === 0;
+        $files[] = [
+            'id'        => (int)$row['id'],
+            'filename'  => $row['filename'],
+            'filesize'  => (int)$row['filesize'],
+            'mime_type' => $row['mime_type'],
+            'file_ext'  => $row['file_ext'],
+            'is_image'  => $isImage,
+            'preview_url' => $isImage ? '/api/customer_file_stream.php?id=' . (int)$row['id'] . '&mode=preview' : null,
+            'download_url' => '/api/customer_file_stream.php?id=' . (int)$row['id'] . '&mode=download',
+            'uploaded_at' => $row['uploaded_at'] ? date('Y-m-d H:i', $row['uploaded_at']) : null,
+        ];
+    }
+
+    echo json_encode(['success' => true, 'data' => $files], JSON_UNESCAPED_UNICODE);
 }
 
 // ==================== 工具函数 ====================
