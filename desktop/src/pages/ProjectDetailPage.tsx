@@ -55,6 +55,7 @@ interface TechUser {
   name: string;
   commission: number | null;
   commission_note: string | null;
+  commission_set_at: number | null;
 }
 
 interface DaysInfo {
@@ -245,6 +246,7 @@ export default function ProjectDetailPage() {
     | { kind: 'local'; path: string; name: string; size: number };
   const [pendingUploads, setPendingUploads] = useState<PendingUploadItem[]>([]);
   const [commissionNote, setCommissionNote] = useState('');
+  const [commissionDate, setCommissionDate] = useState('');
 
   // 文件管理（重命名/批量删除）
   const [selectedFileIds, setSelectedFileIds] = useState<Set<number>>(new Set());
@@ -2299,7 +2301,7 @@ export default function ProjectDetailPage() {
                             <div className="flex-1 min-w-0">
                               <p className="text-sm font-medium text-gray-800 truncate">{tech.name}</p>
                               {canSeeCommission && tech.commission !== null ? (
-                                <p className="text-xs text-green-600">¥{tech.commission}</p>
+                                <p className="text-xs text-green-600">¥{tech.commission}{tech.commission_set_at ? ` · ${new Date(tech.commission_set_at * 1000).toLocaleDateString('zh-CN')}` : ''}</p>
                               ) : canSeeCommission ? (
                                 <p className="text-xs text-gray-400">未设置提成</p>
                               ) : null}
@@ -2310,6 +2312,7 @@ export default function ProjectDetailPage() {
                                   setEditingTech(tech);
                                   setCommissionAmount(tech.commission?.toString() || '');
                                   setCommissionNote(tech.commission_note || '');
+                                  setCommissionDate(tech.commission_set_at ? new Date(tech.commission_set_at * 1000).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10));
                                   setShowCommissionEditor(true);
                                 }}
                                 className="text-indigo-600 hover:text-indigo-800"
@@ -3320,7 +3323,7 @@ export default function ProjectDetailPage() {
                         <div>
                           <p className="font-medium text-gray-800">{tech.name}</p>
                           {canSeeCommission && tech.commission !== null ? (
-                            <p className="text-sm text-green-600">提成: ¥{tech.commission}</p>
+                            <p className="text-sm text-green-600">提成: ¥{tech.commission}{tech.commission_set_at ? ` · ${new Date(tech.commission_set_at * 1000).toLocaleDateString('zh-CN')}` : ''}</p>
                           ) : canSeeCommission ? (
                             <p className="text-sm text-gray-400">未设置提成</p>
                           ) : null}
@@ -3335,6 +3338,7 @@ export default function ProjectDetailPage() {
                             setEditingTech(tech);
                             setCommissionAmount(tech.commission?.toString() || '');
                             setCommissionNote(tech.commission_note || '');
+                            setCommissionDate(tech.commission_set_at ? new Date(tech.commission_set_at * 1000).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10));
                             setShowCommissionEditor(true);
                           }}
                           className="px-4 py-2 text-sm bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors"
@@ -3416,6 +3420,15 @@ export default function ProjectDetailPage() {
                 />
               </div>
               <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">提成日期</label>
+                <input
+                  type="date"
+                  value={commissionDate}
+                  onChange={(e) => setCommissionDate(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+              <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">备注</label>
                 <textarea
                   value={commissionNote}
@@ -3450,6 +3463,7 @@ export default function ProjectDetailPage() {
                         assignment_id: editingTech.assignment_id,
                         commission_amount: parseFloat(commissionAmount) || 0,
                         commission_note: commissionNote,
+                        commission_date: commissionDate,
                       }),
                     });
                     const data = await res.json();

@@ -87,7 +87,7 @@ try {
     
     // 获取技术负责人
     $techUsers = Db::query("
-        SELECT pta.id as assignment_id, u.id, u.username, u.realname, pta.commission_amount, pta.commission_note
+        SELECT pta.id as assignment_id, u.id, u.username, u.realname, pta.commission_amount, pta.commission_note, pta.commission_set_at
         FROM project_tech_assignments pta
         LEFT JOIN users u ON pta.tech_user_id = u.id
         WHERE pta.project_id = ?
@@ -101,6 +101,7 @@ try {
             'name' => $tech['realname'] ?: $tech['username'],
             'commission' => $tech['commission_amount'] ? (float)$tech['commission_amount'] : null,
             'commission_note' => $tech['commission_note'],
+            'commission_set_at' => $tech['commission_set_at'] ? (int)$tech['commission_set_at'] : null,
         ];
     }
     

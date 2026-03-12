@@ -208,30 +208,37 @@ function handleSetCommission($user, $isManager) {
     $assignmentId = (int)($input['assignment_id'] ?? 0);
     $commissionAmount = (float)($input['commission_amount'] ?? 0);
     $commissionNote = trim($input['commission_note'] ?? '');
-    
+    $commissionDate = trim($input['commission_date'] ?? '');
+
     if ($assignmentId <= 0) {
         error_log('[set_commission] 错误: 参数错误');
         http_response_code(400);
         echo json_encode(['success' => false, 'error' => '参数错误'], JSON_UNESCAPED_UNICODE);
         return;
     }
-    
+
     // 检查分配记录是否存在
     $assignment = Db::queryOne("SELECT * FROM project_tech_assignments WHERE id = ?", [$assignmentId]);
-    
+
     if (!$assignment) {
         http_response_code(404);
         echo json_encode(['success' => false, 'error' => '分配记录不存在'], JSON_UNESCAPED_UNICODE);
         return;
     }
-    
+
     // 更新提成（commission_set_at 是 INT 类型存储时间戳）
-    $now = time();
+    // 如果前端传了日期，使用该日期的时间戳；否则使用当前时间
+    if ($commissionDate) {
+        $setAt = strtotime($commissionDate);
+        if ($setAt === false) $setAt = time();
+    } else {
+        $setAt = time();
+    }
     Db::execute("
-        UPDATE project_tech_assignments 
+        UPDATE project_tech_assignments
         SET commission_amount = ?, commission_note = ?, commission_set_by = ?, commission_set_at = ?
         WHERE id = ?
-    ", [$commissionAmount, $commissionNote, $user['id'], $now, $assignmentId]);
+    ", [$commissionAmount, $commissionNote, $user['id'], $setAt, $assignmentId]);
     error_log('[set_commission] 提成设置成功');
     
     echo json_encode([
