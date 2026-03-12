@@ -22,6 +22,7 @@ interface ProjectCommission {
   customer_name: string;
   commission_amount: number;
   commission_note: string;
+  commission_set_at: number | null;
   assigned_at: string;
 }
 
@@ -406,7 +407,12 @@ export default function TechCommissionPage() {
                                   <span className="text-gray-400">({p.customer_name})</span>
                                   <ExternalLink className="w-3 h-3 text-gray-300 group-hover:text-indigo-500" />
                                 </div>
-                                <span className="text-green-600 font-medium">¥{(p.commission_amount || 0).toLocaleString()}</span>
+                                <div className="flex items-center gap-3">
+                                  {p.commission_set_at && (
+                                    <span className="text-xs text-gray-400">{new Date(p.commission_set_at * 1000).toLocaleDateString('zh-CN')}</span>
+                                  )}
+                                  <span className="text-green-600 font-medium">¥{(p.commission_amount || 0).toLocaleString()}</span>
+                                </div>
                               </div>
                             ))}
                           </div>

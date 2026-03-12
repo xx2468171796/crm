@@ -106,24 +106,32 @@ function handleTeamSummary($user, $isManager) {
     
     $startDate = $_GET['start_date'] ?? null;
     $endDate = $_GET['end_date'] ?? null;
-    
+
     $where = "p.deleted_at IS NULL";
     $params = [];
-    
+
+    // 按提成日期(commission_set_at, INT时间戳)筛选
     if ($startDate) {
-        $where .= " AND pta.assigned_at >= ?";
-        $params[] = $startDate;
+        $startTs = strtotime($startDate);
+        if ($startTs !== false) {
+            $where .= " AND pta.commission_set_at >= ?";
+            $params[] = $startTs;
+        }
     }
     if ($endDate) {
-        $where .= " AND pta.assigned_at <= ?";
-        $params[] = $endDate . ' 23:59:59';
+        $endTs = strtotime($endDate . ' 23:59:59');
+        if ($endTs !== false) {
+            $where .= " AND pta.commission_set_at <= ?";
+            $params[] = $endTs;
+        }
     }
-    
+
     $assignments = Db::query("
-        SELECT 
+        SELECT
             pta.id as assignment_id,
             pta.commission_amount,
             pta.commission_note,
+            pta.commission_set_at,
             pta.assigned_at,
             p.id as project_id,
             p.project_code,
@@ -137,7 +145,7 @@ function handleTeamSummary($user, $isManager) {
         JOIN users u ON pta.tech_user_id = u.id
         LEFT JOIN customers c ON p.customer_id = c.id
         WHERE {$where}
-        ORDER BY u.id, pta.assigned_at DESC
+        ORDER BY u.id, pta.commission_set_at DESC
     ", $params);
     
     // 按技术人员分组汇总
