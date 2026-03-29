@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, User, Phone, MessageSquare, FileText, DollarSign, Folder, ChevronRight, Link2, Save, UserPlus, RefreshCw, Copy, Palette, ExternalLink } from 'lucide-react';
+import { ArrowLeft, User, Phone, MessageSquare, FileText, DollarSign, Folder, ChevronRight, Link2, Save, UserPlus, RefreshCw, Copy, Palette, ExternalLink, CheckCircle, Clock, AlertTriangle, CircleDot } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useAuthStore } from '@/stores/auth';
 import { useSettingsStore } from '@/stores/settings';
@@ -34,6 +34,33 @@ interface Stats {
   total_projects: number;
   in_progress: number;
   completed: number;
+}
+
+interface ContractFinance {
+  contract_id: number;
+  contract_no: string;
+  title: string;
+  sign_date: string | null;
+  sales_name: string | null;
+  status_label: string;
+  status_badge: string;
+  total_installments: number;
+  collected_installments: number;
+  installments: InstallmentInfo[];
+}
+
+interface InstallmentInfo {
+  no: number;
+  percentage: number;
+  status_label: string;
+  status_badge: string;
+  due_date: string | null;
+}
+
+interface FinanceSummary {
+  total_contracts: number;
+  total_installments: number;
+  collected_installments: number;
 }
 
 interface RegionLink {
@@ -80,6 +107,29 @@ export default function CustomerDetailPage() {
   const [portalInfo, setPortalInfo] = useState<PortalInfo | null>(null);
   const [regionLinks, setRegionLinks] = useState<RegionLink[]>([]);
   const [loadingLinks, setLoadingLinks] = useState(false);
+  const [financeContracts, setFinanceContracts] = useState<ContractFinance[]>([]);
+  const [financeSummary, setFinanceSummary] = useState<FinanceSummary>({ total_contracts: 0, total_installments: 0, collected_installments: 0 });
+  const [loadingFinance, setLoadingFinance] = useState(false);
+
+  // 加载客户财务收款概览
+  const loadFinance = useCallback(async () => {
+    if (!serverUrl || !token || !id) return;
+    setLoadingFinance(true);
+    try {
+      const res = await fetch(`${serverUrl}/api/desktop_customer_finance.php?customer_id=${id}`, {
+        headers: { 'Authorization': `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (data.success) {
+        setFinanceContracts(data.data.contracts || []);
+        setFinanceSummary(data.data.summary || { total_contracts: 0, total_installments: 0, collected_installments: 0 });
+      }
+    } catch (error) {
+      console.error('加载财务数据失败:', error);
+    } finally {
+      setLoadingFinance(false);
+    }
+  }, [serverUrl, token, id]);
 
   // 加载客户详情
   const loadCustomer = async () => {
@@ -107,6 +157,13 @@ export default function CustomerDetailPage() {
   useEffect(() => {
     loadCustomer();
   }, [id, serverUrl, token]);
+
+  // 切换到财务tab时加载数据
+  useEffect(() => {
+    if (activeTab === 'finance') {
+      loadFinance();
+    }
+  }, [activeTab, loadFinance]);
 
   // 加载门户信息和区域链接
   const loadPortalLinks = useCallback(async () => {
@@ -286,9 +343,131 @@ export default function CustomerDetailPage() {
         );
       case 'finance':
         return (
-          <div className="bg-white rounded-xl p-6 border">
-            <h3 className="text-lg font-semibold mb-4">财务记录</h3>
-            <p className="text-gray-500">财务记录功能开发中...</p>
+          <div className="space-y-4">
+            {/* 收款汇总 */}
+            <div className="grid grid-cols-3 gap-4">
+              <div className="bg-white rounded-xl p-4 border">
+                <p className="text-xs text-gray-400 mb-1">合同数</p>
+                <p className="text-xl font-bold text-gray-800">{financeSummary.total_contracts}</p>
+              </div>
+              <div className="bg-white rounded-xl p-4 border">
+                <p className="text-xs text-gray-400 mb-1">总期数</p>
+                <p className="text-xl font-bold text-gray-800">{financeSummary.total_installments}</p>
+              </div>
+              <div className="bg-white rounded-xl p-4 border">
+                <p className="text-xs text-gray-400 mb-1">已收期数</p>
+                <p className="text-xl font-bold text-green-600">
+                  {financeSummary.collected_installments}
+                  <span className="text-sm font-normal text-gray-400 ml-1">/ {financeSummary.total_installments}</span>
+                </p>
+              </div>
+            </div>
+
+            {loadingFinance ? (
+              <div className="bg-white rounded-xl p-8 border text-center text-gray-400">加载中...</div>
+            ) : financeContracts.length === 0 ? (
+              <div className="bg-white rounded-xl p-8 border text-center">
+                <DollarSign className="w-12 h-12 mx-auto mb-2 text-gray-300" />
+                <p className="text-gray-400">暂无合同记录</p>
+              </div>
+            ) : (
+              financeContracts.map((contract) => (
+                <div key={contract.contract_id} className="bg-white rounded-xl border overflow-hidden">
+                  {/* 合同标题栏 */}
+                  <div className="px-4 py-3 border-b bg-gray-50 flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <FileText className="w-4 h-4 text-blue-600" />
+                      <span className="font-medium text-sm text-gray-800">
+                        {contract.title || contract.contract_no || '未命名合同'}
+                      </span>
+                      {contract.contract_no && contract.title && (
+                        <span className="text-xs text-gray-400">{contract.contract_no}</span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-3">
+                      {contract.sign_date && (
+                        <span className="text-xs text-gray-400">签约 {contract.sign_date}</span>
+                      )}
+                      <span className={`px-2 py-0.5 text-xs rounded-full ${
+                        contract.status_label === '已结清' ? 'bg-green-100 text-green-700' :
+                        contract.status_label === '作废' ? 'bg-red-100 text-red-700' :
+                        'bg-blue-100 text-blue-700'
+                      }`}>
+                        {contract.status_label}
+                      </span>
+                      <span className="text-xs text-gray-400">
+                        {contract.collected_installments}/{contract.total_installments} 期已收
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* 分期收款状态 */}
+                  <div className="p-4">
+                    {contract.installments.length === 0 ? (
+                      <p className="text-sm text-gray-400 text-center py-2">暂无分期</p>
+                    ) : (
+                      <div className="flex items-center gap-2 flex-wrap">
+                        {contract.installments.map((inst, idx) => {
+                          const isCollected = inst.status_label === '已收';
+                          const isPartial = inst.status_label === '部分已收';
+                          const isOverdue = inst.status_label === '逾期';
+
+                          return (
+                            <div key={idx} className="flex items-center gap-1.5">
+                              {/* 分期节点 */}
+                              <div
+                                className={`relative flex flex-col items-center gap-1 px-3 py-2 rounded-lg border transition-colors ${
+                                  isCollected
+                                    ? 'bg-green-50 border-green-200'
+                                    : isOverdue
+                                    ? 'bg-red-50 border-red-200'
+                                    : isPartial
+                                    ? 'bg-yellow-50 border-yellow-200'
+                                    : 'bg-gray-50 border-gray-200'
+                                }`}
+                                title={`第${inst.no}期 ${inst.percentage}% - ${inst.status_label}${inst.due_date ? ` (到期: ${inst.due_date})` : ''}`}
+                              >
+                                <div className="flex items-center gap-1">
+                                  {isCollected ? (
+                                    <CheckCircle className="w-4 h-4 text-green-500" />
+                                  ) : isOverdue ? (
+                                    <AlertTriangle className="w-4 h-4 text-red-500" />
+                                  ) : isPartial ? (
+                                    <CircleDot className="w-4 h-4 text-yellow-500" />
+                                  ) : (
+                                    <Clock className="w-4 h-4 text-gray-400" />
+                                  )}
+                                  <span className={`text-xs font-medium ${
+                                    isCollected ? 'text-green-700' :
+                                    isOverdue ? 'text-red-700' :
+                                    isPartial ? 'text-yellow-700' :
+                                    'text-gray-500'
+                                  }`}>
+                                    第{inst.no}期
+                                  </span>
+                                </div>
+                                <span className={`text-xs ${
+                                  isCollected ? 'text-green-600' :
+                                  isOverdue ? 'text-red-600' :
+                                  isPartial ? 'text-yellow-600' :
+                                  'text-gray-400'
+                                }`}>
+                                  {inst.percentage}%
+                                </span>
+                              </div>
+                              {/* 连接线 */}
+                              {idx < contract.installments.length - 1 && (
+                                <div className={`w-4 h-0.5 ${isCollected ? 'bg-green-300' : 'bg-gray-200'}`} />
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))
+            )}
           </div>
         );
       case 'projects':
