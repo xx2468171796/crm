@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, User, FileText, MessageSquare, Check, Download, ExternalLink, Link2, Lock, RefreshCw, Clipboard, DollarSign, UserPlus, History, Star, CheckCircle, Clock, Phone, Upload, Copy, FolderOpen, Eye, Trash2, AlertTriangle, ChevronDown, ChevronUp, Palette } from 'lucide-react';
+import { ArrowLeft, User, FileText, MessageSquare, Check, Download, ExternalLink, Link2, Lock, RefreshCw, Clipboard, DollarSign, UserPlus, History, Star, CheckCircle, Clock, Phone, Upload, Copy, Trash2, AlertTriangle, ChevronDown, ChevronUp, Palette } from 'lucide-react';
 import { useAuthStore } from '@/stores/auth';
 import { useSettingsStore } from '@/stores/settings';
 import { usePermissionsStore } from '@/stores/permissions';
@@ -13,11 +13,12 @@ import FormDetailModal from '@/components/FormDetailModal';
 import InputDialog from '@/components/InputDialog';
 import { useToast } from '@/hooks/use-toast';
 import { useUploader } from '@/hooks/use-uploader';
-import { isManager as checkIsManager, formatFileSize } from '@/lib/utils';
+import { isManager as checkIsManager } from '@/lib/utils';
 import { downloadFileChunked, ensureDirectory, getFileMetadata, previewFile, scanFolderRecursive } from '@/lib/tauri';
-import FileTree, { type FileNode } from '@/components/FileTree';
-import LocalFileTree from '@/components/LocalFileTree';
+import { type FileNode } from '@/components/FileTree';
 import { open } from '@tauri-apps/plugin-dialog';
+import UploadModal from '@/components/UploadModal';
+import DeliverableCategory from '@/components/DeliverableCategory';
 
 // 文件分类常量
 const FILE_CATEGORIES = ['客户文件', '作品文件', '模型文件'] as const;
@@ -385,6 +386,89 @@ export default function ProjectDetailPage() {
       setShowBatchRejectModal(false);
       setBatchRejectReason('');
       setPendingRejectFiles([]);
+    }
+  };
+
+  // 单文件审批通过
+  const handleApproveFile = async (fileId: number) => {
+    const file = Object.values(files?.categories || {})
+      .flatMap((c: any) => c.files)
+      .find((f: any) => Number(f.id) === fileId);
+    try {
+      const res = await fetch(`${serverUrl}/api/desktop_approval.php?action=approve`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ file_id: fileId }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        toast({ title: '审批通过', description: (file as any)?.filename });
+        loadProject('files');
+      } else {
+        toast({ title: '审批失败', description: data.error || '未知错误', variant: 'destructive' });
+      }
+    } catch (err: any) {
+      toast({ title: '审批失败', description: err.message, variant: 'destructive' });
+    }
+  };
+
+  // 单文件审批驳回
+  const handleRejectFile = async (fileId: number) => {
+    const file = Object.values(files?.categories || {})
+      .flatMap((c: any) => c.files)
+      .find((f: any) => Number(f.id) === fileId);
+    const reason = prompt('请输入驳回原因（可选）：');
+    if (reason === null) return;
+    try {
+      const res = await fetch(`${serverUrl}/api/desktop_approval.php?action=reject`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ file_id: fileId, reason: reason || '' }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        toast({ title: '已驳回', description: (file as any)?.filename });
+        loadProject('files');
+      } else {
+        toast({ title: '驳回失败', description: data.error || '未知错误', variant: 'destructive' });
+      }
+    } catch (err: any) {
+      toast({ title: '驳回失败', description: err.message, variant: 'destructive' });
+    }
+  };
+
+  // 单文件下载（列表视图）
+  const handleFileDownload = async (file: any) => {
+    try {
+      const storageKey = file.storage_key || file.file_path;
+      if (!storageKey) {
+        toast({ title: '下载失败', description: '缺少文件存储路径', variant: 'destructive' });
+        return;
+      }
+      const savePath = await open({
+        defaultPath: file.filename,
+        filters: [{ name: '所有文件', extensions: ['*'] }],
+        title: '选择保存位置',
+      });
+      if (!savePath || typeof savePath !== 'string') return;
+      const downloadRes = await fetch(`${serverUrl}/api/desktop_download.php`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ storage_key: storageKey }),
+      });
+      const downloadData = await downloadRes.json();
+      if (!downloadData.success || !downloadData.data?.presigned_url) {
+        throw new Error(downloadData.error?.message || '获取下载链接失败');
+      }
+      const taskId = `download-${Date.now()}`;
+      const result = await downloadFileChunked(taskId, downloadData.data.presigned_url, savePath);
+      if (result.success) {
+        toast({ title: '下载成功', description: file.filename });
+      } else {
+        throw new Error(result.error || '下载失败');
+      }
+    } catch (err: any) {
+      toast({ title: '下载失败', description: err.message, variant: 'destructive' });
     }
   };
 
@@ -2609,667 +2693,110 @@ export default function ProjectDetailPage() {
             {FILE_CATEGORIES.map((categoryName) => {
               const categoryFiles = files?.categories?.[categoryName]?.files || [];
               const colors = FILE_CATEGORY_COLORS[categoryName];
-              const deletableSelected = categoryFiles
-                .filter((f: any) => selectedFileIds.has(Number(f.id)) && Number(f.id) > 0)
-                .filter((f: any) => canManageFile(f));
-              const pendingSelected = categoryFiles
-                .filter((f: any) => selectedFileIds.has(Number(f.id)) && Number(f.id) > 0)
-                .filter((f: any) => normalizeApprovalStatus(f.approval_status) === 'pending');
+              const treeNodes = files?.categories?.[categoryName]?.tree;
               return (
-                <div 
-                  key={categoryName} 
-                  className={`bg-white rounded-xl border ${colors.bg}`}
-                >
-                  <div className={`px-4 py-3 border-b rounded-t-xl ${colors.header}`}>
-                    <div className="flex items-center justify-between">
-                      <h4 className="font-medium">{categoryName}</h4>
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs opacity-70">
-                          {categoryFiles.length} 个文件
-                        </span>
-                        <div className="flex items-center gap-1 bg-white/50 rounded p-0.5">
-                          <button
-                            type="button"
-                            onClick={() => setFileViewMode('list')}
-                            className={`px-2 py-0.5 text-xs rounded ${fileViewMode === 'list' ? 'bg-white shadow' : 'hover:bg-white/50'}`}
-                            title="列表视图"
-                          >
-                            列表
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setFileViewMode('tree')}
-                            className={`px-2 py-0.5 text-xs rounded ${fileViewMode === 'tree' ? 'bg-white shadow' : 'hover:bg-white/50'}`}
-                            title="树状视图"
-                          >
-                            树状
-                          </button>
-                        </div>
-                        {/* 全选/取消全选按钮 */}
-                        {categoryFiles.filter((f: any) => canManageFile(f) && Number(f.id) > 0).length > 0 && (
-                          <button
-                            type="button"
-                            className="px-2 py-1 text-xs bg-gray-100 text-gray-600 rounded hover:bg-gray-200"
-                            onClick={() => {
-                              const manageableFiles = categoryFiles.filter((f: any) => canManageFile(f) && Number(f.id) > 0);
-                              const allSelected = manageableFiles.every((f: any) => selectedFileIds.has(Number(f.id)));
-                              if (allSelected) {
-                                // 取消全选
-                                setSelectedFileIds(prev => {
-                                  const next = new Set(prev);
-                                  manageableFiles.forEach((f: any) => next.delete(Number(f.id)));
-                                  return next;
-                                });
-                              } else {
-                                // 全选
-                                setSelectedFileIds(prev => {
-                                  const next = new Set(prev);
-                                  manageableFiles.forEach((f: any) => next.add(Number(f.id)));
-                                  return next;
-                                });
-                              }
-                            }}
-                            title={categoryFiles.filter((f: any) => canManageFile(f) && Number(f.id) > 0).every((f: any) => selectedFileIds.has(Number(f.id))) ? '取消全选' : '全选'}
-                          >
-                            {categoryFiles.filter((f: any) => canManageFile(f) && Number(f.id) > 0).every((f: any) => selectedFileIds.has(Number(f.id))) ? '取消全选' : '全选'}
-                          </button>
-                        )}
-                        {deletableSelected.length > 0 && (
-                          <button
-                            type="button"
-                            className="px-2 py-1 text-xs bg-red-500 text-white rounded hover:bg-red-600"
-                            onClick={() => setShowBatchDeleteConfirm(true)}
-                            title="批量删除"
-                          >
-                            批量删除({deletableSelected.length})
-                          </button>
-                        )}
-                        {isManager && pendingSelected.length > 0 && (
-                          <>
-                            <button
-                              type="button"
-                              className="px-2 py-1 text-xs bg-green-500 text-white rounded hover:bg-green-600"
-                              onClick={() => handleBatchApprove(pendingSelected)}
-                              title="批量通过"
-                            >
-                              批量通过({pendingSelected.length})
-                            </button>
-                            <button
-                              type="button"
-                              className="px-2 py-1 text-xs bg-orange-500 text-white rounded hover:bg-orange-600"
-                              onClick={() => handleBatchReject(pendingSelected)}
-                              title="批量驳回"
-                            >
-                              批量驳回({pendingSelected.length})
-                            </button>
-                          </>
-                        )}
-                        {(() => {
-                          const rejectedSelected = categoryFiles
-                            .filter((f: any) => selectedFileIds.has(Number(f.id)) && normalizeApprovalStatus(f.approval_status) === 'rejected');
-                          return rejectedSelected.length > 0 ? (
-                            <button
-                              type="button"
-                              className="px-2 py-1 text-xs bg-blue-500 text-white rounded hover:bg-blue-600"
-                              onClick={() => handleBatchResubmit(rejectedSelected, categoryName)}
-                              title="批量重新提交"
-                            >
-                              批量重新提交({rejectedSelected.length})
-                            </button>
-                          ) : null;
-                        })()}
-                        <button
-                          onClick={() => openLocalFolder(categoryName)}
-                          className="p-1 hover:bg-white/50 rounded"
-                          title={`打开本地${categoryName}文件夹`}
-                        >
-                          <FolderOpen className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                  <div className="divide-y">
-                    {/* 本地文件 - 树状视图 */}
-                    {(localFiles[categoryName] || []).length > 0 && (
-                      <LocalFileTree
-                        files={localFiles[categoryName] || []}
-                        cloudFiles={categoryFiles.map((f: any) => ({ 
-                          filename: f.filename, 
-                          relative_path: f.relative_path 
-                        }))}
-                        onUploadFile={async (file) => {
-                          try {
-                            if (!project) throw new Error('项目未加载');
-                            const groupCode = customer?.group_code || `P${project.id}`;
-                            const projectId = project.id;
-                            const assetType = categoryName === '客户文件' ? 'customer' : categoryName === '模型文件' ? 'models' : 'works';
-                            await queueUpload(groupCode, assetType, file.path, file.name, projectId);
-                            toast({ title: '已添加到上传队列', description: file.name });
-                          } catch (err: any) {
-                            toast({ title: '上传失败', description: err.message, variant: 'destructive' });
-                          }
-                        }}
-                        onUploadFolder={async (_folderPath, files) => {
-                          try {
-                            if (!project) throw new Error('项目未加载');
-                            const groupCode = customer?.group_code || `P${project.id}`;
-                            const projectId = project.id;
-                            const assetType = categoryName === '客户文件' ? 'customer' : categoryName === '模型文件' ? 'models' : 'works';
-                            for (const file of files) {
-                              await queueUpload(groupCode, assetType, file.path, file.name, projectId);
-                            }
-                            toast({ title: '已添加到上传队列', description: `${files.length} 个文件` });
-                          } catch (err: any) {
-                            toast({ title: '上传失败', description: err.message, variant: 'destructive' });
-                          }
-                        }}
-                        selectedFiles={selectedLocalFiles}
-                        onToggleSelect={(filePath) => {
-                          setSelectedLocalFiles(prev => {
-                            const newSet = new Set(prev);
-                            if (newSet.has(filePath)) {
-                              newSet.delete(filePath);
-                            } else {
-                              newSet.add(filePath);
-                            }
-                            return newSet;
-                          });
-                        }}
-                        onSelectAll={(files) => {
-                          setSelectedLocalFiles(prev => {
-                            const allSelected = files.every(f => prev.has(f.path));
-                            if (allSelected) {
-                              return new Set();
-                            } else {
-                              return new Set(files.map(f => f.path));
-                            }
-                          });
-                        }}
-                      />
-                    )}
-                    
-                    {/* 云端文件 - 树状视图 */}
-                    {fileViewMode === 'tree' && categoryFiles.length > 0 && (
-                      <FileTree
-                        nodes={(() => {
-                          // 优先使用API返回的tree，否则从files构建
-                          const apiTree = files?.categories?.[categoryName]?.tree;
-                          if (apiTree && apiTree.length > 0) {
-                            return apiTree as FileNode[];
-                          }
-                          // 从平铺的files构建树状结构
-                          return categoryFiles.map((f: any) => ({
-                            name: f.filename || f.relative_path?.split('/').pop() || '未知文件',
-                            type: 'file' as const,
-                            path: f.relative_path || f.filename,
-                            file: {
-                              id: f.id,
-                              filename: f.filename,
-                              relative_path: f.relative_path || f.filename,
-                              file_size: f.file_size || 0,
-                              storage_key: f.storage_key || f.file_path || '',
-                              download_url: f.download_url || '',
-                              thumbnail_url: f.thumbnail_url,
-                              last_modified: f.last_modified,
-                              approval_status: f.approval_status,
-                              uploader_name: f.uploader_name,
-                              create_time: f.create_time,
-                            },
-                          }));
-                        })()}
-                        onPreview={(file) => file && handleFilePreview(file, categoryName)}
-                        onDownload={async (file) => {
-                          if (!file?.download_url) {
-                            toast({ title: '下载失败', description: '缺少下载链接', variant: 'destructive' });
-                            return;
-                          }
-                          try {
-                            const downloadDir = await open({ directory: true, title: '选择保存位置' });
-                            if (!downloadDir) return;
-                            const savePath = `${downloadDir}/${file.filename}`;
-                            await downloadFileChunked(`download-${Date.now()}`, file.download_url, savePath);
-                            toast({ title: '下载完成', description: file.filename });
-                          } catch (err: any) {
-                            toast({ title: '下载失败', description: err.message, variant: 'destructive' });
-                          }
-                        }}
-                        onDelete={(file) => file && handleFileDelete(file)}
-                        onRename={(file) => {
-                          if (!file) return;
-                          // 找到对应的原始文件对象
-                          const originalFile = categoryFiles.find((f: any) => f.storage_key === file.storage_key || f.filename === file.filename);
-                          if (originalFile) {
-                            requestRename(originalFile);
-                          }
-                        }}
-                        canManageFile={(file) => {
-                          if (!file) return false;
-                          // 管理员可以管理所有文件
-                          if (checkIsManager(user?.role)) return true;
-                          // 上传者可以管理待审核或被驳回的文件
-                          const originalFile = categoryFiles.find((f: any) => 
-                            f.storage_key === file.storage_key || f.filename === file.filename
-                          ) as any;
-                          if (!originalFile) return false;
-                          const uploaderId = Number(originalFile?.uploader_id || 0);
-                          const approvalStatus = normalizeApprovalStatus(originalFile?.approval_status);
-                          const isUploader = uploaderId > 0 && uploaderId === (user?.id || 0);
-                          return isUploader && (approvalStatus === 'pending' || approvalStatus === 'rejected');
-                        }}
-                        previewingFile={previewingFile}
-                      />
-                    )}
-                    
-                    {/* 云端文件 - 列表视图 */}
-                    {fileViewMode === 'list' && categoryFiles.map((file: any) => (
-                      <div key={file.id} className="p-4 hover:bg-gray-50 flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                          {canManageFile(file) && Number(file.id) > 0 && (
-                            <input
-                              type="checkbox"
-                              checked={selectedFileIds.has(Number(file.id))}
-                              onChange={() => toggleSelectFile(Number(file.id))}
-                              className="w-4 h-4"
-                              title="选择"
-                            />
-                          )}
-                          <div 
-                            className={`w-10 h-10 bg-gray-100 rounded-lg flex items-center justify-center overflow-hidden cursor-pointer ${previewingFile === file.filename ? 'ring-2 ring-blue-500' : ''}`}
-                            onClick={async () => {
-                              if (!file.download_url) {
-                                toast({ title: '无法预览', description: '缺少下载链接', variant: 'destructive' });
-                                return;
-                              }
-                              try {
-                                setPreviewingFile(file.filename);
-                                toast({ title: '正在打开...', description: file.filename });
-                                const localBasePath = `${getLocalBasePath()}/${categoryName}`;
-                                await previewFile(file.download_url, file.filename, localBasePath, file.relative_path);
-                              } catch (err: any) {
-                                toast({ title: '预览失败', description: err.message, variant: 'destructive' });
-                              } finally {
-                                setPreviewingFile(null);
-                              }
-                            }}
-                          >
-                            {(() => {
-                              const ext = (file.filename || '').split('.').pop()?.toLowerCase() || '';
-                              const isImage = ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp'].includes(ext);
-                              const isVideo = ['mp4', 'webm', 'mov', 'avi', 'mkv'].includes(ext);
-                              
-                              if (isImage && file.thumbnail_url) {
-                                return (
-                                  <img 
-                                    src={file.thumbnail_url} 
-                                    alt={file.filename}
-                                    className="w-full h-full object-cover"
-                                    onError={(e) => {
-                                      (e.target as HTMLImageElement).style.display = 'none';
-                                      const parent = (e.target as HTMLImageElement).parentElement;
-                                      if (parent) {
-                                        const icon = parent.querySelector('.fallback-icon');
-                                        if (icon) icon.classList.remove('hidden');
-                                      }
-                                    }}
-                                  />
-                                );
-                              }
-                              if (isVideo) {
-                                return (
-                                  <div className="w-full h-full bg-gray-200 flex items-center justify-center relative">
-                                    <svg className="w-5 h-5 text-gray-500" fill="currentColor" viewBox="0 0 24 24">
-                                      <path d="M8 5v14l11-7z"/>
-                                    </svg>
-                                  </div>
-                                );
-                              }
-                              return null;
-                            })()}
-                            <FileText className={`fallback-icon w-5 h-5 text-gray-400 ${(file.thumbnail_url && ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp'].includes((file.filename || '').split('.').pop()?.toLowerCase() || '')) || ['mp4', 'webm', 'mov', 'avi', 'mkv'].includes((file.filename || '').split('.').pop()?.toLowerCase() || '') ? 'hidden' : ''}`} />
-                          </div>
-                          <div>
-                            <div className="flex items-center gap-2">
-                              <p className="font-medium text-gray-800">{file.filename ? (file.filename.includes('/') || file.filename.includes('\\') ? file.filename.split(/[/\\]/).pop() : file.filename) : '未知文件'}</p>
-                              <span className="px-1.5 py-0.5 bg-blue-100 text-blue-600 rounded text-[10px]">云端</span>
-                              {(localFiles[categoryName] || []).some(lf => lf.name === file.filename) && (
-                                <span className="px-1.5 py-0.5 bg-gray-100 text-gray-500 rounded text-[10px]">已同步</span>
-                              )}
-                            </div>
-                            <p className="text-xs text-gray-400">
-                              {formatFileSize(file.file_size)} • {file.uploader_name} • {file.create_time}
-                            </p>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          {/* 审批状态徽章和操作按钮（所有文件分类通用） */}
-                          {normalizeApprovalStatus(file.approval_status) === 'pending' && (
-                            <>
-                              <span className="px-2 py-0.5 bg-yellow-100 text-yellow-700 rounded text-xs">待审核</span>
-                              {isManager && (
-                                <>
-                                  <button
-                                    type="button"
-                                    onClick={async () => {
-                                      try {
-                                        const res = await fetch(`${serverUrl}/api/desktop_approval.php?action=approve`, {
-                                          method: 'POST',
-                                          headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-                                          body: JSON.stringify({ file_id: file.id }),
-                                        });
-                                        const data = await res.json();
-                                        if (data.success) {
-                                          toast({ title: '审批通过', description: file.filename });
-                                          loadProject('files');
-                                        } else {
-                                          toast({ title: '审批失败', description: data.error || '未知错误', variant: 'destructive' });
-                                        }
-                                      } catch (err: any) {
-                                        toast({ title: '审批失败', description: err.message, variant: 'destructive' });
-                                      }
-                                    }}
-                                    className="px-2 py-0.5 bg-green-500 hover:bg-green-600 text-white rounded text-xs"
-                                    title="通过"
-                                  >
-                                    通过
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={async () => {
-                                      const reason = prompt('请输入驳回原因（可选）：');
-                                      if (reason === null) return;
-                                      try {
-                                        const res = await fetch(`${serverUrl}/api/desktop_approval.php?action=reject`, {
-                                          method: 'POST',
-                                          headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-                                          body: JSON.stringify({ file_id: file.id, reason: reason || '' }),
-                                        });
-                                        const data = await res.json();
-                                        if (data.success) {
-                                          toast({ title: '已驳回', description: file.filename });
-                                          loadProject('files');
-                                        } else {
-                                          toast({ title: '驳回失败', description: data.error || '未知错误', variant: 'destructive' });
-                                        }
-                                      } catch (err: any) {
-                                        toast({ title: '驳回失败', description: err.message, variant: 'destructive' });
-                                      }
-                                    }}
-                                    className="px-2 py-0.5 bg-red-500 hover:bg-red-600 text-white rounded text-xs"
-                                    title="驳回"
-                                  >
-                                    驳回
-                                  </button>
-                                </>
-                              )}
-                            </>
-                          )}
-                          {normalizeApprovalStatus(file.approval_status) === 'approved' && (
-                            <span className="px-2 py-0.5 bg-green-100 text-green-700 rounded text-xs">已通过</span>
-                          )}
-                          {normalizeApprovalStatus(file.approval_status) === 'rejected' && (
-                            <>
-                              <span className="px-2 py-0.5 bg-red-100 text-red-700 rounded text-xs">已驳回</span>
-                              <button
-                                type="button"
-                                onClick={() => handleResubmitFile(file, categoryName)}
-                                className="px-2 py-0.5 bg-blue-500 hover:bg-blue-600 text-white rounded text-xs"
-                                title="重新提交"
-                              >
-                                重新提交
-                              </button>
-                            </>
-                          )}
-                          <button 
-                            type="button"
-                            disabled={previewingFile === file.filename}
-                            onClick={() => handleFilePreview(file, categoryName)}
-                            className="p-2 hover:bg-gray-100 rounded-lg" 
-                            title="预览"
-                          >
-                            <Eye className={`w-4 h-4 ${previewingFile === file.filename ? 'text-gray-300 animate-pulse' : 'text-blue-500'}`} />
-                          </button>
-                          <button 
-                            type="button"
-                            onClick={async () => {
-                              try {
-                                const storageKey = file.storage_key || file.file_path;
-                                if (!storageKey) {
-                                  toast({ title: '下载失败', description: '缺少文件存储路径', variant: 'destructive' });
-                                  return;
-                                }
-                                
-                                const savePath = await open({
-                                  defaultPath: file.filename,
-                                  filters: [{ name: '所有文件', extensions: ['*'] }],
-                                  title: '选择保存位置',
-                                });
-                                
-                                if (!savePath || typeof savePath !== 'string') return;
-                                
-                                const downloadRes = await fetch(`${serverUrl}/api/desktop_download.php`, {
-                                  method: 'POST',
-                                  headers: {
-                                    'Authorization': `Bearer ${token}`,
-                                    'Content-Type': 'application/json',
-                                  },
-                                  body: JSON.stringify({ storage_key: storageKey }),
-                                });
-                                const downloadData = await downloadRes.json();
-                                if (!downloadData.success || !downloadData.data?.presigned_url) {
-                                  throw new Error(downloadData.error?.message || '获取下载链接失败');
-                                }
-                                
-                                const taskId = `download-${Date.now()}`;
-                                const result = await downloadFileChunked(taskId, downloadData.data.presigned_url, savePath);
-                                
-                                if (result.success) {
-                                  toast({ title: '下载成功', description: file.filename });
-                                } else {
-                                  throw new Error(result.error || '下载失败');
-                                }
-                              } catch (err: any) {
-                                toast({ title: '下载失败', description: err.message, variant: 'destructive' });
-                              }
-                            }}
-                            className="p-2 hover:bg-gray-100 rounded-lg" 
-                            title="下载"
-                          >
-                            <Download className="w-4 h-4 text-gray-500" />
-                          </button>
-                          {canManageFile(file) && (
-                            <button
-                              type="button"
-                              onClick={() => requestRename(file)}
-                              className="p-2 hover:bg-gray-100 rounded-lg"
-                              title="重命名"
-                            >
-                              <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                              </svg>
-                            </button>
-                          )}
-                          {/* 删除按钮：使用统一的权限判断 */}
-                          {canManageFile(file) && (
-                            <button 
-                              onClick={() => handleFileDelete(file)}
-                              className="p-2 hover:bg-red-100 rounded-lg" 
-                              title="删除"
-                            >
-                              <svg className="w-4 h-4 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                              </svg>
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                    
-                    {/* 空状态 */}
-                    {categoryFiles.length === 0 && (localFiles[categoryName] || []).length === 0 && (
-                      <div className="p-6 text-center text-gray-400 text-sm">
-                        暂无{categoryName}
-                      </div>
-                    )}
-                  </div>
-                </div>
+                <DeliverableCategory
+                  key={categoryName}
+                  categoryName={categoryName}
+                  categoryFiles={categoryFiles}
+                  treeNodes={treeNodes}
+                  colors={colors}
+                  localFiles={localFiles[categoryName] || []}
+                  fileViewMode={fileViewMode}
+                  selectedFileIds={selectedFileIds}
+                  selectedLocalFiles={selectedLocalFiles}
+                  previewingFile={previewingFile}
+                  isManager={isManager}
+                  userRole={user?.role}
+                  userId={user?.id}
+                  onSetFileViewMode={setFileViewMode}
+                  onToggleSelectFile={toggleSelectFile}
+                  onSelectAllFiles={(filesToSelect) => {
+                    const manageableIds = filesToSelect.filter((f) => canManageFile(f) && Number(f.id) > 0).map((f) => Number(f.id));
+                    const allSelected = manageableIds.every((id) => selectedFileIds.has(id));
+                    setSelectedFileIds(prev => {
+                      const next = new Set(prev);
+                      if (allSelected) { manageableIds.forEach(id => next.delete(id)); }
+                      else { manageableIds.forEach(id => next.add(id)); }
+                      return next;
+                    });
+                  }}
+                  onSetShowBatchDeleteConfirm={setShowBatchDeleteConfirm}
+                  onBatchApprove={handleBatchApprove}
+                  onBatchReject={handleBatchReject}
+                  onBatchResubmit={handleBatchResubmit}
+                  onOpenLocalFolder={openLocalFolder}
+                  onUploadFile={async (file, catName) => {
+                    try {
+                      if (!project) throw new Error('项目未加载');
+                      const groupCode = customer?.group_code || `P${project.id}`;
+                      const projectId = project.id;
+                      const assetType = catName === '客户文件' ? 'customer' : catName === '模型文件' ? 'models' : 'works';
+                      await queueUpload(groupCode, assetType, file.path, file.name, projectId);
+                      toast({ title: '已添加到上传队列', description: file.name });
+                    } catch (err: any) {
+                      toast({ title: '上传失败', description: err.message, variant: 'destructive' });
+                    }
+                  }}
+                  onUploadFolder={async (_folderPath, uploadFiles, catName) => {
+                    try {
+                      if (!project) throw new Error('项目未加载');
+                      const groupCode = customer?.group_code || `P${project.id}`;
+                      const projectId = project.id;
+                      const assetType = catName === '客户文件' ? 'customer' : catName === '模型文件' ? 'models' : 'works';
+                      for (const file of uploadFiles) {
+                        await queueUpload(groupCode, assetType, file.path, file.name, projectId);
+                      }
+                      toast({ title: '已添加到上传队列', description: `${uploadFiles.length} 个文件` });
+                    } catch (err: any) {
+                      toast({ title: '上传失败', description: err.message, variant: 'destructive' });
+                    }
+                  }}
+                  onToggleSelectLocalFile={(filePath) => {
+                    setSelectedLocalFiles(prev => {
+                      const newSet = new Set(prev);
+                      if (newSet.has(filePath)) { newSet.delete(filePath); } else { newSet.add(filePath); }
+                      return newSet;
+                    });
+                  }}
+                  onSelectAllLocalFiles={(allFiles) => {
+                    setSelectedLocalFiles(prev => {
+                      const allSelected = allFiles.every(f => prev.has(f.path));
+                      if (allSelected) { return new Set(); } else { return new Set(allFiles.map(f => f.path)); }
+                    });
+                  }}
+                  onFilePreview={handleFilePreview}
+                  onFileDelete={handleFileDelete}
+                  onFileRename={requestRename}
+                  onFileDownload={handleFileDownload}
+                  onApprove={handleApproveFile}
+                  onReject={handleRejectFile}
+                  onResubmit={handleResubmitFile}
+                  normalizeApprovalStatus={normalizeApprovalStatus}
+                  canManageFile={canManageFile}
+                />
               );
             })}
-            
-            {/* 上传弹窗（支持拖拽、多文件、分类选择、进度显示） */}
+
+            {/* 上传弹窗 */}
             {showUploadModal && (
-              <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-                <div className="bg-white rounded-xl p-6 w-[480px] max-h-[80vh] overflow-y-auto">
-                  <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-lg font-semibold">上传文件</h3>
-                    {!uploading && (
-                      <button type="button" onClick={closeUploadModal} className="text-gray-400 hover:text-gray-600">
-                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                        </svg>
-                      </button>
-                    )}
-                  </div>
-                  
-                  {/* 拖拽区域 */}
-                  {!uploading && (
-                    <div
-                      onDragOver={handleModalDragOver}
-                      onDragLeave={handleModalDragLeave}
-                      onDrop={handleModalDrop}
-                      className={`border-2 border-dashed rounded-xl p-8 text-center transition-colors mb-4 ${
-                        dragOver ? 'border-blue-500 bg-blue-50' : 'border-gray-300 hover:border-gray-400'
-                      }`}
-                    >
-                      <Upload className="w-10 h-10 mx-auto mb-3 text-gray-400" />
-                      <p className="text-gray-600 mb-2">拖拽文件到此处</p>
-                      <p className="text-gray-400 text-sm mb-3">或</p>
-                      <label className="inline-block px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 cursor-pointer">
-                        选择文件
-                        <input type="file" multiple className="hidden" onChange={handleFileSelect} />
-                      </label>
-                      {isTauri && (
-                        <button
-                          type="button"
-                          onClick={async () => {
-                            const folderPath = await open({ directory: true, title: '选择文件夹' });
-                            if (!folderPath) return;
-                            const scanned = await scanFolderRecursive(folderPath as string);
-                            const newItems = scanned.map(f => ({
-                              kind: 'local' as const,
-                              path: f.absolute_path,
-                              name: f.relative_path,
-                              size: f.size || 0,
-                            }));
-                            setPendingUploads(prev => [...prev, ...newItems]);
-                          }}
-                          className="inline-block px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 ml-2"
-                        >
-                          选择文件夹
-                        </button>
-                      )}
-                    </div>
-                  )}
-                  
-                  {/* 待上传文件列表 */}
-                  {pendingUploads.length > 0 && !uploading && (
-                    <div className="mb-4">
-                      <p className="text-sm text-gray-500 mb-2">待上传文件 ({pendingUploads.length})</p>
-                      <div className="space-y-2 max-h-32 overflow-y-auto">
-                        {pendingUploads.map((item, index) => (
-                          <div key={index} className="flex items-center justify-between bg-gray-50 rounded-lg px-3 py-2">
-                            <div className="flex-1 min-w-0">
-                              <p className="text-sm font-medium text-gray-800 truncate">{item.kind === 'web' ? item.file.name : item.name}</p>
-                              <p className="text-xs text-gray-400">
-                                {formatFileSize(item.kind === 'web' ? item.file.size : item.size || 0)}
-                              </p>
-                            </div>
-                            <button onClick={() => removePendingFile(index)} className="ml-2 text-gray-400 hover:text-red-500">
-                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                              </svg>
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                  
-                  {/* 上传进度 */}
-                  {uploading && uploadProgress && (
-                    <div className="mb-4 p-4 bg-blue-50 rounded-xl">
-                      <div className="flex items-center justify-between mb-2">
-                        <p className="text-sm font-medium text-blue-700">正在上传</p>
-                        <p className="text-sm text-blue-600">{uploadProgress.current}/{uploadProgress.total} 分片</p>
-                      </div>
-                      <p className="text-xs text-blue-500 mb-2 truncate">{uploadProgress.filename}</p>
-                      <div className="w-full bg-blue-200 rounded-full h-2">
-                        <div 
-                          className="bg-blue-500 h-2 rounded-full transition-all duration-100"
-                          style={{ width: `${uploadProgress.percent ?? (uploadProgress.total > 0 ? Math.round((uploadProgress.current / uploadProgress.total) * 100) : 0)}%` }}
-                        />
-                      </div>
-                      <p className="text-xs text-blue-500 mt-1 text-right">
-                        {uploadProgress.percent ?? (uploadProgress.total > 0 ? Math.round((uploadProgress.current / uploadProgress.total) * 100) : 0)}%
-                      </p>
-                    </div>
-                  )}
-                  
-                  {/* 分类选择 */}
-                  {!uploading && (
-                    <div className="mb-4">
-                      <p className="text-sm text-gray-500 mb-2">选择上传目录</p>
-                      <div className="grid grid-cols-3 gap-2">
-                        {FILE_CATEGORIES.map((cat) => {
-                          const colors = FILE_CATEGORY_COLORS[cat];
-                          const isSelected = uploadCategory === cat;
-                          return (
-                            <button
-                              key={cat}
-                              type="button"
-                              onClick={() => setUploadCategory(cat)}
-                              className={`p-3 rounded-lg border-2 transition-all ${
-                                isSelected 
-                                  ? `${colors.bg} border-current` 
-                                  : 'border-gray-200 hover:border-gray-300'
-                              }`}
-                            >
-                              <div className={`text-sm font-medium ${isSelected ? colors.header.split(' ')[1] : 'text-gray-700'}`}>
-                                {cat}
-                              </div>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
-                  
-                  {/* 操作按钮 */}
-                  <div className="flex gap-2">
-                    <button
-                      type="button"
-                      onClick={closeUploadModal}
-                      disabled={uploading}
-                      className={`flex-1 px-4 py-2 rounded-lg ${
-                        uploading ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'text-gray-600 hover:bg-gray-100'
-                      }`}
-                    >
-                      取消
-                    </button>
-                    <button
-                      type="button"
-                      onClick={startUploadFromModal}
-                      disabled={uploading || pendingUploads.length === 0}
-                      className={`flex-1 px-4 py-2 rounded-lg ${
-                        uploading || pendingUploads.length === 0
-                          ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                          : 'bg-blue-500 text-white hover:bg-blue-600'
-                      }`}
-                    >
-                      {uploading ? '上传中...' : `上传 (${pendingUploads.length})`}
-                    </button>
-                  </div>
-                </div>
-              </div>
+              <UploadModal
+                uploadCategory={uploadCategory}
+                pendingUploads={pendingUploads}
+                uploading={uploading}
+                uploadProgress={uploadProgress}
+                dragOver={dragOver}
+                isTauri={isTauri}
+                onFileSelect={handleFileSelect}
+                onDrop={handleModalDrop}
+                onDragOver={handleModalDragOver}
+                onDragLeave={handleModalDragLeave}
+                onStartUpload={startUploadFromModal}
+                onClose={closeUploadModal}
+                onRemoveFile={removePendingFile}
+                onCategoryChange={setUploadCategory}
+                onAddLocalItems={(items) => setPendingUploads(prev => [...prev, ...items])}
+              />
             )}
           </div>
         ) : activeTab === 'messages' ? (
