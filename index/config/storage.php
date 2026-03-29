@@ -85,8 +85,8 @@ return [
         'internal_endpoint' => getenv('S3_INTERNAL_ENDPOINT') ?: 'http://172.18.0.5:9000',
         'region'         => getenv('S3_REGION') ?: 'cn-default',
         'bucket'         => getenv('S3_BUCKET') ?: 'crm20260116',
-        'access_key'     => getenv('S3_ACCESS_KEY') ?: 'L9G8IjSqWbftIWkkDkyu',
-        'secret_key'     => getenv('S3_SECRET_KEY') ?: 'OhvzHwG44sYVESyqhBfVNDoUATwB991AxjagwSfL',
+        'access_key'     => getenv('S3_ACCESS_KEY') ?: '',
+        'secret_key'     => getenv('S3_SECRET_KEY') ?: '',
         'session_token'  => getenv('S3_SESSION_TOKEN') ?: null,
         'prefix'         => trim((getenv('S3_PREFIX') !== false ? getenv('S3_PREFIX') : ''), '/'),
         // use_https: 优先使用环境变量，否则从 endpoint 自动检测协议
