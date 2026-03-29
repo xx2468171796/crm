@@ -563,7 +563,7 @@ function handleAssignTech($user, $isManager) {
         Db::rollBack();
         error_log('[assign_tech] 事务失败: ' . $e->getMessage());
         http_response_code(500);
-        echo json_encode(['success' => false, 'error' => '分配失败: ' . $e->getMessage()], JSON_UNESCAPED_UNICODE);
+        echo json_encode(['success' => false, 'error' => '服务器内部错误'], JSON_UNESCAPED_UNICODE);
         return;
     }
     
