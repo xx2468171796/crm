@@ -20,6 +20,7 @@ interface ProjectCommission {
   project_name: string;
   current_status: string;
   customer_name: string;
+  customer_type: string | null;
   commission_amount: number;
   commission_note: string;
   commission_set_at: number | null;
@@ -44,6 +45,9 @@ export default function TechCommissionPage() {
   // 人员筛选
   const [selectedUserIds, setSelectedUserIds] = useState<number[]>([]);
   const [showUserFilter, setShowUserFilter] = useState(false);
+
+  // 客户类型筛选
+  const [selectedCustomerType, setSelectedCustomerType] = useState<string>('');
   
   // 加载数据
   const loadData = async () => {
@@ -73,11 +77,26 @@ export default function TechCommissionPage() {
     }
   };
   
-  // 根据人员筛选过滤数据
+  // 根据人员和客户类型筛选过滤数据
   const filteredData = useMemo(() => {
-    if (selectedUserIds.length === 0) return allData;
-    return allData.filter(u => selectedUserIds.includes(u.tech_user_id));
-  }, [allData, selectedUserIds]);
+    let data = allData;
+    if (selectedUserIds.length > 0) {
+      data = data.filter(u => selectedUserIds.includes(u.tech_user_id));
+    }
+    if (selectedCustomerType) {
+      data = data.map(u => {
+        const filtered = (u.projects || []).filter(p => p.customer_type === selectedCustomerType);
+        if (filtered.length === 0) return null;
+        return {
+          ...u,
+          projects: filtered,
+          project_count: filtered.length,
+          total_commission: filtered.reduce((sum, p) => sum + (p.commission_amount || 0), 0),
+        };
+      }).filter(Boolean) as TechUserSummary[];
+    }
+    return data;
+  }, [allData, selectedUserIds, selectedCustomerType]);
   
   // 动态计算汇总（根据筛选结果）
   const summary = useMemo(() => {
@@ -139,8 +158,20 @@ export default function TechCommissionPage() {
   
   // 导出 CSV
   const handleExport = () => {
-    const headers = ['设计师', '项目数', '总提成'];
-    const rows = filteredData.map(u => [u.tech_username, u.project_count, u.total_commission]);
+    const headers = ['设计师', '项目名', '客户名', '客户类型', '提成金额', '提成日期'];
+    const rows: (string | number)[][] = [];
+    filteredData.forEach(u => {
+      (u.projects || []).forEach(p => {
+        rows.push([
+          u.tech_username,
+          p.project_name,
+          p.customer_name,
+          p.customer_type || '',
+          p.commission_amount || 0,
+          p.commission_set_at ? new Date(p.commission_set_at * 1000).toLocaleDateString('zh-CN') : '',
+        ]);
+      });
+    });
     
     const csv = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
     const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8' });
@@ -335,6 +366,36 @@ export default function TechCommissionPage() {
               </div>
             )}
           </div>
+
+          {/* 客户类型筛选 */}
+          <div className="flex items-center gap-4 flex-wrap">
+            <span className="text-sm text-gray-600 font-medium">客户类型:</span>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setSelectedCustomerType('')}
+                className={`px-3 py-1.5 text-sm rounded-lg transition-colors ${
+                  !selectedCustomerType
+                    ? 'bg-indigo-600 text-white'
+                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                }`}
+              >
+                全部
+              </button>
+              {['建商', '个人', '设计师', '建材商', '统包', '装修师傅'].map(type => (
+                <button
+                  key={type}
+                  onClick={() => setSelectedCustomerType(selectedCustomerType === type ? '' : type)}
+                  className={`px-3 py-1.5 text-sm rounded-lg transition-colors ${
+                    selectedCustomerType === type
+                      ? 'bg-indigo-600 text-white'
+                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                  }`}
+                >
+                  {type}
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
         
         {/* 设计师列表 */}
@@ -405,6 +466,9 @@ export default function TechCommissionPage() {
                                 <div className="flex items-center gap-2">
                                   <span className="text-gray-800 group-hover:text-indigo-600">{p.project_name}</span>
                                   <span className="text-gray-400">({p.customer_name})</span>
+                                  {p.customer_type && (
+                                    <span className="px-1.5 py-0.5 text-xs rounded bg-orange-100 text-orange-700">{p.customer_type}</span>
+                                  )}
                                   <ExternalLink className="w-3 h-3 text-gray-300 group-hover:text-indigo-500" />
                                 </div>
                                 <div className="flex items-center gap-3">

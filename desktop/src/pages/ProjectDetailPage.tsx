@@ -92,6 +92,7 @@ interface CustomerData {
   name: string;
   group_code: string;
   customer_group_name: string | null;
+  customer_type: string | null;
   alias: string | null;
   phone: string;
   portal_token: string | null;
@@ -2157,6 +2158,12 @@ export default function ProjectDetailPage() {
                         <span className="text-sm text-gray-800">{customer.phone}</span>
                       </div>
                     )}
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-gray-400">客户类型</span>
+                      <span className={`text-sm ${customer?.customer_type ? 'px-2 py-0.5 rounded bg-orange-100 text-orange-700' : 'text-gray-400'}`}>
+                        {customer?.customer_type || '未设置'}
+                      </span>
+                    </div>
                     {/* 门户密码 */}
                     {customer?.portal_token && customer?.portal_password && (
                       <div className="flex items-center justify-between pt-2 border-t">
@@ -3140,6 +3147,26 @@ export default function ProjectDetailPage() {
                         选择文件
                         <input type="file" multiple className="hidden" onChange={handleFileSelect} />
                       </label>
+                      {isTauri && (
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            const folderPath = await open({ directory: true, title: '选择文件夹' });
+                            if (!folderPath) return;
+                            const scanned = await scanFolderRecursive(folderPath as string);
+                            const newItems = scanned.map(f => ({
+                              kind: 'local' as const,
+                              path: f.absolute_path,
+                              name: f.relative_path,
+                              size: f.size || 0,
+                            }));
+                            setPendingUploads(prev => [...prev, ...newItems]);
+                          }}
+                          className="inline-block px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 ml-2"
+                        >
+                          选择文件夹
+                        </button>
+                      )}
                     </div>
                   )}
                   
@@ -3178,11 +3205,11 @@ export default function ProjectDetailPage() {
                       <div className="w-full bg-blue-200 rounded-full h-2">
                         <div 
                           className="bg-blue-500 h-2 rounded-full transition-all duration-100"
-                          style={{ width: `${uploadProgress.percent ?? Math.round((uploadProgress.current / uploadProgress.total) * 100)}%` }}
+                          style={{ width: `${uploadProgress.percent ?? (uploadProgress.total > 0 ? Math.round((uploadProgress.current / uploadProgress.total) * 100) : 0)}%` }}
                         />
                       </div>
                       <p className="text-xs text-blue-500 mt-1 text-right">
-                        {uploadProgress.percent ?? Math.round((uploadProgress.current / uploadProgress.total) * 100)}%
+                        {uploadProgress.percent ?? (uploadProgress.total > 0 ? Math.round((uploadProgress.current / uploadProgress.total) * 100) : 0)}%
                       </p>
                     </div>
                   )}
@@ -3439,51 +3466,86 @@ export default function ProjectDetailPage() {
                 />
               </div>
             </div>
-            <div className="flex justify-end gap-3 mt-6">
-              <button
-                onClick={() => {
-                  setShowCommissionEditor(false);
-                  setEditingTech(null);
-                }}
-                className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800"
-              >
-                取消
-              </button>
-              <button
-                onClick={async () => {
-                  if (!serverUrl || !token || !editingTech) return;
-                  try {
-                    const res = await fetch(`${serverUrl}/api/desktop_tech_commission.php?action=set_commission`, {
-                      method: 'POST',
-                      headers: {
-                        'Authorization': `Bearer ${token}`,
-                        'Content-Type': 'application/json',
-                      },
-                      body: JSON.stringify({
-                        assignment_id: editingTech.assignment_id,
-                        commission_amount: parseFloat(commissionAmount) || 0,
-                        commission_note: commissionNote,
-                        commission_date: commissionDate,
-                      }),
-                    });
-                    const data = await res.json();
-                    if (data.success) {
-                      toast({ title: '提成设置成功', variant: 'success' });
-                      setShowCommissionEditor(false);
-                      setEditingTech(null);
-                      loadProject('overview');
-                    } else {
-                      toast({ title: data.error || '设置失败', variant: 'destructive' });
+            <div className="flex justify-between mt-6">
+              {editingTech.commission !== null ? (
+                <button
+                  onClick={async () => {
+                    if (!serverUrl || !token || !editingTech) return;
+                    if (!confirm('确定要删除该提成记录吗？')) return;
+                    try {
+                      const res = await fetch(`${serverUrl}/api/desktop_tech_commission.php?action=delete_commission`, {
+                        method: 'POST',
+                        headers: {
+                          'Authorization': `Bearer ${token}`,
+                          'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({ assignment_id: editingTech.assignment_id }),
+                      });
+                      const data = await res.json();
+                      if (data.success) {
+                        toast({ title: '提成已删除', variant: 'success' });
+                        setShowCommissionEditor(false);
+                        setEditingTech(null);
+                        loadProject('overview');
+                      } else {
+                        toast({ title: data.error || '删除失败', variant: 'destructive' });
+                      }
+                    } catch (e) {
+                      console.error('删除提成失败:', e);
+                      toast({ title: '删除失败', variant: 'destructive' });
                     }
-                  } catch (e) {
-                    console.error('设置提成失败:', e);
-                    toast({ title: '设置失败', variant: 'destructive' });
-                  }
-                }}
-                className="px-4 py-2 text-sm text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg"
-              >
-                保存
-              </button>
+                  }}
+                  className="px-4 py-2 text-sm text-red-600 hover:text-red-800 hover:bg-red-50 rounded-lg"
+                >
+                  删除提成
+                </button>
+              ) : <div />}
+              <div className="flex gap-3">
+                <button
+                  onClick={() => {
+                    setShowCommissionEditor(false);
+                    setEditingTech(null);
+                  }}
+                  className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800"
+                >
+                  取消
+                </button>
+                <button
+                  onClick={async () => {
+                    if (!serverUrl || !token || !editingTech) return;
+                    try {
+                      const res = await fetch(`${serverUrl}/api/desktop_tech_commission.php?action=set_commission`, {
+                        method: 'POST',
+                        headers: {
+                          'Authorization': `Bearer ${token}`,
+                          'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({
+                          assignment_id: editingTech.assignment_id,
+                          commission_amount: parseFloat(commissionAmount) || 0,
+                          commission_note: commissionNote,
+                          commission_date: commissionDate,
+                        }),
+                      });
+                      const data = await res.json();
+                      if (data.success) {
+                        toast({ title: '提成设置成功', variant: 'success' });
+                        setShowCommissionEditor(false);
+                        setEditingTech(null);
+                        loadProject('overview');
+                      } else {
+                        toast({ title: data.error || '设置失败', variant: 'destructive' });
+                      }
+                    } catch (e) {
+                      console.error('设置提成失败:', e);
+                      toast({ title: '设置失败', variant: 'destructive' });
+                    }
+                  }}
+                  className="px-4 py-2 text-sm text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg"
+                >
+                  保存
+                </button>
+              </div>
             </div>
           </div>
         </div>

@@ -77,8 +77,16 @@ class FolderUploadService
         }
         
         $assetTypeDir = self::getAssetTypeDir($assetType);
-        $cleanRelPath = ltrim($relPath, '/');
-        
+        $cleanRelPath = str_replace('\\', '/', ltrim($relPath, '/'));
+        // 防止路径遍历攻击
+        $cleanRelPath = preg_replace('#(?:^|/)\.\.(?:/|$)#', '/', $cleanRelPath);
+        $cleanRelPath = preg_replace('#^(\.\./)+#', '', $cleanRelPath);
+        $cleanRelPath = preg_replace('#/+#', '/', $cleanRelPath);
+        $cleanRelPath = trim($cleanRelPath, '/');
+        if (empty($cleanRelPath)) {
+            $cleanRelPath = 'unnamed_file';
+        }
+
         // 构建存储键
         if ($projectName && in_array($assetType, ['works', 'models', 'customer'])) {
             $storageKey = "groups/{$finalGroupCode}/{$projectName}/{$assetTypeDir}/{$cleanRelPath}";
@@ -269,7 +277,7 @@ class FolderUploadService
         
         foreach ($parts as $folderName) {
             $folderName = trim($folderName);
-            if (empty($folderName)) {
+            if (empty($folderName) || $folderName === '.' || $folderName === '..') {
                 continue;
             }
             

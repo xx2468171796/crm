@@ -16,6 +16,7 @@ require_once __DIR__ . '/../core/api_init.php';
 require_once __DIR__ . '/../core/desktop_auth.php';
 require_once __DIR__ . '/../core/storage/storage_provider.php';
 require_once __DIR__ . '/../services/S3Service.php';
+require_once __DIR__ . '/../services/FolderUploadService.php';
 
 $user = desktop_auth_require();
 
@@ -29,7 +30,7 @@ if ($method !== 'POST') {
 // 缓存目录
 $cacheDir = __DIR__ . '/../../storage/upload_cache/chunks';
 if (!is_dir($cacheDir)) {
-    mkdir($cacheDir, 0777, true);
+    mkdir($cacheDir, 0750, true);
 }
 
 // 判断是分片上传还是JSON请求
@@ -92,23 +93,20 @@ function handleInit($input, $cacheDir, $user) {
         }
     }
     
-    // 确定文件类型目录
-    $assetTypeDir = match($assetType) {
-        'works' => '作品文件',
-        'models' => '模型文件',
-        'customer' => '客户文件',
-        'info' => '信息文件',
-        'company' => '公司文件',
-        default => '作品文件',
-    };
-    
-    // 构建存储键
-    $cleanFilename = preg_replace('/[\/\\\\:*?"<>|]/', '_', basename($filename));
-    if ($projectName) {
-        $storageKey = "groups/{$groupCode}/{$projectName}/{$assetTypeDir}/{$cleanFilename}";
-    } else {
-        $storageKey = "groups/{$groupCode}/{$assetTypeDir}/{$cleanFilename}";
-    }
+    // 构建存储键（使用 FolderUploadService 统一逻辑，支持子目录结构）
+    $relPath = $input['rel_path'] ?? '';
+    // 入口处清理 rel_path，防止路径遍历
+    $relPath = str_replace('\\', '/', $relPath);
+    $relPath = preg_replace('#(?:^|/)\.\.(?:/|$)#', '/', $relPath);
+    $relPath = preg_replace('#^(\.\./)+#', '', $relPath);
+    $relPath = trim($relPath, '/');
+    $folderService = new FolderUploadService();
+    // 如果 rel_path 包含子目录则使用，否则只用文件名
+    $relPathForKey = !empty($relPath) && strpos(str_replace('\\', '/', $relPath), '/') !== false
+        ? $relPath
+        : basename($filename);
+    $keyResult = $folderService->buildStorageKey($groupCode, $assetType, $relPathForKey, $projectId);
+    $storageKey = $keyResult['storage_key'];
     
     // 分片大小 90MB
     $partSize = 90 * 1024 * 1024;
@@ -116,7 +114,7 @@ function handleInit($input, $cacheDir, $user) {
     
     // 创建上传目录
     $uploadDir = $cacheDir . '/' . $uploadId;
-    if (!mkdir($uploadDir, 0777, true)) {
+    if (!mkdir($uploadDir, 0750, true)) {
         echo json_encode(['success' => false, 'error' => '创建上传目录失败'], JSON_UNESCAPED_UNICODE);
         return;
     }
@@ -132,6 +130,7 @@ function handleInit($input, $cacheDir, $user) {
         'total_parts' => $totalParts,
         'project_id' => $projectId,
         'asset_type' => $assetType,
+        'rel_path' => $relPath,
         'user_id' => $user['id'],
         'create_time' => time(),
         'parts_uploaded' => [],
@@ -155,12 +154,18 @@ function handleInit($input, $cacheDir, $user) {
 function handleUploadPart($cacheDir, $user) {
     $uploadId = $_POST['upload_id'] ?? '';
     $partNumber = (int)($_POST['part_number'] ?? 0);
-    
+
     if (!$uploadId || $partNumber <= 0) {
         echo json_encode(['success' => false, 'error' => '缺少必要参数'], JSON_UNESCAPED_UNICODE);
         return;
     }
-    
+
+    // 防止路径遍历：upload_id 只允许安全字符
+    if (!preg_match('/^desktop_[a-f0-9_.]+$/i', $uploadId)) {
+        echo json_encode(['success' => false, 'error' => '无效的upload_id'], JSON_UNESCAPED_UNICODE);
+        return;
+    }
+
     $uploadDir = $cacheDir . '/' . $uploadId;
     $metaFile = $uploadDir . '/meta.json';
     
@@ -204,12 +209,18 @@ function handleUploadPart($cacheDir, $user) {
  */
 function handleComplete($input, $cacheDir, $user) {
     $uploadId = $input['upload_id'] ?? '';
-    
+
     if (!$uploadId) {
         echo json_encode(['success' => false, 'error' => '缺少upload_id'], JSON_UNESCAPED_UNICODE);
         return;
     }
-    
+
+    // 防止路径遍历：upload_id 只允许安全字符
+    if (!preg_match('/^desktop_[a-f0-9_.]+$/i', $uploadId)) {
+        echo json_encode(['success' => false, 'error' => '无效的upload_id'], JSON_UNESCAPED_UNICODE);
+        return;
+    }
+
     $uploadDir = $cacheDir . '/' . $uploadId;
     $metaFile = $uploadDir . '/meta.json';
     
@@ -246,9 +257,11 @@ function handleComplete($input, $cacheDir, $user) {
             echo json_encode(['success' => false, 'error' => "分片 $i 不存在"], JSON_UNESCAPED_UNICODE);
             return;
         }
-        $partData = file_get_contents($partFile);
-        fwrite($fp, $partData);
-        unset($partData);
+        $partFp = fopen($partFile, 'rb');
+        if ($partFp) {
+            stream_copy_to_stream($partFp, $fp);
+            fclose($partFp);
+        }
     }
     fclose($fp);
     
@@ -262,33 +275,11 @@ function handleComplete($input, $cacheDir, $user) {
     
     if ($projectId > 0) {
         try {
-            $fileCategory = match($assetType) {
-                'customer' => 'customer_file',
-                'models' => 'model_file',
-                default => 'artwork_file',
-            };
-            $approvalStatus = $fileCategory === 'artwork_file' ? 'pending' : 'approved';
-            $deliverableName = basename(str_replace('\\', '/', $filename));
-            $now = time();
-            
-            $pdo = Db::pdo();
-            $stmt = $pdo->prepare('SELECT id FROM deliverables WHERE project_id = ? AND file_path = ? AND deleted_at IS NULL LIMIT 1');
-            $stmt->execute([$projectId, $storageKey]);
-            $existing = $stmt->fetch(PDO::FETCH_ASSOC);
-            
-            if ($existing) {
-                $deliverableId = (int)$existing['id'];
-            } else {
-                $stmt = $pdo->prepare(
-                    'INSERT INTO deliverables (project_id, deliverable_name, deliverable_type, file_category, file_path, file_size, visibility_level, approval_status, submitted_by, submitted_at, create_time, update_time, parent_folder_id)'
-                    . ' VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
-                );
-                $stmt->execute([
-                    $projectId, $deliverableName, 'desktop_upload', $fileCategory, $storageKey,
-                    $filesize, 'client', $approvalStatus, $user['id'], $now, $now, $now, 0,
-                ]);
-                $deliverableId = (int)$pdo->lastInsertId();
-            }
+            $relPath = $meta['rel_path'] ?? '';
+            $folderService = new FolderUploadService();
+            $deliverableId = $folderService->recordDeliverable(
+                $projectId, $storageKey, $filename, $filesize, $assetType, $user['id'], $relPath
+            );
         } catch (Exception $e) {
             error_log('[DESKTOP_CHUNK] 落库失败: ' . $e->getMessage());
         }

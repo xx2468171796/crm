@@ -9,6 +9,7 @@ require_once __DIR__ . '/../core/api_init.php';
  * GET ?action=team_summary - 获取团队提成汇总（技术主管）
  * GET ?action=report - 获取财务报表（管理层）
  * POST action=set_commission - 设置项目提成（技术主管）
+ * POST action=delete_commission - 删除项目提成（技术主管）
  */
 
 // CORS
@@ -16,6 +17,9 @@ header('Content-Type: application/json; charset=utf-8');
 
 require_once __DIR__ . '/../core/db.php';
 require_once __DIR__ . '/../core/desktop_auth.php';
+require_once __DIR__ . '/../core/migrations.php';
+
+ensureCustomerTypeField();
 
 // 认证
 $user = desktop_auth_require();
@@ -33,6 +37,9 @@ try {
             break;
         case 'set_commission':
             handleSetCommission($user, $isManager);
+            break;
+        case 'delete_commission':
+            handleDeleteCommission($user, $isManager);
             break;
         case 'report':
             handleReport($user, $isManager);
@@ -138,6 +145,7 @@ function handleTeamSummary($user, $isManager) {
             p.project_name,
             p.current_status,
             c.name as customer_name,
+            c.customer_type,
             u.id as tech_user_id,
             u.realname as tech_username
         FROM project_tech_assignments pta
@@ -257,6 +265,51 @@ function handleSetCommission($user, $isManager) {
             'commission_amount' => $commissionAmount,
             'commission_note' => $commissionNote,
         ]
+    ], JSON_UNESCAPED_UNICODE);
+}
+
+/**
+ * 删除项目提成（技术主管/管理员）
+ */
+function handleDeleteCommission($user, $isManager) {
+    if (!$isManager) {
+        http_response_code(403);
+        echo json_encode(['success' => false, 'error' => '无权限删除提成'], JSON_UNESCAPED_UNICODE);
+        return;
+    }
+
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+        http_response_code(405);
+        echo json_encode(['success' => false, 'error' => 'Method not allowed'], JSON_UNESCAPED_UNICODE);
+        return;
+    }
+
+    $input = json_decode(file_get_contents('php://input'), true);
+    $assignmentId = (int)($input['assignment_id'] ?? 0);
+
+    if ($assignmentId <= 0) {
+        http_response_code(400);
+        echo json_encode(['success' => false, 'error' => '参数错误'], JSON_UNESCAPED_UNICODE);
+        return;
+    }
+
+    $assignment = Db::queryOne("SELECT * FROM project_tech_assignments WHERE id = ?", [$assignmentId]);
+    if (!$assignment) {
+        http_response_code(404);
+        echo json_encode(['success' => false, 'error' => '分配记录不存在'], JSON_UNESCAPED_UNICODE);
+        return;
+    }
+
+    // 清空提成字段
+    Db::execute("
+        UPDATE project_tech_assignments
+        SET commission_amount = NULL, commission_note = NULL, commission_set_by = NULL, commission_set_at = NULL
+        WHERE id = ?
+    ", [$assignmentId]);
+
+    echo json_encode([
+        'success' => true,
+        'message' => '提成已删除',
     ], JSON_UNESCAPED_UNICODE);
 }
 

@@ -17,6 +17,7 @@ interface CustomerData {
   email: string;
   address: string;
   remark: string;
+  customer_type: string | null;
   create_time: string;
 }
 
@@ -203,8 +204,49 @@ export default function CustomerDetailPage() {
       case 'first_contact':
         return (
           <div className="bg-white rounded-xl p-6 border">
-            <h3 className="text-lg font-semibold mb-4">首通记录</h3>
-            <p className="text-gray-500">首通记录功能开发中...</p>
+            <h3 className="text-lg font-semibold mb-4">首通信息</h3>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">客户类型</label>
+                <div className="flex flex-wrap gap-2">
+                  {['建商', '个人', '设计师', '建材商', '统包', '装修师傅'].map(type => (
+                    <button
+                      key={type}
+                      onClick={async () => {
+                        if (!serverUrl || !token || !customer) return;
+                        const newType = customer.customer_type === type ? '' : type;
+                        try {
+                          const res = await fetch(`${serverUrl}/api/desktop_customers.php?action=update_customer_type`, {
+                            method: 'POST',
+                            headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ customer_id: customer.id, customer_type: newType }),
+                          });
+                          const data = await res.json();
+                          if (data.success) {
+                            setCustomer({ ...customer, customer_type: newType || null });
+                            toast({ title: newType ? `已设为「${newType}」` : '已清除客户类型', variant: 'success' });
+                          } else {
+                            toast({ title: data.error || '设置失败', variant: 'destructive' });
+                          }
+                        } catch {
+                          toast({ title: '设置失败', variant: 'destructive' });
+                        }
+                      }}
+                      className={`px-4 py-2 text-sm rounded-lg border transition-colors ${
+                        customer?.customer_type === type
+                          ? 'bg-indigo-600 text-white border-indigo-600'
+                          : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                      }`}
+                    >
+                      {type}
+                    </button>
+                  ))}
+                </div>
+                {customer?.customer_type && (
+                  <p className="text-xs text-gray-400 mt-2">当前类型: {customer.customer_type}（再次点击可取消）</p>
+                )}
+              </div>
+            </div>
           </div>
         );
       case 'objection':

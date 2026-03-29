@@ -6,6 +6,26 @@
 require_once __DIR__ . '/db.php';
 
 /**
+ * 确保 customers 表有 customer_type 字段
+ */
+function ensureCustomerTypeField(): void {
+    static $checked = false;
+    if ($checked) return;
+    $checked = true;
+
+    try {
+        $pdo = Db::pdo();
+        $columns = $pdo->query("SHOW COLUMNS FROM customers LIKE 'customer_type'")->fetchAll();
+
+        if (empty($columns)) {
+            $pdo->exec("ALTER TABLE customers ADD COLUMN customer_type VARCHAR(30) DEFAULT NULL COMMENT '客户类型(建商/个人/设计师/建材商/统包/装修师傅)' AFTER identity");
+        }
+    } catch (Exception $e) {
+        // 忽略错误
+    }
+}
+
+/**
  * 确保 customers 表有 customer_group 字段
  */
 function ensureCustomerGroupField(): void {

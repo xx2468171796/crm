@@ -5,6 +5,7 @@ require_once __DIR__ . '/../core/api_init.php';
  * 
  * GET ?id=123 - 获取客户详情
  * POST ?action=update_alias - 更新客户别名
+ * POST ?action=update_customer_type - 更新客户类型
  */
 
 // CORS
@@ -13,6 +14,10 @@ header('Content-Type: application/json; charset=utf-8');
 require_once __DIR__ . '/../core/db.php';
 require_once __DIR__ . '/../core/desktop_auth.php';
 require_once __DIR__ . '/../core/constants.php';
+require_once __DIR__ . '/../core/migrations.php';
+
+// 确保 customer_type 字段存在
+ensureCustomerTypeField();
 
 // 认证
 $user = desktop_auth_require();
@@ -24,6 +29,10 @@ $isManager = in_array($user['role'], ['admin', 'super_admin', 'manager', 'tech_m
 $action = $_GET['action'] ?? '';
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action === 'update_alias') {
     handleUpdateAlias($user);
+    exit;
+}
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action === 'update_customer_type') {
+    handleUpdateCustomerType($user);
     exit;
 }
 
@@ -41,7 +50,7 @@ try {
         SELECT 
             c.id, c.name, c.group_code, c.customer_group,
             c.mobile, c.alias, c.gender, c.age,
-            c.create_time, c.update_time
+            c.customer_type, c.create_time, c.update_time
         FROM customers c
         WHERE c.id = ? AND c.deleted_at IS NULL
     ", [$customerId]);
@@ -118,6 +127,7 @@ try {
                 'email' => '',
                 'address' => '',
                 'remark' => '',
+                'customer_type' => $customer['customer_type'] ?? null,
                 'create_time' => $customer['create_time'] ? date('Y-m-d H:i', $customer['create_time']) : null,
             ],
             'projects' => $projectList,
@@ -155,5 +165,38 @@ function handleUpdateAlias($user) {
     echo json_encode([
         'success' => true,
         'message' => '别名已更新',
+    ], JSON_UNESCAPED_UNICODE);
+}
+
+/**
+ * 更新客户类型
+ */
+function handleUpdateCustomerType($user) {
+    $input = json_decode(file_get_contents('php://input'), true);
+    $customerId = (int)($input['customer_id'] ?? 0);
+    $customerType = trim($input['customer_type'] ?? '');
+
+    if ($customerId <= 0) {
+        http_response_code(400);
+        echo json_encode(['success' => false, 'error' => '客户ID无效'], JSON_UNESCAPED_UNICODE);
+        return;
+    }
+
+    $validTypes = ['建商', '个人', '设计师', '建材商', '统包', '装修师傅'];
+    if ($customerType !== '' && !in_array($customerType, $validTypes)) {
+        http_response_code(400);
+        echo json_encode(['success' => false, 'error' => '无效的客户类型'], JSON_UNESCAPED_UNICODE);
+        return;
+    }
+
+    $now = time();
+    Db::execute(
+        "UPDATE customers SET customer_type = ?, update_time = ? WHERE id = ?",
+        [$customerType ?: null, $now, $customerId]
+    );
+
+    echo json_encode([
+        'success' => true,
+        'message' => '客户类型已更新',
     ], JSON_UNESCAPED_UNICODE);
 }

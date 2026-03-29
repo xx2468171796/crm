@@ -50,6 +50,7 @@ try {
             p.completed_at, p.completed_by,
             c.id as customer_id, c.name as customer_name, 
             c.group_code as customer_group_code, c.customer_group as customer_group_name,
+            c.customer_type,
             c.alias as customer_alias, c.mobile as customer_phone,
             pl.token as portal_token, pl.password_plain as portal_password
         FROM projects p
@@ -192,6 +193,7 @@ try {
                 'name' => $project['customer_name'],
                 'group_code' => $project['customer_group_code'],
                 'customer_group_name' => $project['customer_group_name'] ?? null,
+                'customer_type' => $project['customer_type'] ?? null,
                 'alias' => $project['customer_alias'] ?? null,
                 // 技术人员不显示客户联系方式
                 'phone' => $isManager ? $project['customer_phone'] : null,
@@ -211,7 +213,7 @@ try {
 } catch (Exception $e) {
     error_log('[API] desktop_project_detail 错误: ' . $e->getMessage() . ' at ' . $e->getFile() . ':' . $e->getLine());
     http_response_code(500);
-    echo json_encode(['success' => false, 'error' => '服务器错误: ' . $e->getMessage()], JSON_UNESCAPED_UNICODE);
+    echo json_encode(['success' => false, 'error' => '服务器内部错误'], JSON_UNESCAPED_UNICODE);
 }
 
 /**
@@ -384,6 +386,58 @@ function getProjectForms($projectId) {
 }
 
 /**
+ * 递归构建交付物树节点
+ * 返回 FileNode[] 格式，与前端 FileTree 组件兼容
+ */
+function buildDeliverableTree(array $childrenIndex, $uploadService, string $prefix, int $parentId = 0): array {
+    $nodes = [];
+    $children = $childrenIndex[$parentId] ?? [];
+    foreach ($children as $rec) {
+        $isFolder = (bool)($rec['is_folder'] ?? false);
+        $name = $rec['filename'] ?? '';
+
+        if ($isFolder) {
+            $subChildren = buildDeliverableTree($childrenIndex, $uploadService, $prefix, (int)$rec['id']);
+            $nodes[] = [
+                'id' => (int)$rec['id'],
+                'name' => $name,
+                'type' => 'folder',
+                'children' => $subChildren,
+            ];
+        } else {
+            $rawPath = (string)($rec['file_path'] ?? '');
+            $storageKey = '';
+            $downloadUrl = '';
+            if ($rawPath !== '' && filter_var($rawPath, FILTER_VALIDATE_URL)) {
+                $downloadUrl = $rawPath;
+            } elseif ($rawPath !== '') {
+                $storageKey = $rawPath;
+                if ($prefix && strpos($storageKey, $prefix . '/') === 0) {
+                    $storageKey = substr($storageKey, strlen($prefix) + 1);
+                }
+                try {
+                    $downloadUrl = $uploadService->getDownloadPresignedUrl($storageKey, 3600);
+                } catch (Exception $e) {
+                    $downloadUrl = '';
+                }
+            }
+            $nodes[] = [
+                'id' => (int)$rec['id'],
+                'name' => basename(str_replace('\\', '/', $name)),
+                'type' => 'file',
+                'file_path' => $rawPath,
+                'storage_key' => $storageKey,
+                'download_url' => $downloadUrl,
+                'file_size' => (int)($rec['file_size'] ?? 0),
+                'approval_status' => $rec['approval_status'] ?? '',
+                'create_time' => $rec['create_time'] ? date('Y-m-d H:i', $rec['create_time']) : null,
+            ];
+        }
+    }
+    return $nodes;
+}
+
+/**
  * 获取项目交付物（按分类）
  */
 function getProjectFiles($projectId) {
@@ -400,30 +454,52 @@ function getProjectFiles($projectId) {
         $s3Config = $config['s3'] ?? [];
         $prefix = trim((string)($s3Config['prefix'] ?? ''), '/');
 
-        // 从 deliverables 表获取文件
-        $files = Db::query("
-            SELECT 
+        // 从 deliverables 表获取所有记录（含文件夹）
+        $allRecords = Db::query("
+            SELECT
                 d.id, d.deliverable_name as filename, d.file_path, d.file_size,
                 d.file_category, d.approval_status, d.visibility_level,
-                d.submitted_at as create_time, d.is_folder,
+                d.submitted_at as create_time, d.is_folder, d.parent_folder_id,
                 d.submitted_by as uploader_id,
                 u.realname as uploader_name
             FROM deliverables d
             LEFT JOIN users u ON d.submitted_by = u.id
-            WHERE d.project_id = ? AND d.deleted_at IS NULL AND d.is_folder = 0
-            ORDER BY d.file_category, d.submitted_at DESC
+            WHERE d.project_id = ? AND d.deleted_at IS NULL
+            ORDER BY d.file_category, d.is_folder DESC, d.submitted_at DESC
         ", [$projectId]);
-        
+
+        // 过滤出仅文件记录（用于兼容旧的 flat files 列表）
+        $files = array_filter($allRecords, fn($r) => !(bool)($r['is_folder'] ?? false));
+
         // 按分类组织（key 必须与桌面端前端一致）
         $categories = [
-            '客户文件' => ['label' => '客户文件', 'files' => []],
-            '作品文件' => ['label' => '作品文件', 'files' => []],
-            '模型文件' => ['label' => '模型文件', 'files' => []],
+            '客户文件' => ['label' => '客户文件', 'files' => [], 'tree' => []],
+            '作品文件' => ['label' => '作品文件', 'files' => [], 'tree' => []],
+            '模型文件' => ['label' => '模型文件', 'files' => [], 'tree' => []],
         ];
 
         $uploadService = new MultipartUploadService();
         $knownStorageKeys = [];
-        
+
+        // 建立 id => record 映射（含文件夹），用于树构建
+        $recordMap = [];
+        foreach ($allRecords as $rec) {
+            $recordMap[(int)$rec['id']] = $rec;
+        }
+
+        // 辅助函数：从文件记录向上遍历父节点，获取相对路径部分
+        $getRelativePath = function(array $rec) use (&$recordMap): string {
+            $parts = [];
+            $parentId = (int)($rec['parent_folder_id'] ?? 0);
+            while ($parentId > 0 && isset($recordMap[$parentId])) {
+                $parent = $recordMap[$parentId];
+                array_unshift($parts, $parent['filename']);
+                $parentId = (int)($parent['parent_folder_id'] ?? 0);
+            }
+            $parts[] = $rec['filename'];
+            return implode('/', $parts);
+        };
+
         foreach ($files as $file) {
             $categoryKey = '作品文件';
             $rawCategory = $file['file_category'] ?? 'artwork_file';
@@ -457,7 +533,9 @@ function getProjectFiles($projectId) {
 
             // 确保filename只是文件名，不包含路径前缀
             $cleanFilename = basename(str_replace('\\', '/', $file['filename'] ?? ''));
-            
+
+            $relativePath = $getRelativePath($file);
+
             $categories[$categoryKey]['files'][] = [
                 'id' => (int)$file['id'],
                 'filename' => $cleanFilename,
@@ -469,7 +547,20 @@ function getProjectFiles($projectId) {
                 'uploader_id' => (int)($file['uploader_id'] ?? 0),
                 'uploader_name' => $file['uploader_name'],
                 'create_time' => $file['create_time'] ? date('Y-m-d H:i', $file['create_time']) : null,
+                'relative_path' => $relativePath,
+                'parent_folder_id' => (int)($file['parent_folder_id'] ?? 0),
             ];
+        }
+
+        // 构建每个分类的树结构（预索引 children，O(n) 性能）
+        foreach (['客户文件' => 'customer_file', '作品文件' => 'artwork_file', '模型文件' => 'model_file'] as $categoryKey => $fileCategoryVal) {
+            $catRecords = array_filter($allRecords, fn($r) => ($r['file_category'] ?? '') === $fileCategoryVal);
+            $childrenIndex = [];
+            foreach ($catRecords as $rec) {
+                $pid = (int)($rec['parent_folder_id'] ?? 0);
+                $childrenIndex[$pid][] = $rec;
+            }
+            $categories[$categoryKey]['tree'] = buildDeliverableTree($childrenIndex, $uploadService, $prefix);
         }
 
         // 补充：从 S3 groups/{groupCode}/{projectName}/{分类}/ 列出文件（兼容未落库的记录）
