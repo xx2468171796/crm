@@ -107,7 +107,7 @@ try {
     
     foreach ($projectList as $p) {
         // 使用 canManualComplete 函数判断是否为完工状态
-        if (in_array($p['current_status'], ['设计完工', '设计评价']) || !empty($p['completed_at'])) {
+        if (in_array($p['current_status'], ['客户完结', '设计评价']) || !empty($p['completed_at'])) {
             $stats['completed']++;
         } else if (!empty($p['current_status'])) {
             $stats['in_progress']++;

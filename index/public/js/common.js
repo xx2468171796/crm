@@ -287,7 +287,7 @@ function throttle(fn, limit = 300) {
 /**
  * 项目状态列表
  */
-const PROJECT_STATUSES = ['待沟通', '需求确认', '设计中', '设计核对', '设计完工', '设计评价'];
+const PROJECT_STATUSES = ['待沟通', '需求确认', '设计中', '设计核对', '客户完结', '设计评价'];
 
 /**
  * 需求状态列表
@@ -308,7 +308,7 @@ const STATUS_COLORS = {
     '需求确认': { bg: '#dbeafe', color: '#1d4ed8' },
     '设计中': { bg: '#fef3c7', color: '#92400e' },
     '设计核对': { bg: '#fed7aa', color: '#c2410c' },
-    '设计完工': { bg: '#d1fae5', color: '#065f46' },
+    '客户完结': { bg: '#d1fae5', color: '#065f46' },
     '设计评价': { bg: '#e0e7ff', color: '#4338ca' },
     // 需求状态
     pending: { bg: '#f3f4f6', color: '#6b7280' },
@@ -328,7 +328,7 @@ function getStatusProgress(status) {
         '需求确认': 25,
         '设计中': 50,
         '设计核对': 75,
-        '设计完工': 90,
+        '客户完结': 90,
         '设计评价': 100
     };
     return progress[status] || 0;

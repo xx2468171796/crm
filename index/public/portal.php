@@ -184,7 +184,7 @@ if (empty($token)) {
                                 <option value="需求确认">需求确认</option>
                                 <option value="设计中">设计中</option>
                                 <option value="设计核对">设计核对</option>
-                                <option value="设计完工">设计完工</option>
+                                <option value="客户完结">客户完结</option>
                                 <option value="设计评价">设计评价</option>
                             </select>
                             <select id="projectSort" class="portal-select" onchange="applyProjectFilters()">
@@ -550,7 +550,7 @@ if (empty($token)) {
     }
     
     function renderProjectsGrouped(projects, container) {
-        const statusOrder = ['待沟通', '需求确认', '设计中', '设计核对', '设计完工', '设计评价'];
+        const statusOrder = ['待沟通', '需求确认', '设计中', '设计核对', '客户完结', '设计评价'];
         const groups = {};
         
         projects.forEach(p => {
@@ -1539,7 +1539,7 @@ if (empty($token)) {
             '需求确认': { bg: 'rgba(59, 130, 246, 0.1)', color: '#3b82f6' },
             '设计中': { bg: 'rgba(99, 102, 241, 0.1)', color: '#6366f1' },
             '设计核对': { bg: 'rgba(245, 158, 11, 0.1)', color: '#f59e0b' },
-            '设计完工': { bg: 'rgba(16, 185, 129, 0.1)', color: '#10b981' },
+            '客户完结': { bg: 'rgba(16, 185, 129, 0.1)', color: '#10b981' },
             '设计评价': { bg: 'rgba(16, 185, 129, 0.15)', color: '#059669' },
             // 繁体
             '待溝通': { bg: 'rgba(100, 116, 139, 0.1)', color: '#64748b' },
@@ -1559,7 +1559,7 @@ if (empty($token)) {
             return portalStageData.summary.overall_progress;
         }
         // 回退到基于阶段的计算（与桌面端一致）
-        const statuses = ['待沟通', '需求确认', '设计中', '设计核对', '设计完工', '设计评价'];
+        const statuses = ['待沟通', '需求确认', '设计中', '设计核对', '客户完结', '设计评价'];
         const simplifiedStatus = OpenCCLite ? OpenCCLite.toSimplified(status) : status;
         const currentIndex = statuses.indexOf(simplifiedStatus);
         if (currentIndex === -1) return 0;
@@ -1572,7 +1572,7 @@ if (empty($token)) {
 
     function renderStatusStepper(currentStatus, stageData = null) {
         const simplifiedStatus = OpenCCLite ? OpenCCLite.toSimplified(currentStatus) : currentStatus;
-        const statuses = ['待沟通', '需求确认', '设计中', '设计核对', '设计完工', '设计评价'];
+        const statuses = ['待沟通', '需求确认', '设计中', '设计核对', '客户完结', '设计评价'];
         let currentIndex = statuses.indexOf(simplifiedStatus);
         if (currentIndex === -1) currentIndex = 0;
         

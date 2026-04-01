@@ -18,7 +18,7 @@ class ProjectService {
         '需求确认' => ['order' => 2, 'color' => '#8b5cf6'],
         '设计中' => ['order' => 3, 'color' => '#ec4899'],
         '设计核对' => ['order' => 4, 'color' => '#f97316'],
-        '设计完工' => ['order' => 5, 'color' => '#14b8a6'],
+        '客户完结' => ['order' => 5, 'color' => '#14b8a6'],
         '设计评价' => ['order' => 6, 'color' => '#10b981'],
     ];
     

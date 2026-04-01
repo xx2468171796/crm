@@ -12,7 +12,7 @@ $statusMap = [
     'requirement' => '需求确认',
     'designing' => '设计中',
     'review' => '设计核对',
-    'completed' => '设计完工',
+    'completed' => '客户完结',
     'evaluation' => '设计评价',
 ];
 

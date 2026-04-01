@@ -938,7 +938,7 @@ function syncStageTimesStatus($pdo, $projectId, $currentStatus) {
             '需求确认' => 1,
             '设计中' => 2,
             '设计核对' => 3,
-            '设计完工' => 4,
+            '客户完结' => 4,
             '设计评价' => 5,
         ];
         

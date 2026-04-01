@@ -48,7 +48,7 @@ const STAGES = [
   { value: '需求确认', label: '需求确认', color: '#3B82F6' },
   { value: '设计中', label: '设计中', color: '#F59E0B' },
   { value: '设计核对', label: '设计核对', color: '#F97316' },
-  { value: '设计完工', label: '设计完工', color: '#14b8a6' },
+  { value: '客户完结', label: '客户完结', color: '#14b8a6' },
   { value: '设计评价', label: '设计评价', color: '#10B981' },
 ];
 

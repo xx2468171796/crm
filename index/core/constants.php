@@ -12,7 +12,7 @@ const PROJECT_STATUSES = [
     '需求确认', 
     '设计中',
     '设计核对',
-    '设计完工',
+    '客户完结',
     '设计评价'
 ];
 
@@ -31,7 +31,7 @@ const STAGE_STATUSES = [
 const MANUAL_COMPLETE_ALLOWED_STATUSES = [
     '设计中',
     '设计核对',
-    '设计完工',
+    '客户完结',
     '设计评价'
 ];
 
@@ -70,7 +70,7 @@ function getStatusColor($status) {
         '需求确认' => ['bg' => 'rgba(59, 130, 246, 0.1)', 'color' => '#3b82f6'],
         '设计中' => ['bg' => 'rgba(99, 102, 241, 0.1)', 'color' => '#6366f1'],
         '设计核对' => ['bg' => 'rgba(245, 158, 11, 0.1)', 'color' => '#f59e0b'],
-        '设计完工' => ['bg' => 'rgba(16, 185, 129, 0.1)', 'color' => '#10b981'],
+        '客户完结' => ['bg' => 'rgba(16, 185, 129, 0.1)', 'color' => '#10b981'],
         '设计评价' => ['bg' => 'rgba(16, 185, 129, 0.15)', 'color' => '#059669'],
     ];
     return $colors[$status] ?? $colors['待沟通'];

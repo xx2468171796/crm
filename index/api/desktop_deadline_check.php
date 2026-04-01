@@ -92,7 +92,7 @@ try {
             LEFT JOIN project_stage_times pst ON p.id = pst.project_id AND p.current_status = pst.stage_to
             WHERE pta.tech_user_id = ?
             AND p.deleted_at IS NULL
-            AND p.current_status NOT IN ('设计完工', '设计评价')
+            AND p.current_status NOT IN ('客户完结', '设计评价')
             AND pst.planned_end_date IS NOT NULL
             AND pst.planned_end_date <= ?
             ORDER BY pst.planned_end_date ASC

@@ -858,7 +858,7 @@ export default function ProjectDetailPage() {
           { key: '需求确认', label: '需求确认', color: '#8b5cf6', order: 2 },
           { key: '设计中', label: '设计中', color: '#ec4899', order: 3 },
           { key: '设计核对', label: '设计核对', color: '#f97316', order: 4 },
-          { key: '设计完工', label: '设计完工', color: '#14b8a6', order: 5 },
+          { key: '客户完结', label: '客户完结', color: '#14b8a6', order: 5 },
           { key: '设计评价', label: '设计评价', color: '#10b981', order: 6 },
         ]);
       }

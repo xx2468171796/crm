@@ -5,15 +5,15 @@
 UPDATE project_stage_templates SET stage_from = '待沟通', stage_to = '需求确认', description = '待沟通 → 需求确认' WHERE id = 1;
 UPDATE project_stage_templates SET stage_from = '需求确认', stage_to = '设计中', description = '需求确认 → 设计中' WHERE id = 2;
 UPDATE project_stage_templates SET stage_from = '设计中', stage_to = '设计核对', description = '设计中 → 设计核对' WHERE id = 3;
-UPDATE project_stage_templates SET stage_from = '设计核对', stage_to = '设计完工', description = '设计核对 → 设计完工' WHERE id = 4;
-UPDATE project_stage_templates SET stage_from = '设计完工', stage_to = '设计评价', description = '设计完工 → 设计评价' WHERE id = 5;
+UPDATE project_stage_templates SET stage_from = '设计核对', stage_to = '客户完结', description = '设计核对 → 客户完结' WHERE id = 4;
+UPDATE project_stage_templates SET stage_from = '客户完结', stage_to = '设计评价', description = '客户完结 → 设计评价' WHERE id = 5;
 
 -- 修复现有项目的阶段时间数据 (project_id = 257 为例)
 UPDATE project_stage_times SET stage_from = '待沟通', stage_to = '需求确认' WHERE stage_order = 1;
 UPDATE project_stage_times SET stage_from = '需求确认', stage_to = '设计中' WHERE stage_order = 2;
 UPDATE project_stage_times SET stage_from = '设计中', stage_to = '设计核对' WHERE stage_order = 3;
-UPDATE project_stage_times SET stage_from = '设计核对', stage_to = '设计完工' WHERE stage_order = 4;
-UPDATE project_stage_times SET stage_from = '设计完工', stage_to = '设计评价' WHERE stage_order = 5;
+UPDATE project_stage_times SET stage_from = '设计核对', stage_to = '客户完结' WHERE stage_order = 4;
+UPDATE project_stage_times SET stage_from = '客户完结', stage_to = '设计评价' WHERE stage_order = 5;
 
 -- 验证修复结果
 SELECT 'project_stage_templates:' as info;

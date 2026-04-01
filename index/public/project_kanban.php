@@ -579,7 +579,7 @@ layout_header($pageTitle);
                 <option value="需求确认">需求确认</option>
                 <option value="设计中">设计中</option>
                 <option value="设计核对">设计核对</option>
-                <option value="设计完工">设计完工</option>
+                <option value="客户完结">客户完结</option>
                 <option value="设计评价">设计评价</option>
             </select>
         </div>
@@ -675,15 +675,15 @@ layout_header($pageTitle);
             <div class="kanban-cards" id="cards-设计核对"></div>
         </div>
 
-        <div class="kanban-column" data-status="设计完工">
+        <div class="kanban-column" data-status="客户完结">
             <div class="kanban-header">
                 <h3>
                     <span class="status-dot" style="background: #22c55e;"></span>
-                    设计完工
-                    <span class="status-count" id="count-设计完工">0</span>
+                    客户完结
+                    <span class="status-count" id="count-客户完结">0</span>
                 </h3>
             </div>
-            <div class="kanban-cards" id="cards-设计完工"></div>
+            <div class="kanban-cards" id="cards-客户完结"></div>
         </div>
 
         <div class="kanban-column" data-status="设计评价">
@@ -803,7 +803,7 @@ const statusColors = {
     '需求确认': { bg: '#dbeafe', color: '#2563eb' },
     '设计中': { bg: '#e0f2fe', color: '#0284c7' },
     '设计核对': { bg: '#f3e8ff', color: '#9333ea' },
-    '设计完工': { bg: '#dcfce7', color: '#16a34a' },
+    '客户完结': { bg: '#dcfce7', color: '#16a34a' },
     '设计评价': { bg: '#f1f5f9', color: '#1e293b' }
 };
 
@@ -1115,7 +1115,7 @@ function renderPersonView() {
             customer.projects.forEach(project => {
                 const statusColors = {
                     '待沟通': '#94a3b8', '需求确认': '#3b82f6', '设计中': '#137fec',
-                    '设计核对': '#a855f7', '设计完工': '#22c55e', '设计评价': '#1e293b'
+                    '设计核对': '#a855f7', '客户完结': '#22c55e', '设计评价': '#1e293b'
                 };
                 const statusColor = statusColors[project.current_status] || '#64748b';
                 const techNames = (project.tech_users || []).map(t => t.realname || t.name).join(', ') || '未分配';
@@ -1163,7 +1163,7 @@ function togglePersonGroup(customerId) {
 
 // 渲染看板
 function renderKanban() {
-    const statuses = ['待沟通', '需求确认', '设计中', '设计核对', '设计完工', '设计评价'];
+    const statuses = ['待沟通', '需求确认', '设计中', '设计核对', '客户完结', '设计评价'];
     const filteredProjects = getFilteredProjects();
     
     // 清空所有列
@@ -1293,13 +1293,13 @@ function formatRelativeTime(timestamp) {
 
 // 变更状态 - 优化版弹窗
 function changeStatus(projectId, currentStatus) {
-    const statuses = ['待沟通', '需求确认', '设计中', '设计核对', '设计完工', '设计评价'];
+    const statuses = ['待沟通', '需求确认', '设计中', '设计核对', '客户完结', '设计评价'];
     const statusColors = {
         '待沟通': '#94a3b8',
         '需求确认': '#f59e0b',
         '设计中': '#6366f1',
         '设计核对': '#8b5cf6',
-        '设计完工': '#10b981',
+        '客户完结': '#10b981',
         '设计评价': '#06b6d4'
     };
     

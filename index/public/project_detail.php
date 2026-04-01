@@ -435,7 +435,7 @@ layout_header($pageTitle);
             // 手动完工按钮：设计中之后的阶段且未完工时显示
             $canManualComplete = empty($project['completed_at']) && 
                                  (isAdmin($user) || $user['role'] === 'tech_lead') &&
-                                 in_array($project['current_status'], ['设计中', '设计核对', '设计完工', '设计评价']);
+                                 in_array($project['current_status'], ['设计中', '设计核对', '客户完结', '设计评价']);
             if ($canManualComplete): ?>
             <button type="button" class="btn btn-warning" onclick="manualComplete()">
                 <i class="bi bi-check-circle"></i> 手动完工
@@ -477,7 +477,7 @@ layout_header($pageTitle);
 
     <!-- 状态步骤条 -->
     <?php
-    $projectStatuses = ['待沟通', '需求确认', '设计中', '设计核对', '设计完工', '设计评价'];
+    $projectStatuses = ['待沟通', '需求确认', '设计中', '设计核对', '客户完结', '设计评价'];
     $currentIndex = array_search($project['current_status'], $projectStatuses);
     if ($currentIndex === false) $currentIndex = 0;
     
@@ -1456,7 +1456,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
 // 阶段时间相关
 let stageTimesData = null;
-const projectStatuses = ['待沟通', '需求确认', '设计中', '设计核对', '设计完工', '设计评价'];
+const projectStatuses = ['待沟通', '需求确认', '设计中', '设计核对', '客户完结', '设计评价'];
 
 async function loadStageTimes() {
     try {

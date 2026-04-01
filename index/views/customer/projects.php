@@ -493,7 +493,7 @@ function getStatusBadge(status) {
         '需求确认': 'info',
         '设计中': 'primary',
         '设计核对': 'warning',
-        '设计完工': 'success',
+        '客户完结': 'success',
         '设计评价': 'dark'
     };
     var color = badges[status] || 'secondary';

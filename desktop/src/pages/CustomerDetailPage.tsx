@@ -227,7 +227,7 @@ export default function CustomerDetailPage() {
       '需求确认': 'bg-purple-100 text-purple-700',
       '设计中': 'bg-pink-100 text-pink-700',
       '设计核对': 'bg-orange-100 text-orange-700',
-      '设计完工': 'bg-teal-100 text-teal-700',
+      '客户完结': 'bg-teal-100 text-teal-700',
       '设计评价': 'bg-green-100 text-green-700',
     };
     return colors[status] || 'bg-gray-100 text-gray-700';

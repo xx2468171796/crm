@@ -30,7 +30,7 @@ SET pst.status = CASE
 END
 WHERE p.deleted_at IS NULL AND p.current_status = '设计核对';
 
--- 设计完工
+-- 客户完结
 UPDATE project_stage_times pst
 JOIN projects p ON pst.project_id = p.id
 SET pst.status = CASE
@@ -38,7 +38,7 @@ SET pst.status = CASE
     WHEN pst.stage_order = 5 THEN 'in_progress'
     ELSE 'pending'
 END
-WHERE p.deleted_at IS NULL AND p.current_status = '设计完工';
+WHERE p.deleted_at IS NULL AND p.current_status = '客户完结';
 
 -- 设计评价
 UPDATE project_stage_times pst

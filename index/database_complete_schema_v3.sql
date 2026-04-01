@@ -1424,7 +1424,7 @@ CREATE TABLE IF NOT EXISTS `projects` (
     `project_name` varchar(255) NOT NULL COMMENT '项目名称',
     `project_code` varchar(50) NOT NULL COMMENT '项目编号，如 #PRJ-2024-001',
     `group_code` varchar(50) DEFAULT NULL COMMENT '绑定的群码',
-    `current_status` varchar(50) NOT NULL DEFAULT '待沟通' COMMENT '当前状态：待沟通/确认需求/设计中/设计校对/设计完工/设计评价',
+    `current_status` varchar(50) NOT NULL DEFAULT '待沟通' COMMENT '当前状态：待沟通/确认需求/设计中/设计校对/客户完结/设计评价',
     `requirements_locked` tinyint(1) NOT NULL DEFAULT 0 COMMENT '需求是否锁定',
     `requirements_locked_at` int(11) DEFAULT NULL COMMENT '需求锁定时间戳',
     `requirements_locked_by` int(11) DEFAULT NULL COMMENT '需求锁定人用户ID',

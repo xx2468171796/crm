@@ -53,7 +53,7 @@ function calculateOverallProgress($elapsedDays, $totalDays, $isCompleted, $curre
     if ($totalDays <= 0) {
         // 没有阶段时间数据时，基于当前阶段索引计算进度
         if ($currentStatus) {
-            $statuses = ['待沟通', '需求确认', '设计中', '设计核对', '设计完工', '设计评价'];
+            $statuses = ['待沟通', '需求确认', '设计中', '设计核对', '客户完结', '设计评价'];
             $currentIndex = array_search($currentStatus, $statuses);
             if ($currentIndex !== false && $currentIndex > 0) {
                 return round($currentIndex / (count($statuses) - 1) * 100);

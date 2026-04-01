@@ -206,7 +206,7 @@ function calculateProjectProgress($pdo, $projectId) {
 
 function calculateProgressByStatus($currentStatus) {
     if (!$currentStatus) return 0;
-    $statuses = ['待沟通', '需求确认', '设计中', '设计核对', '设计完工', '设计评价'];
+    $statuses = ['待沟通', '需求确认', '设计中', '设计核对', '客户完结', '设计评价'];
     $currentIndex = array_search($currentStatus, $statuses);
     if ($currentIndex !== false && $currentIndex > 0) {
         return round($currentIndex / (count($statuses) - 1) * 100);

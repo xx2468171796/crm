@@ -10,7 +10,7 @@ define('PROJECT_STATUSES', [
     '需求确认',
     '设计中',
     '设计核对',
-    '设计完工',
+    '客户完结',
     '设计评价'
 ]);
 
@@ -29,7 +29,7 @@ define('STATUS_COLORS', [
     '需求确认' => 'info',
     '设计中' => 'primary',
     '设计核对' => 'warning',
-    '设计完工' => 'success',
+    '客户完结' => 'success',
     '设计评价' => 'dark',
     // 需求状态
     'pending' => 'secondary',
@@ -44,7 +44,7 @@ define('STATUS_PROGRESS', [
     '需求确认' => 25,
     '设计中' => 50,
     '设计核对' => 75,
-    '设计完工' => 90,
+    '客户完结' => 90,
     '设计评价' => 100
 ]);
 

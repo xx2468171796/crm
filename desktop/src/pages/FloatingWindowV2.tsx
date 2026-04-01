@@ -252,7 +252,7 @@ export default function FloatingWindowV2() {
     { key: '需求确认', name: '需求确认', color: '#8b5cf6' },
     { key: '设计中', name: '设计中', color: '#ec4899' },
     { key: '设计核对', name: '设计核对', color: '#f97316' },
-    { key: '设计完工', name: '设计完工', color: '#14b8a6' },
+    { key: '客户完结', name: '客户完结', color: '#14b8a6' },
     { key: '设计评价', name: '设计评价', color: '#10b981' },
   ];
 

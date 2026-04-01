@@ -80,7 +80,7 @@ function handleGet($user) {
                 WHEN '需求确认' THEN 2
                 WHEN '设计中' THEN 3
                 WHEN '设计核对' THEN 4
-                WHEN '设计完工' THEN 5
+                WHEN '客户完结' THEN 5
                 WHEN '设计评价' THEN 6
                 ELSE 99 
             END,
@@ -135,7 +135,7 @@ function handleGet($user) {
             // 计算当前阶段的截止日期
             $totalDaysBefore = 0;
             $currentStageDays = 0;
-            $stageOrder = ['待沟通', '需求确认', '设计中', '设计核对', '设计完工', '设计评价'];
+            $stageOrder = ['待沟通', '需求确认', '设计中', '设计核对', '客户完结', '设计评价'];
             
             foreach ($stageOrder as $stageName) {
                 $stageDays = $projectStages[$stageName]['planned_days'] ?? 0;
