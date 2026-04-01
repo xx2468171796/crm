@@ -86,6 +86,36 @@ try {
         }
     }
     
+    // Handle POST for project updates
+    $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
+    if ($method === 'POST') {
+        $input = json_decode(file_get_contents('php://input'), true);
+        $action = $input['action'] ?? '';
+
+        if ($action === 'rename') {
+            $newName = trim($input['project_name'] ?? '');
+            if (empty($newName)) {
+                http_response_code(400);
+                echo json_encode(['success' => false, 'error' => '项目名称不能为空'], JSON_UNESCAPED_UNICODE);
+                exit;
+            }
+
+            // Permission: only managers or assigned tech users can rename
+            if (!$isManager) {
+                $hasAccess = Db::queryOne("SELECT 1 FROM project_tech_assignments WHERE project_id = ? AND tech_user_id = ?", [$projectId, $user['id']]);
+                if (!$hasAccess) {
+                    http_response_code(403);
+                    echo json_encode(['success' => false, 'error' => '无权修改项目名称'], JSON_UNESCAPED_UNICODE);
+                    exit;
+                }
+            }
+
+            Db::execute("UPDATE projects SET project_name = ?, update_time = ? WHERE id = ?", [$newName, time(), $projectId]);
+            echo json_encode(['success' => true, 'data' => ['project_name' => $newName]], JSON_UNESCAPED_UNICODE);
+            exit;
+        }
+    }
+
     // 获取技术负责人
     $techUsers = Db::query("
         SELECT pta.id as assignment_id, u.id, u.username, u.realname, pta.commission_amount, pta.commission_note, pta.commission_set_at

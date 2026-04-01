@@ -225,6 +225,9 @@ export default function ProjectDetailPage() {
   const [showStatusConfirm, setShowStatusConfirm] = useState(false);
   const [pendingStatus, setPendingStatus] = useState<string | null>(null);
   
+  // 项目重命名
+  const [showRenameProject, setShowRenameProject] = useState(false);
+
   // 阶段时间编辑弹窗
   const [showStageTimeEditor, setShowStageTimeEditor] = useState(false);
   
@@ -1702,7 +1705,18 @@ export default function ProjectDetailPage() {
           </button>
           <div className="flex-1">
             <div className="flex items-center gap-3">
-              <h1 className="text-2xl font-bold">{project.project_name}</h1>
+              <h1 className="text-2xl font-bold flex items-center gap-2">
+                {project.project_name}
+                {(canEditThisProject || isManager) && (
+                  <button
+                    onClick={() => setShowRenameProject(true)}
+                    className="p-1 hover:bg-white/20 rounded transition-colors"
+                    title="修改项目名称"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                  </button>
+                )}
+              </h1>
               <span className="px-2 py-0.5 bg-white/20 rounded text-sm">{project.current_status}</span>
             </div>
           </div>
@@ -1747,6 +1761,29 @@ export default function ProjectDetailPage() {
               defaultValue={renameTarget?.filename || ''}
               onConfirm={doRename}
               confirmText="重命名"
+            />
+
+            <InputDialog
+              open={showRenameProject}
+              onClose={() => setShowRenameProject(false)}
+              title="修改项目名称"
+              placeholder="请输入新项目名称"
+              defaultValue={project?.project_name || ''}
+              onConfirm={async (newName) => {
+                const res = await fetch(`${serverUrl}/api/desktop_project_detail.php?id=${project?.id}`, {
+                  method: 'POST',
+                  headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ action: 'rename', project_name: newName }),
+                });
+                const data = await res.json();
+                if (data.success) {
+                  setProject(prev => prev ? { ...prev, project_name: newName } : prev);
+                  toast({ title: '项目名称已修改' });
+                } else {
+                  toast({ title: '修改失败', description: data.error, variant: 'destructive' });
+                }
+              }}
+              confirmText="保存"
             />
 
             <ConfirmDialog
