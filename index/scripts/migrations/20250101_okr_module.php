@@ -1,0 +1,238 @@
+<?php
+
+/**
+ * 数据库迁移：OKR 模块表结构
+ * 
+ * 创建 9 张表：
+ * - okr_cycles (周期表)
+ * - okr_containers (OKR容器表)
+ * - okr_objectives (目标表)
+ * - okr_key_results (关键结果表)
+ * - okr_tasks (任务表)
+ * - okr_task_assistants (任务协助人表)
+ * - okr_task_relations (任务关联表)
+ * - okr_comments (评论表)
+ * - okr_logs (操作日志表)
+ *
+ * 用法：
+ * php 20250101_okr_module.php            # 执行迁移
+ * php 20250101_okr_module.php --rollback # 回滚
+ */
+
+require_once __DIR__ . '/../../core/db.php';
+
+$options = getopt('', ['rollback']);
+$rollback = array_key_exists('rollback', $options);
+
+if ($rollback) {
+    echo ">>> Rolling back OKR module tables..." . PHP_EOL;
+    Db::execute('SET FOREIGN_KEY_CHECKS = 0');
+    Db::execute('DROP TABLE IF EXISTS okr_logs');
+    Db::execute('DROP TABLE IF EXISTS okr_comments');
+    Db::execute('DROP TABLE IF EXISTS okr_task_relations');
+    Db::execute('DROP TABLE IF EXISTS okr_task_assistants');
+    Db::execute('DROP TABLE IF EXISTS okr_tasks');
+    Db::execute('DROP TABLE IF EXISTS okr_key_results');
+    Db::execute('DROP TABLE IF EXISTS okr_objectives');
+    Db::execute('DROP TABLE IF EXISTS okr_containers');
+    Db::execute('DROP TABLE IF EXISTS okr_cycles');
+    Db::execute('SET FOREIGN_KEY_CHECKS = 1');
+    echo "Rollback completed." . PHP_EOL;
+    exit;
+}
+
+echo ">>> Creating OKR module tables..." . PHP_EOL;
+
+// 1. okr_cycles (周期表)
+echo ">>> Creating okr_cycles table..." . PHP_EOL;
+Db::execute('
+    CREATE TABLE IF NOT EXISTS okr_cycles (
+        id int(11) NOT NULL AUTO_INCREMENT,
+        name varchar(100) NOT NULL COMMENT \'周期名称，如"2025年12月"\',
+        type varchar(20) NOT NULL DEFAULT \'month\' COMMENT \'类型：week/2week/month/quarter/4month/half_year/year/custom\',
+        start_date date NOT NULL COMMENT \'开始日期\',
+        end_date date NOT NULL COMMENT \'结束日期\',
+        status tinyint(1) NOT NULL DEFAULT 1 COMMENT \'状态：1=启用 0=归档\',
+        create_user_id int(11) DEFAULT NULL COMMENT \'创建人ID\',
+        create_time int(11) DEFAULT NULL,
+        update_time int(11) DEFAULT NULL,
+        PRIMARY KEY (id),
+        KEY idx_date_range (start_date, end_date),
+        KEY idx_status (status)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT=\'OKR周期表\'
+');
+
+// 2. okr_containers (OKR容器表)
+echo ">>> Creating okr_containers table..." . PHP_EOL;
+Db::execute('
+    CREATE TABLE IF NOT EXISTS okr_containers (
+        id int(11) NOT NULL AUTO_INCREMENT,
+        cycle_id int(11) NOT NULL COMMENT \'周期ID\',
+        user_id int(11) NOT NULL COMMENT \'负责人ID\',
+        level varchar(20) NOT NULL DEFAULT \'personal\' COMMENT \'层级：company/department/personal\',
+        department_id int(11) DEFAULT NULL COMMENT \'部门ID（部门级OKR时使用）\',
+        progress decimal(5,2) DEFAULT 0.00 COMMENT \'总进度（0-100）\',
+        status tinyint(1) NOT NULL DEFAULT 1 COMMENT \'状态：1=进行中 0=已归档\',
+        create_user_id int(11) DEFAULT NULL,
+        create_time int(11) DEFAULT NULL,
+        update_time int(11) DEFAULT NULL,
+        PRIMARY KEY (id),
+        KEY idx_cycle_user (cycle_id, user_id),
+        KEY idx_level (level),
+        KEY idx_department (department_id),
+        CONSTRAINT fk_okr_cycle FOREIGN KEY (cycle_id) REFERENCES okr_cycles(id) ON DELETE CASCADE
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT=\'OKR容器表\'
+');
+
+// 3. okr_objectives (目标表)
+echo ">>> Creating okr_objectives table..." . PHP_EOL;
+Db::execute('
+    CREATE TABLE IF NOT EXISTS okr_objectives (
+        id int(11) NOT NULL AUTO_INCREMENT,
+        container_id int(11) NOT NULL COMMENT \'OKR容器ID\',
+        title varchar(255) NOT NULL COMMENT \'目标标题\',
+        sort_order int(11) DEFAULT 0 COMMENT \'排序（用于编号O1,O2...）\',
+        parent_id int(11) DEFAULT NULL COMMENT \'对齐的上级目标ID\',
+        progress decimal(5,2) DEFAULT 0.00 COMMENT \'进度（0-100）\',
+        status varchar(20) DEFAULT \'normal\' COMMENT \'状态：normal/at_risk/delayed\',
+        create_user_id int(11) DEFAULT NULL,
+        create_time int(11) DEFAULT NULL,
+        update_time int(11) DEFAULT NULL,
+        PRIMARY KEY (id),
+        KEY idx_container (container_id),
+        KEY idx_parent (parent_id),
+        CONSTRAINT fk_obj_container FOREIGN KEY (container_id) REFERENCES okr_containers(id) ON DELETE CASCADE
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT=\'OKR目标表\'
+');
+
+// 4. okr_key_results (关键结果表)
+echo ">>> Creating okr_key_results table..." . PHP_EOL;
+Db::execute('
+    CREATE TABLE IF NOT EXISTS okr_key_results (
+        id int(11) NOT NULL AUTO_INCREMENT,
+        objective_id int(11) NOT NULL COMMENT \'目标ID\',
+        title varchar(255) NOT NULL COMMENT \'KR标题\',
+        target_value decimal(15,2) NOT NULL DEFAULT 100 COMMENT \'目标值\',
+        current_value decimal(15,2) DEFAULT 0 COMMENT \'当前值\',
+        start_value decimal(15,2) DEFAULT 0 COMMENT \'起始值\',
+        unit varchar(50) DEFAULT \'%\' COMMENT \'单位\',
+        weight decimal(5,2) DEFAULT 0 COMMENT \'权重（0-100%，0表示平均分配）\',
+        confidence int(11) DEFAULT 5 COMMENT \'信心指数（1-10）\',
+        progress_mode varchar(20) DEFAULT \'value\' COMMENT \'进度模式：value=数值模式, task=任务模式\',
+        progress decimal(5,2) DEFAULT 0.00 COMMENT \'进度（0-100）\',
+        status varchar(20) DEFAULT \'normal\' COMMENT \'状态：normal/at_risk/delayed\',
+        owner_user_ids text DEFAULT NULL COMMENT \'负责人IDs（JSON数组）\',
+        sort_order int(11) DEFAULT 0 COMMENT \'排序\',
+        create_user_id int(11) DEFAULT NULL,
+        create_time int(11) DEFAULT NULL,
+        update_time int(11) DEFAULT NULL,
+        PRIMARY KEY (id),
+        KEY idx_objective (objective_id),
+        CONSTRAINT fk_kr_objective FOREIGN KEY (objective_id) REFERENCES okr_objectives(id) ON DELETE CASCADE
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT=\'OKR关键结果表\'
+');
+
+// 5. okr_tasks (任务表)
+echo ">>> Creating okr_tasks table..." . PHP_EOL;
+Db::execute('
+    CREATE TABLE IF NOT EXISTS okr_tasks (
+        id int(11) NOT NULL AUTO_INCREMENT,
+        title varchar(300) NOT NULL COMMENT \'任务标题\',
+        description text DEFAULT NULL COMMENT \'任务备注/描述\',
+        level varchar(20) NOT NULL DEFAULT \'personal\' COMMENT \'层级：company/department/employee/personal\',
+        priority varchar(20) DEFAULT \'medium\' COMMENT \'优先级：low/medium/high\',
+        status varchar(20) DEFAULT \'pending\' COMMENT \'状态：pending=待处理/in_progress=进行中/completed=已完成/failed=失败或放弃\',
+        start_date date DEFAULT NULL COMMENT \'开始日期\',
+        due_date date DEFAULT NULL COMMENT \'截止日期\',
+        executor_id int(11) NOT NULL COMMENT \'执行人/负责人ID\',
+        assigner_id int(11) DEFAULT NULL COMMENT \'指派人ID（如果是被指派的任务）\',
+        source_type varchar(20) DEFAULT \'self\' COMMENT \'来源类型：self=自己创建, assigned=被指派\',
+        department_id int(11) DEFAULT NULL COMMENT \'所属部门ID\',
+        completed_at int(11) DEFAULT NULL COMMENT \'完成时间\',
+        create_user_id int(11) DEFAULT NULL,
+        create_time int(11) DEFAULT NULL,
+        update_time int(11) DEFAULT NULL,
+        PRIMARY KEY (id),
+        KEY idx_executor (executor_id),
+        KEY idx_assigner (assigner_id),
+        KEY idx_status (status),
+        KEY idx_level (level),
+        KEY idx_due_date (due_date),
+        KEY idx_source_type (source_type),
+        KEY idx_department (department_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT=\'OKR任务表\'
+');
+
+// 6. okr_task_assistants (任务协助人表)
+echo ">>> Creating okr_task_assistants table..." . PHP_EOL;
+Db::execute('
+    CREATE TABLE IF NOT EXISTS okr_task_assistants (
+        id int(11) NOT NULL AUTO_INCREMENT,
+        task_id int(11) NOT NULL COMMENT \'任务ID\',
+        user_id int(11) NOT NULL COMMENT \'协助人/参与人ID\',
+        create_time int(11) DEFAULT NULL,
+        PRIMARY KEY (id),
+        UNIQUE KEY uk_task_user (task_id, user_id),
+        KEY idx_user (user_id),
+        CONSTRAINT fk_assistant_task FOREIGN KEY (task_id) REFERENCES okr_tasks(id) ON DELETE CASCADE
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT=\'任务协助人/参与人关联表\'
+');
+
+// 7. okr_task_relations (任务关联表)
+echo ">>> Creating okr_task_relations table..." . PHP_EOL;
+Db::execute('
+    CREATE TABLE IF NOT EXISTS okr_task_relations (
+        id int(11) NOT NULL AUTO_INCREMENT,
+        task_id int(11) NOT NULL COMMENT \'任务ID\',
+        relation_type varchar(20) NOT NULL COMMENT \'关联类型：okr/objective/kr/kpi/customer\',
+        relation_id int(11) NOT NULL COMMENT \'关联对象ID\',
+        create_time int(11) DEFAULT NULL,
+        PRIMARY KEY (id),
+        UNIQUE KEY uk_task_relation (task_id, relation_type, relation_id),
+        KEY idx_relation (relation_type, relation_id),
+        CONSTRAINT fk_relation_task FOREIGN KEY (task_id) REFERENCES okr_tasks(id) ON DELETE CASCADE
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT=\'任务关联表（多态关联）\'
+');
+
+// 8. okr_comments (评论表)
+echo ">>> Creating okr_comments table..." . PHP_EOL;
+Db::execute('
+    CREATE TABLE IF NOT EXISTS okr_comments (
+        id int(11) NOT NULL AUTO_INCREMENT,
+        target_type varchar(20) NOT NULL COMMENT \'目标类型：okr/objective/kr/task\',
+        target_id int(11) NOT NULL COMMENT \'目标ID\',
+        user_id int(11) NOT NULL COMMENT \'评论人ID\',
+        content text NOT NULL COMMENT \'评论内容\',
+        likes int(11) DEFAULT 0 COMMENT \'点赞数\',
+        parent_id int(11) DEFAULT NULL COMMENT \'父评论ID（回复）\',
+        create_time int(11) DEFAULT NULL,
+        update_time int(11) DEFAULT NULL,
+        PRIMARY KEY (id),
+        KEY idx_target (target_type, target_id),
+        KEY idx_user (user_id),
+        KEY idx_parent (parent_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT=\'OKR评论表\'
+');
+
+// 9. okr_logs (操作日志表)
+echo ">>> Creating okr_logs table..." . PHP_EOL;
+Db::execute('
+    CREATE TABLE IF NOT EXISTS okr_logs (
+        id int(11) NOT NULL AUTO_INCREMENT,
+        target_type varchar(20) NOT NULL COMMENT \'目标类型：okr/objective/kr/task\',
+        target_id int(11) NOT NULL COMMENT \'目标ID\',
+        user_id int(11) NOT NULL COMMENT \'操作人ID\',
+        action varchar(50) NOT NULL COMMENT \'操作类型：create/update/delete/update_progress等\',
+        old_value text DEFAULT NULL COMMENT \'旧值（JSON）\',
+        new_value text DEFAULT NULL COMMENT \'新值（JSON）\',
+        description varchar(255) DEFAULT NULL COMMENT \'操作描述\',
+        create_time int(11) DEFAULT NULL,
+        PRIMARY KEY (id),
+        KEY idx_target (target_type, target_id),
+        KEY idx_user (user_id),
+        KEY idx_create_time (create_time)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT=\'OKR操作日志表\'
+');
+
+echo ">>> OKR module tables created successfully!" . PHP_EOL;
+

@@ -1,0 +1,538 @@
+import { useState, useEffect, useCallback } from 'react';
+import { FileCheck, Clock, CheckCircle, XCircle, RefreshCw, Check, X, Image, File, Table, Grid, Filter } from 'lucide-react';
+import { useAuthStore } from '@/stores/auth';
+import { useSettingsStore } from '@/stores/settings';
+import { usePermissionsStore } from '@/stores/permissions';
+import { useToast } from '@/hooks/use-toast';
+import ApprovalTable from '@/components/ApprovalTable';
+import ApprovalFilters from '@/components/ApprovalFilters';
+import FilePreviewModal, { type PreviewFile } from '@/components/FilePreviewModal';
+import { formatFileSize } from '@/lib/utils';
+import { http } from '@/lib/http';
+
+interface FileItem {
+  id: number;
+  filename: string;
+  file_path: string;
+  file_size: number;
+  file_category: string;
+  mime_type: string;
+  approval_status: number;
+  approver_name: string | null;
+  approved_at: string | null;
+  rejection_reason: string | null;
+  project: {
+    id: number;
+    code: string;
+    name: string;
+    status: string;
+    customer_name: string;
+  };
+  uploader: {
+    id: number;
+    name: string;
+    role: string;
+  };
+  tech_user: {
+    id: number;
+    name: string;
+  } | null;
+  upload_time: string;
+  is_image: boolean;
+}
+
+interface Stats {
+  pending: number;
+  approved: number;
+  rejected: number;
+}
+
+type TabType = 'pending' | 'my_files';
+
+type ViewMode = 'table' | 'card';
+
+interface Filters {
+  status: string;
+  projectId: number | null;
+  uploaderId: number | null;
+  techUserId: number | null;
+  projectStatus: string | null;
+  fileCategories: string[];
+  startDate: string;
+  endDate: string;
+}
+
+export default function ApprovalPage() {
+  const { token } = useAuthStore();
+  const { serverUrl } = useSettingsStore();
+  const { canApproveFiles } = usePermissionsStore();
+  const { toast } = useToast();
+  const [files, setFiles] = useState<FileItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState<TabType>('pending');
+  const [stats, setStats] = useState<Stats>({ pending: 0, approved: 0, rejected: 0 });
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [showRejectModal, setShowRejectModal] = useState(false);
+  const [rejectReason, setRejectReason] = useState('');
+  const [rejectTarget, setRejectTarget] = useState<'single' | 'batch'>('single');
+  const [singleRejectId, setSingleRejectId] = useState<number | null>(null);
+  
+  // 视图模式
+  const [viewMode, setViewMode] = useState<ViewMode>('table');
+  const [showFilters, setShowFilters] = useState(false);
+  
+  // 文件预览
+  const [previewFile, setPreviewFile] = useState<PreviewFile | null>(null);
+  const [showPreview, setShowPreview] = useState(false);
+  
+  // 筛选条件
+  const [filters, setFilters] = useState<Filters>({
+    status: 'pending',
+    projectId: null,
+    uploaderId: null,
+    techUserId: null,
+    projectStatus: null,
+    fileCategories: [],
+    startDate: '',
+    endDate: '',
+  });
+
+  const isManager = canApproveFiles();
+
+  // 加载文件列表
+  const loadFiles = useCallback(async () => {
+    if (!serverUrl || !token) return;
+    setLoading(true);
+    
+    try {
+      const action = activeTab === 'pending' ? 'list' : 'my_files';
+      const params = new URLSearchParams();
+      params.append('action', action);
+      params.append('status', filters.status);
+      if (filters.projectId) params.append('project_id', filters.projectId.toString());
+      if (filters.uploaderId) params.append('uploader_id', filters.uploaderId.toString());
+      if (filters.techUserId) params.append('tech_user_id', filters.techUserId.toString());
+      if (filters.projectStatus) params.append('project_status', filters.projectStatus);
+      if (filters.fileCategories.length > 0) params.append('file_categories', filters.fileCategories.join(','));
+      if (filters.startDate) params.append('start_date', filters.startDate);
+      if (filters.endDate) params.append('end_date', filters.endDate);
+      
+      const result = await http.get<{ items: FileItem[]; stats: Stats }>(`desktop_approval.php?${params.toString()}`);
+      if (result.success && result.data) {
+        setFiles(result.data.items || []);
+        setStats(result.data.stats || { pending: 0, approved: 0, rejected: 0 });
+      }
+    } catch (error) {
+      console.error('加载文件列表失败:', error);
+    } finally {
+      setLoading(false);
+    }
+  }, [serverUrl, token, activeTab, filters]);
+
+  useEffect(() => {
+    loadFiles();
+    setSelectedIds(new Set());
+  }, [loadFiles]);
+
+  // 单个通过
+  const handleApprove = async (fileId: number) => {
+    try {
+      const result = await http.post<void>('desktop_approval.php?action=approve', { file_id: fileId });
+      if (result.success) {
+        toast({ title: '成功', description: '审批通过' });
+        loadFiles();
+      } else {
+        toast({ title: '错误', description: result.error?.message || '操作失败', variant: 'destructive' });
+      }
+    } catch (error) {
+      console.error('审批失败:', error);
+      toast({ title: '错误', description: '操作失败', variant: 'destructive' });
+    }
+  };
+
+  // 单个驳回
+  const handleReject = async () => {
+    if (!singleRejectId) return;
+    try {
+      const result = await http.post<void>('desktop_approval.php?action=reject', { file_id: singleRejectId, reason: rejectReason });
+      if (result.success) {
+        setShowRejectModal(false);
+        setRejectReason('');
+        setSingleRejectId(null);
+        loadFiles();
+      } else {
+        toast({ title: '错误', description: result.error?.message || '操作失败', variant: 'destructive' });
+      }
+    } catch (error) {
+      console.error('驳回失败:', error);
+    }
+  };
+
+  // 批量通过
+  const handleBatchApprove = async () => {
+    if (selectedIds.size === 0) return;
+    try {
+      const result = await http.post<void>('desktop_approval.php?action=batch_approve', { file_ids: Array.from(selectedIds) });
+      if (result.success) {
+        toast({ title: '成功', description: `批量通过${selectedIds.size}个文件` });
+        setSelectedIds(new Set());
+        loadFiles();
+      } else {
+        toast({ title: '错误', description: result.error?.message || '操作失败', variant: 'destructive' });
+      }
+    } catch (error) {
+      console.error('批量通过失败:', error);
+      toast({ title: '错误', description: '操作失败', variant: 'destructive' });
+    }
+  };
+
+  // 批量驳回
+  const handleBatchReject = async () => {
+    if (selectedIds.size === 0) return;
+    try {
+      const result = await http.post<void>('desktop_approval.php?action=batch_reject', { file_ids: Array.from(selectedIds), reason: rejectReason });
+      if (result.success) {
+        toast({ title: '成功', description: `批量驳回${selectedIds.size}个文件` });
+        setShowRejectModal(false);
+        setRejectReason('');
+        setSelectedIds(new Set());
+        loadFiles();
+      } else {
+        toast({ title: '错误', description: result.error?.message || '操作失败', variant: 'destructive' });
+      }
+    } catch (error) {
+      console.error('批量驳回失败:', error);
+      toast({ title: '错误', description: '操作失败', variant: 'destructive' });
+    }
+  };
+
+  // 批量删除
+  const handleBatchDelete = async () => {
+    if (selectedIds.size === 0) return;
+    if (!confirm(`确定要删除选中的 ${selectedIds.size} 个文件吗？此操作不可恢复！`)) return;
+    try {
+      const result = await http.post<{ deleted_count?: number }>('desktop_file_manage.php', { action: 'batch_delete', ids: Array.from(selectedIds) });
+      if (result.success) {
+        toast({ title: '成功', description: `已删除 ${result.data?.deleted_count ?? selectedIds.size} 个文件` });
+        setSelectedIds(new Set());
+        loadFiles();
+      } else {
+        toast({ title: '错误', description: result.error?.message || '删除失败', variant: 'destructive' });
+      }
+    } catch (error) {
+      console.error('批量删除失败:', error);
+      toast({ title: '错误', description: '删除失败', variant: 'destructive' });
+    }
+  };
+
+  const handleResetFilters = () => {
+    setFilters({
+      status: 'pending',
+      projectId: null,
+      uploaderId: null,
+      techUserId: null,
+      projectStatus: null,
+      fileCategories: [],
+      startDate: '',
+      endDate: '',
+    });
+  };
+
+
+  // 使用统一的 formatFileSize
+  const formatSize = formatFileSize;
+
+  // 获取状态徽章
+  const getStatusBadge = (status: number) => {
+    switch (status) {
+      case 1:
+        return <span className="px-2 py-0.5 text-xs bg-green-100 text-green-700 rounded flex items-center gap-1"><CheckCircle size={12} />已通过</span>;
+      case 2:
+        return <span className="px-2 py-0.5 text-xs bg-red-100 text-red-700 rounded flex items-center gap-1"><XCircle size={12} />已驳回</span>;
+      default:
+        return <span className="px-2 py-0.5 text-xs bg-yellow-100 text-yellow-700 rounded flex items-center gap-1"><Clock size={12} />待审批</span>;
+    }
+  };
+
+  return (
+    <div className="flex-1 flex flex-col h-full bg-gray-50">
+      {/* 头部 */}
+      <div className="bg-white border-b px-6 py-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-3">
+              <FileCheck size={24} className="text-blue-500" />
+              <h1 className="text-xl font-semibold text-gray-800">作品审批</h1>
+            </div>
+            
+            {/* 状态切换按钮 */}
+            <div className="flex bg-gray-100 rounded-lg p-0.5">
+              <button onClick={() => setFilters(prev => ({ ...prev, status: 'pending' }))} className={`px-3 py-1 text-sm rounded ${filters.status === 'pending' ? 'bg-yellow-500 text-white' : 'text-yellow-600 hover:bg-yellow-50'}`}>待审批 {stats.pending}</button>
+              <button onClick={() => setFilters(prev => ({ ...prev, status: 'approved' }))} className={`px-3 py-1 text-sm rounded ${filters.status === 'approved' ? 'bg-green-500 text-white' : 'text-green-600 hover:bg-green-50'}`}>已通过 {stats.approved}</button>
+              <button onClick={() => setFilters(prev => ({ ...prev, status: 'rejected' }))} className={`px-3 py-1 text-sm rounded ${filters.status === 'rejected' ? 'bg-red-500 text-white' : 'text-red-600 hover:bg-red-50'}`}>已驳回 {stats.rejected}</button>
+            </div>
+            
+          </div>
+          
+          <div className="flex items-center gap-2">
+            {/* 视图切换 */}
+            <div className="flex gap-1 border rounded-lg p-1">
+              <button
+                onClick={() => setViewMode('table')}
+                className={`p-1.5 rounded ${viewMode === 'table' ? 'bg-blue-100 text-blue-600' : 'text-gray-500 hover:bg-gray-100'}`}
+                title="表格视图"
+              >
+                <Table size={18} />
+              </button>
+              <button
+                onClick={() => setViewMode('card')}
+                className={`p-1.5 rounded ${viewMode === 'card' ? 'bg-blue-100 text-blue-600' : 'text-gray-500 hover:bg-gray-100'}`}
+                title="卡片视图"
+              >
+                <Grid size={18} />
+              </button>
+            </div>
+            
+            {/* 高级筛选按钮 */}
+            <button
+              onClick={() => setShowFilters(!showFilters)}
+              className={`flex items-center gap-1 px-3 py-1.5 text-sm rounded ${showFilters ? 'bg-blue-100 text-blue-600' : 'text-gray-600 hover:bg-gray-100'}`}
+            >
+              <Filter size={16} />
+              高级筛选
+            </button>
+            
+            {selectedIds.size > 0 && (
+              <>
+                {isManager && activeTab === 'pending' && (
+                  <>
+                    <button
+                      onClick={handleBatchApprove}
+                      className="flex items-center gap-1 px-3 py-1.5 bg-green-500 hover:bg-green-600 text-white text-sm rounded"
+                    >
+                      <Check size={16} />
+                      批量通过 ({selectedIds.size})
+                    </button>
+                    <button
+                      onClick={() => { setRejectTarget('batch'); setShowRejectModal(true); }}
+                      className="flex items-center gap-1 px-3 py-1.5 bg-red-500 hover:bg-red-600 text-white text-sm rounded"
+                    >
+                      <X size={16} />
+                      批量驳回
+                    </button>
+                  </>
+                )}
+                <button
+                  onClick={handleBatchDelete}
+                  className="flex items-center gap-1 px-3 py-1.5 bg-gray-500 hover:bg-gray-600 text-white text-sm rounded"
+                >
+                  <X size={16} />
+                  批量删除 ({selectedIds.size})
+                </button>
+              </>
+            )}
+            <button
+              onClick={() => loadFiles()}
+              className="p-2 text-gray-500 hover:text-blue-500 hover:bg-blue-50 rounded"
+            >
+              <RefreshCw size={18} className={loading ? 'animate-spin' : ''} />
+            </button>
+          </div>
+        </div>
+
+        {/* 标签页 */}
+        <div className="flex gap-4 mt-4">
+          {isManager && (
+            <button
+              onClick={() => { 
+                setActiveTab('pending'); 
+                setFilters(prev => ({ ...prev, status: 'pending' }));
+              }}
+              className={`pb-2 text-sm font-medium border-b-2 transition-colors ${
+                activeTab === 'pending'
+                  ? 'border-blue-500 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              待审批文件
+            </button>
+          )}
+          <button
+            onClick={() => { 
+              setActiveTab('my_files'); 
+              setFilters(prev => ({ ...prev, status: 'all' }));
+            }}
+            className={`pb-2 text-sm font-medium border-b-2 transition-colors ${
+              activeTab === 'my_files'
+                ? 'border-blue-500 text-blue-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            我的文件
+          </button>
+        </div>
+      </div>
+
+      {/* 高级筛选面板 */}
+      {showFilters && (
+        <div className="px-6 py-4 border-b">
+          <ApprovalFilters
+            filters={filters}
+            onChange={setFilters}
+            onReset={handleResetFilters}
+          />
+        </div>
+      )}
+
+      {/* 列表 */}
+      <div className="flex-1 overflow-y-auto p-4">
+        {viewMode === 'table' ? (
+          <div className="bg-white rounded-lg border">
+            <ApprovalTable
+              data={files}
+              loading={loading}
+              selectedIds={selectedIds}
+              onSelectChange={setSelectedIds}
+              onApprove={handleApprove}
+              onReject={(id) => { setSingleRejectId(id); setRejectTarget('single'); setShowRejectModal(true); }}
+              isManager={isManager}
+              onPreview={(f) => { setPreviewFile(f); setShowPreview(true); }}
+            />
+          </div>
+        ) : loading ? (
+          <div className="flex items-center justify-center h-64 text-gray-400">加载中...</div>
+        ) : files.length === 0 ? (
+          <div className="flex flex-col items-center justify-center h-64 text-gray-400">
+            <FileCheck size={48} className="mb-4 opacity-50" />
+            <p>{activeTab === 'pending' ? '暂无待审批的文件' : '暂无上传文件'}</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+            {files.map((file) => (
+              <div
+                key={file.id}
+                className={`bg-white rounded-lg border p-3 hover:shadow-md transition-all ${
+                  selectedIds.has(file.id) ? 'ring-2 ring-blue-500' : ''
+                }`}
+              >
+                {/* 选择框和状态 */}
+                <div className="flex justify-between items-center mb-2">
+                  <input
+                    type="checkbox"
+                    checked={selectedIds.has(file.id)}
+                    onChange={() => {
+                      const newSet = new Set(selectedIds);
+                      if (newSet.has(file.id)) newSet.delete(file.id);
+                      else newSet.add(file.id);
+                      setSelectedIds(newSet);
+                    }}
+                    className="w-4 h-4 rounded"
+                  />
+                  {getStatusBadge(file.approval_status)}
+                </div>
+
+                {/* 缩略图 */}
+                <div className="aspect-square bg-gray-100 rounded-lg mb-2 flex items-center justify-center overflow-hidden">
+                  {file.is_image ? (
+                    <img
+                      src={`${serverUrl}/${file.file_path}`}
+                      alt={file.filename}
+                      className="w-full h-full object-cover"
+                      onError={(e) => {
+                        (e.target as HTMLImageElement).style.display = 'none';
+                        (e.target as HTMLImageElement).nextElementSibling?.classList.remove('hidden');
+                      }}
+                    />
+                  ) : null}
+                  <div className={`flex flex-col items-center ${file.is_image ? 'hidden' : ''}`}>
+                    {file.is_image ? <Image size={32} className="text-gray-300" /> : <File size={32} className="text-gray-300" />}
+                  </div>
+                </div>
+
+                {/* 文件信息 */}
+                <div className="text-sm truncate font-medium text-gray-800" title={file.filename}>
+                  {file.filename}
+                </div>
+                <div className="text-xs text-gray-400 truncate" title={file.project?.name || ''}>
+                  {file.project?.name || '-'}
+                </div>
+                <div className="text-xs text-gray-400 mt-1">
+                  {file.uploader?.name || '-'} · {formatSize(file.file_size)}
+                </div>
+
+                {/* 驳回原因 */}
+                {file.approval_status === 2 && file.rejection_reason && (
+                  <div className="mt-2 p-2 bg-red-50 rounded text-xs text-red-600 truncate" title={file.rejection_reason}>
+                    驳回: {file.rejection_reason}
+                  </div>
+                )}
+
+                {/* 操作按钮 */}
+                {isManager && activeTab === 'pending' && file.approval_status === 0 && (
+                  <div className="flex gap-2 mt-3">
+                    <button
+                      onClick={() => handleApprove(file.id)}
+                      className="flex-1 py-1.5 text-xs bg-green-500 hover:bg-green-600 text-white rounded"
+                    >
+                      通过
+                    </button>
+                    <button
+                      onClick={() => { setSingleRejectId(file.id); setRejectTarget('single'); setShowRejectModal(true); }}
+                      className="flex-1 py-1.5 text-xs bg-red-500 hover:bg-red-600 text-white rounded"
+                    >
+                      驳回
+                    </button>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* 驳回弹窗 */}
+      {showRejectModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl w-[400px] p-6">
+            <h2 className="text-lg font-semibold mb-4">
+              {rejectTarget === 'batch' ? `批量驳回 (${selectedIds.size} 个文件)` : '驳回文件'}
+            </h2>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">驳回原因</label>
+              <textarea
+                value={rejectReason}
+                onChange={(e) => setRejectReason(e.target.value)}
+                placeholder="输入驳回原因（可选）"
+                rows={3}
+                className="w-full px-3 py-2 border rounded-lg resize-none"
+              />
+            </div>
+            <div className="flex justify-end gap-3 mt-6">
+              <button
+                onClick={() => { setShowRejectModal(false); setRejectReason(''); }}
+                className="px-4 py-2 text-gray-600"
+              >
+                取消
+              </button>
+              <button
+                onClick={rejectTarget === 'batch' ? handleBatchReject : handleReject}
+                className="px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg"
+              >
+                确认驳回
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      
+      {/* 文件预览弹窗 */}
+      <FilePreviewModal
+        open={showPreview}
+        onClose={() => { setShowPreview(false); setPreviewFile(null); }}
+        file={previewFile}
+        files={files.map(f => ({ id: f.id, filename: f.filename, file_path: f.file_path }))}
+        onNavigate={(f) => setPreviewFile(f)}
+      />
+    </div>
+  );
+}

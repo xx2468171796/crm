@@ -1,0 +1,122 @@
+# ============================================================
+# Nginx 配置模板 - CRM 项目
+# ============================================================
+# 
+# 使用说明：
+# 1. 复制此文件到 Nginx 的 sites-enabled 目录
+# 2. 修改下方的变量值以适配你的环境
+# 3. 执行 nginx -t 测试配置
+# 4. 执行 nginx -s reload 重新加载
+#
+# 支持功能：
+# - PHP API 路由
+# - CORS 跨域（支持 Tauri 桌面端、浏览器等）
+# - 大文件上传（最大 5GB）
+# - 敏感文件保护
+# ============================================================
+
+server {
+    listen 80;
+    
+    # ========== 需要修改的配置 ==========
+    # 域名（本地开发用 .test，生产环境用实际域名）
+    server_name example.test *.example.test;
+    
+    # 项目路径（指向 public 目录）
+    set $project_root "/path/to/your/project/index";
+    root "$project_root/public";
+    # ====================================
+    
+    index index.php index.html index.htm;
+    
+    # 全局设置
+    client_max_body_size 5120m;      # 最大上传文件 5GB
+    client_body_timeout 300s;
+    proxy_read_timeout 300s;
+    send_timeout 300s;
+    
+    # 隐藏敏感文件
+    location ~ ^/(\.user.ini|\.htaccess|\.git|\.env|\.svn|\.project|LICENSE|README.md) {
+        return 404;
+    }
+    
+    # ============================================================
+    # CORS 配置 - 动态允许所有来源
+    # 支持：Tauri 桌面端 (tauri.localhost)、浏览器、移动端等
+    # ============================================================
+    set $cors_origin "";
+    if ($http_origin) {
+        set $cors_origin $http_origin;
+    }
+    
+    # ============================================================
+    # API 路由
+    # 将 /api/* 请求映射到 index/api/ 目录
+    # ============================================================
+    location /api/ {
+        alias "$project_root/api/";
+        
+        # CORS 响应头
+        add_header 'Access-Control-Allow-Origin' $cors_origin always;
+        add_header 'Access-Control-Allow-Methods' 'GET, POST, PUT, DELETE, PATCH, OPTIONS' always;
+        add_header 'Access-Control-Allow-Headers' 'Authorization, Content-Type, X-Requested-With, Accept, Origin' always;
+        add_header 'Access-Control-Allow-Credentials' 'true' always;
+        add_header 'Access-Control-Max-Age' '86400' always;
+        
+        # 处理 OPTIONS 预检请求
+        if ($request_method = 'OPTIONS') {
+            return 204;
+        }
+        
+        # PHP 处理
+        location ~ \.php$ {
+            fastcgi_pass php_upstream;  # 或 127.0.0.1:9000
+            include snippets/fastcgi-php.conf;
+            fastcgi_param SCRIPT_FILENAME $request_filename;
+        }
+    }
+    
+    # ============================================================
+    # 静态资源和 SPA 路由
+    # ============================================================
+    location / {
+        try_files $uri $uri/ /index.php$is_args$args;
+    }
+    
+    # PHP 处理（非 API 路由）
+    location ~ \.php$ {
+        include snippets/fastcgi-php.conf;
+        fastcgi_pass php_upstream;  # 或 127.0.0.1:9000
+    }
+    
+    charset utf-8;
+    
+    # 静态资源日志
+    location = /favicon.ico { access_log off; log_not_found off; }
+    location = /robots.txt  { access_log off; log_not_found off; }
+    
+    # 禁止 .ht 文件访问
+    location ~ /\.ht {
+        deny all;
+    }
+}
+
+# ============================================================
+# 生产环境 HTTPS 配置（可选）
+# ============================================================
+# server {
+#     listen 443 ssl http2;
+#     server_name example.com;
+#     
+#     ssl_certificate /path/to/cert.pem;
+#     ssl_certificate_key /path/to/key.pem;
+#     
+#     # ... 其他配置同上 ...
+# }
+#
+# # HTTP 重定向到 HTTPS
+# server {
+#     listen 80;
+#     server_name example.com;
+#     return 301 https://$server_name$request_uri;
+# }

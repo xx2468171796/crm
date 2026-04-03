@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 60" fill="none">
+  <defs>
+    <linearGradient id="logoGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#6366f1"/>
+      <stop offset="100%" style="stop-color:#8b5cf6"/>
+    </linearGradient>
+  </defs>
+  <!-- Logo Icon - Stylized A -->
+  <path d="M12 45L24 15L36 45M16 36H32" stroke="url(#logoGradient)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- Brand Name -->
+  <text x="46" y="32" font-family="Inter, -apple-system, sans-serif" font-size="18" font-weight="700" fill="#1e293b">ANKOTTI</text>
+  <!-- Chinese Name -->
+  <text x="46" y="48" font-family="Inter, -apple-system, sans-serif" font-size="10" fill="#64748b">安科帝 · 設計建築 · 智慧家庭</text>
+</svg>

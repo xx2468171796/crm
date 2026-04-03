@@ -1,0 +1,158 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --primary: #13b6ec;
+    --background: #f6f8f8;
+    --surface: #ffffff;
+    --border: #e2e8f0;
+    --text-main: #0d181b;
+    --text-secondary: #4c869a;
+  }
+
+  .dark {
+    --background: #101d22;
+    --surface: #1a2c32;
+    --border: #2a3c42;
+    --text-main: #ffffff;
+    --text-secondary: #94aeb8;
+  }
+
+  body {
+    @apply bg-background-light text-text-main font-sans antialiased;
+  }
+
+  .dark body {
+    @apply bg-background-dark;
+  }
+}
+
+@layer utilities {
+  .scrollbar-thin {
+    scrollbar-width: thin;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-track {
+    @apply bg-transparent;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    @apply bg-border-light rounded-full;
+  }
+
+  /* 实时通知弹窗动画 */
+  @keyframes slide-down {
+    from {
+      opacity: 0;
+      transform: translateX(-50%) translateY(-20px);
+    }
+    to {
+      opacity: 1;
+      transform: translateX(-50%) translateY(0);
+    }
+  }
+  
+  .animate-slide-down {
+    animation: slide-down 0.3s ease-out;
+  }
+
+  .dark .scrollbar-thin::-webkit-scrollbar-thumb {
+    @apply bg-border-dark;
+  }
+}
+
+/* Markdown prose 样式 */
+.prose {
+  @apply text-gray-800 leading-relaxed;
+}
+
+.prose h1 {
+  @apply text-3xl font-bold mt-6 mb-4 pb-2 border-b-2 border-gray-200;
+}
+
+.prose h2 {
+  @apply text-2xl font-bold mt-6 mb-3 pb-2 border-b border-gray-200;
+}
+
+.prose h3 {
+  @apply text-xl font-semibold mt-5 mb-2;
+}
+
+.prose h4 {
+  @apply text-lg font-semibold mt-4 mb-2;
+}
+
+.prose p {
+  @apply my-3 leading-7;
+}
+
+.prose ul, .prose ol {
+  @apply my-4 pl-8;
+}
+
+.prose ul {
+  @apply list-disc;
+}
+
+.prose ol {
+  @apply list-decimal;
+}
+
+.prose li {
+  @apply my-1;
+}
+
+.prose blockquote {
+  @apply border-l-4 border-gray-300 pl-4 my-4 text-gray-600 italic;
+}
+
+.prose code {
+  @apply bg-gray-100 px-1.5 py-0.5 rounded text-sm font-mono text-pink-600;
+}
+
+.prose pre {
+  @apply bg-gray-100 p-4 rounded-lg overflow-x-auto my-4;
+}
+
+.prose pre code {
+  @apply bg-transparent p-0 text-gray-800;
+}
+
+.prose table {
+  @apply w-full border-collapse my-4;
+}
+
+.prose th, .prose td {
+  @apply border border-gray-300 px-3 py-2 text-left;
+}
+
+.prose th {
+  @apply bg-gray-100 font-semibold;
+}
+
+.prose img {
+  @apply max-w-full h-auto rounded-lg my-4;
+}
+
+.prose a {
+  @apply text-blue-600 hover:underline;
+}
+
+.prose hr {
+  @apply my-6 border-t border-gray-300;
+}
+
+.prose strong {
+  @apply font-bold;
+}
+
+.prose em {
+  @apply italic;
+}

@@ -1,0 +1,300 @@
+<?php
+/**
+ * 分享链接文件上传 API
+ * POST /api/file_share_upload.php
+ * 无需登录认证，通过token验证
+ */
+
+header('Content-Type: application/json');
+
+// 错误处理
+error_reporting(E_ALL);
+ini_set('display_errors', 0);
+ini_set('log_errors', 1);
+
+set_exception_handler(function($e) {
+    http_response_code(500);
+    echo json_encode(['error' => '服务器错误: ' . $e->getMessage(), 'file' => $e->getFile(), 'line' => $e->getLine()]);
+    exit;
+});
+
+set_error_handler(function($errno, $errstr, $errfile, $errline) {
+    http_response_code(500);
+    echo json_encode(['error' => "PHP错误: $errstr", 'file' => $errfile, 'line' => $errline]);
+    exit;
+});
+
+require_once __DIR__ . '/../core/db.php';
+require_once __DIR__ . '/../core/storage/storage_provider.php';
+
+if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+    http_response_code(405);
+    echo json_encode(['error' => 'Method not allowed']);
+    exit;
+}
+
+$token = trim($_POST['token'] ?? '');
+$password = trim($_POST['password'] ?? '');
+
+if (empty($token)) {
+    http_response_code(400);
+    echo json_encode(['error' => '缺少token参数']);
+    exit;
+}
+
+try {
+    $pdo = Db::pdo();
+    
+    // 获取分享链接信息
+    $stmt = $pdo->prepare("
+        SELECT 
+            fsl.*,
+            p.project_name AS project_name,
+            p.customer_id,
+            c.name AS customer_name,
+            c.group_code
+        FROM file_share_links fsl
+        JOIN projects p ON p.id = fsl.project_id
+        LEFT JOIN customers c ON c.id = p.customer_id
+        WHERE fsl.token = ? AND fsl.status = 'active'
+    ");
+    $stmt->execute([$token]);
+    $link = $stmt->fetch(PDO::FETCH_ASSOC);
+    
+    if (!$link) {
+        http_response_code(404);
+        echo json_encode(['error' => '链接无效或已失效']);
+        exit;
+    }
+    
+    // 检查是否过期
+    if (strtotime($link['expires_at']) < time()) {
+        $updateStmt = $pdo->prepare("UPDATE file_share_links SET status = 'expired' WHERE id = ?");
+        $updateStmt->execute([$link['id']]);
+        http_response_code(410);
+        echo json_encode(['error' => '链接已过期']);
+        exit;
+    }
+    
+    // 检查访问次数
+    if ($link['max_visits'] !== null && $link['visit_count'] >= $link['max_visits']) {
+        http_response_code(410);
+        echo json_encode(['error' => '链接已达到最大访问次数']);
+        exit;
+    }
+    
+    // 验证密码
+    if (!empty($link['password'])) {
+        if (empty($password) || !password_verify($password, $link['password'])) {
+            http_response_code(403);
+            echo json_encode(['error' => '密码错误']);
+            exit;
+        }
+    }
+    
+    // 检查文件上传
+    if (empty($_FILES['file'])) {
+        http_response_code(400);
+        echo json_encode(['error' => '请选择要上传的文件']);
+        exit;
+    }
+    
+    $file = $_FILES['file'];
+    
+    if ($file['error'] !== UPLOAD_ERR_OK) {
+        $errorMessages = [
+            UPLOAD_ERR_INI_SIZE => '文件大小超过服务器限制',
+            UPLOAD_ERR_FORM_SIZE => '文件大小超过表单限制',
+            UPLOAD_ERR_PARTIAL => '文件只有部分被上传',
+            UPLOAD_ERR_NO_FILE => '没有文件被上传',
+            UPLOAD_ERR_NO_TMP_DIR => '找不到临时文件夹',
+            UPLOAD_ERR_CANT_WRITE => '文件写入失败',
+            UPLOAD_ERR_EXTENSION => '文件上传被扩展阻止'
+        ];
+        $errorMsg = $errorMessages[$file['error']] ?? ('上传错误代码: ' . $file['error']);
+        http_response_code(400);
+        echo json_encode(['error' => $errorMsg]);
+        exit;
+    }
+    
+    // 限制单个文件大小不超过2GB
+    $maxSize = 2 * 1024 * 1024 * 1024; // 2GB
+    if ($file['size'] > $maxSize) {
+        http_response_code(400);
+        echo json_encode(['error' => '单个文件大小不能超过2GB']);
+        exit;
+    }
+    
+    // 文件重命名：分享+原文件名
+    $originalName = $file['name'];
+    $storedName = '分享+' . $originalName;
+    
+    // 获取客户文件夹路径
+    $groupCode = $link['group_code'] ?? '';
+    $customerName = $link['customer_name'] ?? '未知客户';
+    $projectName = $link['project_name'] ?? '未知项目';
+    
+    $folderName = $groupCode ? "{$groupCode} {$customerName}" : $customerName;
+    $basePath = "customers/{$folderName}/{$projectName}/客户文件";
+    
+    // 使用S3存储
+    $config = require __DIR__ . '/../config/storage.php';
+    $storageConfig = $config['s3'] ?? [];
+    
+    if (empty($storageConfig)) {
+        http_response_code(500);
+        echo json_encode(['error' => '存储配置错误']);
+        exit;
+    }
+    
+    // 生成存储key
+    $ext = pathinfo($storedName, PATHINFO_EXTENSION);
+    $uniqueName = date('Ymd_His') . '_' . uniqid() . ($ext ? ".{$ext}" : '');
+    $storageKey = trim($storageConfig['prefix'] ?? '', '/') . '/' . $basePath . '/' . $uniqueName;
+    $storageKey = ltrim($storageKey, '/');
+    
+    // 异步上传优化：2GB以下文件使用异步上传
+    $fileSize = $file['size'];
+    $mimeType = $file['type'] ?? 'application/octet-stream';
+    $tmpPath = $file['tmp_name'];
+    $useAsyncUpload = $fileSize <= 2 * 1024 * 1024 * 1024;
+    $asyncUploadFile = null;
+    
+    if ($useAsyncUpload) {
+        $cacheDir = __DIR__ . '/../../storage/upload_cache';
+        if (!is_dir($cacheDir)) {
+            mkdir($cacheDir, 0777, true);
+        }
+        
+        $cacheFile = $cacheDir . '/' . uniqid('share_') . '_' . $uniqueName;
+        if (copy($tmpPath, $cacheFile)) {
+            file_put_contents($cacheFile . '.json', json_encode([
+                'storage_key' => $storageKey,
+                'mime_type' => $mimeType,
+                'file_size' => $fileSize,
+                'create_time' => time()
+            ]));
+            $asyncUploadFile = $cacheFile;
+        } else {
+            $useAsyncUpload = false;
+        }
+    }
+    
+    if (!$useAsyncUpload) {
+        // 同步上传到S3
+        $s3 = new S3StorageProvider($storageConfig, []);
+        $uploadResult = $s3->putObject($storageKey, $tmpPath, ['mime_type' => $mimeType]);
+        
+        if (!$uploadResult || empty($uploadResult['storage_key'])) {
+            http_response_code(500);
+            echo json_encode(['error' => '文件上传到存储失败']);
+            exit;
+        }
+    }
+    
+    // 记录到deliverables表
+    $now = time();
+    $stmt = $pdo->prepare("
+        INSERT INTO deliverables 
+        (project_id, deliverable_name, deliverable_type, file_category, file_path, file_size, 
+         visibility_level, approval_status, submitted_by, submitted_at, create_time, update_time)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ");
+    $stmt->execute([
+        $link['project_id'],
+        $storedName,
+        'share_upload',
+        'customer_file',
+        $storageKey,
+        $file['size'],
+        'client',
+        'approved',
+        $link['created_by'],  // 使用分享链接创建者作为submitted_by
+        $now,
+        $now,
+        $now
+    ]);
+    
+    $deliverableId = $pdo->lastInsertId();
+    
+    // 记录到file_share_uploads表（如果表存在）
+    try {
+        $stmt = $pdo->prepare("
+            INSERT INTO file_share_uploads 
+            (share_link_id, project_id, deliverable_id, original_filename, stored_filename, file_size, file_path, storage_key, uploader_ip, create_time)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ");
+        $stmt->execute([
+            $link['id'],
+            $link['project_id'],
+            $deliverableId,
+            $originalName,
+            $storedName,
+            $file['size'],
+            $storageKey,
+            $storageKey,
+            $_SERVER['REMOTE_ADDR'] ?? '',
+            $now
+        ]);
+    } catch (PDOException $e) {
+        // 表不存在时忽略错误，不影响主流程
+        error_log('file_share_uploads insert failed: ' . $e->getMessage());
+    }
+    
+    // 更新访问次数
+    $stmt = $pdo->prepare("UPDATE file_share_links SET visit_count = visit_count + 1 WHERE id = ?");
+    $stmt->execute([$link['id']]);
+    
+    // 如果使用异步上传，先返回响应再执行S3上传
+    if ($asyncUploadFile && file_exists($asyncUploadFile)) {
+        $response = json_encode([
+            'success' => true,
+            'data' => [
+                'original_name' => $originalName,
+                'stored_name' => $storedName,
+                'file_size' => $fileSize,
+                'message' => '文件上传成功',
+                'async' => true
+            ]
+        ]);
+        
+        header('Content-Type: application/json');
+        header('Content-Length: ' . strlen($response));
+        echo $response;
+        
+        if (function_exists('fastcgi_finish_request')) {
+            fastcgi_finish_request();
+        } else {
+            ob_end_flush();
+            flush();
+        }
+        
+        try {
+            $s3 = new S3StorageProvider($storageConfig, []);
+            $meta = json_decode(file_get_contents($asyncUploadFile . '.json'), true);
+            $s3->putObject($meta['storage_key'], $asyncUploadFile, ['mime_type' => $meta['mime_type']]);
+            @unlink($asyncUploadFile . '.json');
+            error_log("[SHARE_ASYNC] S3 upload success: {$meta['storage_key']}");
+        } catch (Exception $e) {
+            error_log("[SHARE_ASYNC] S3 upload failed: " . $e->getMessage());
+        }
+        exit;
+    }
+    
+    echo json_encode([
+        'success' => true,
+        'data' => [
+            'original_name' => $originalName,
+            'stored_name' => $storedName,
+            'file_size' => $file['size'],
+            'message' => '文件上传成功'
+        ]
+    ]);
+    
+} catch (PDOException $e) {
+    http_response_code(500);
+    echo json_encode(['error' => '数据库错误: ' . $e->getMessage()]);
+} catch (Exception $e) {
+    http_response_code(500);
+    echo json_encode(['error' => '上传错误: ' . $e->getMessage()]);
+}

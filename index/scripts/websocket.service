@@ -1,0 +1,17 @@
+[Unit]
+Description=CRM WebSocket Server
+After=network.target mysql.service
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=/var/www/crmchonggou/index
+ExecStart=/usr/bin/php scripts/websocket_server.php
+Restart=always
+RestartSec=5
+StandardOutput=append:/var/log/websocket.log
+StandardError=append:/var/log/websocket-error.log
+
+[Install]
+WantedBy=multi-user.target

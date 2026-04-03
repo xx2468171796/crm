@@ -1,0 +1,74 @@
+name: Build Desktop App
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: desktop/src-tauri
+
+      - name: Cache npm
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-npm-${{ hashFiles('desktop/package-lock.json') }}
+          restore-keys: ${{ runner.os }}-npm-
+
+      - name: Install frontend dependencies
+        working-directory: desktop
+        run: npm ci
+
+      - name: Build frontend
+        working-directory: desktop
+        run: npm run build
+
+      - name: Build Tauri (portable)
+        working-directory: desktop
+        run: npx tauri build
+
+      - name: Prepare portable exe
+        shell: pwsh
+        run: |
+          $version = (Get-Content desktop/package.json | ConvertFrom-Json).version
+          $exePath = "desktop/src-tauri/target/release/tech-resource-sync.exe"
+          $outDir = "release"
+          New-Item -ItemType Directory -Force -Path $outDir
+          Copy-Item $exePath "$outDir/TechResourceSync-$version-portable.exe"
+
+      - name: Upload portable exe
+        uses: actions/upload-artifact@v4
+        with:
+          name: TechResourceSync-Windows-Portable
+          path: release/*.exe
+
+      - name: Create Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v1
+        with:
+          files: release/*.exe
+          draft: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

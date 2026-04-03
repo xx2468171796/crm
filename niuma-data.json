@@ -1,0 +1,19 @@
+{
+  "version": "1.0",
+  "prefixList": [
+    {
+      "text": "/openspec-proposal",
+      "enabled": true
+    },
+    {
+      "text": "/openspec-apply 开始实施当前提案，必须要完成所有任务，再继续",
+      "enabled": true
+    },
+    {
+      "text": "/openspec-archive",
+      "enabled": true
+    }
+  ],
+  "categories": [],
+  "prompts": []
+}
