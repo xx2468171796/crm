@@ -3,9 +3,10 @@ node_modules/
 *.log
 log/
 logs/
-storage/upload_cache/
-backups/
 .turbo/
 vendor/
+storage/upload_cache/
+backups/
+desktop/dist/
+desktop/node_modules/
 *.tar.gz
-*.vsix
