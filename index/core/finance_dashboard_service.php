@@ -346,15 +346,13 @@ class FinanceDashboardService
     }
 
     /**
-     * 获取汇总统计
-     * 与 finance_dashboard.php 的 SSR sumSql 保持一致：
-     * - viewMode-aware 状态过滤（合同手动状态优先；分期作用在分期行）
-     * - 实收日期只缩小合同集，sum_paid 仍取累计 amount_paid（与明细累计列对齐）
+     * 获取汇总统计 —— 双查询口径
+     * - 应收/未收：basis finance_contracts + installments，过滤 c.sign_date in period
+     * - 已收：basis finance_receipts.amount_applied，过滤 r.received_date in period
+     * 与 finance_dashboard.php 的 SSR sumRow 完全对齐
      */
     private function getSummary(string $viewMode, array $filters): array
     {
-        $params = [];
-
         $keyword = trim((string)($filters['keyword'] ?? ''));
         $customerGroup = trim((string)($filters['customer_group'] ?? ''));
         $activityTag = trim((string)($filters['activity_tag'] ?? ''));
@@ -365,124 +363,148 @@ class FinanceDashboardService
         $receiptEnd = trim((string)($filters['receipt_end'] ?? ''));
         $salesUserIds = $filters['sales_user_ids'] ?? [];
         $ownerUserIds = $filters['owner_user_ids'] ?? [];
-
         if (!is_array($salesUserIds)) $salesUserIds = [];
         if (!is_array($ownerUserIds)) $ownerUserIds = [];
 
-        $sql = 'SELECT
-            COUNT(DISTINCT c.id) AS contract_count,
-            COUNT(i.id) AS installment_count,
-            COALESCE(SUM(i.amount_due), 0) AS sum_due,
-            COALESCE(SUM(i.amount_paid), 0) AS sum_paid,
-            COALESCE(SUM(GREATEST(i.amount_due - i.amount_paid, 0)), 0) AS sum_unpaid
-        FROM finance_contracts c
-        INNER JOIN customers cu ON cu.id = c.customer_id
-        LEFT JOIN finance_installments i ON i.contract_id = c.id AND i.deleted_at IS NULL
-        WHERE 1=1';
+        // 统一 period（dueStart/receiptStart 互斥，取非空的那个）
+        $periodStart = $dueStart !== '' ? $dueStart : $receiptStart;
+        $periodEnd = $dueEnd !== '' ? $dueEnd : $receiptEnd;
 
+        // 构建非时间相关的共用 WHERE
+        $commonWhere = '';
+        $commonParams = [];
         if ($this->user['role'] === 'sales') {
-            $sql .= ' AND c.sales_user_id = :sales_user_id';
-            $params['sales_user_id'] = (int)$this->user['id'];
+            $commonWhere .= ' AND c.sales_user_id = :sales_user_id';
+            $commonParams['sales_user_id'] = (int)$this->user['id'];
         }
-
         if ($keyword !== '') {
-            $sql .= ' AND (cu.name LIKE :kw OR cu.mobile LIKE :kw OR cu.customer_code LIKE :kw OR c.contract_no LIKE :kw OR cu.customer_group LIKE :kw)';
-            $params['kw'] = '%' . $keyword . '%';
+            $commonWhere .= ' AND (cu.name LIKE :kw OR cu.mobile LIKE :kw OR cu.customer_code LIKE :kw OR c.contract_no LIKE :kw OR cu.customer_group LIKE :kw)';
+            $commonParams['kw'] = '%' . $keyword . '%';
         }
-
         if ($customerGroup !== '') {
-            $sql .= ' AND cu.customer_group LIKE :cg';
-            $params['cg'] = '%' . $customerGroup . '%';
+            $commonWhere .= ' AND cu.customer_group LIKE :cg';
+            $commonParams['cg'] = '%' . $customerGroup . '%';
         }
-
         if ($activityTag !== '') {
-            $sql .= ' AND cu.activity_tag = :activity_tag';
-            $params['activity_tag'] = $activityTag;
+            $commonWhere .= ' AND cu.activity_tag = :activity_tag';
+            $commonParams['activity_tag'] = $activityTag;
+        }
+        if (!empty($salesUserIds)) {
+            $ps = [];
+            foreach ($salesUserIds as $idx => $uid) {
+                $k = 'sum_sales_' . $idx;
+                $ps[] = ':' . $k;
+                $commonParams[$k] = $uid;
+            }
+            $commonWhere .= ' AND c.sales_user_id IN (' . implode(',', $ps) . ')';
+        } elseif (!empty($ownerUserIds)) {
+            $ps = [];
+            foreach ($ownerUserIds as $idx => $uid) {
+                $k = 'sum_owner_' . $idx;
+                $ps[] = ':' . $k;
+                $commonParams[$k] = $uid;
+            }
+            $commonWhere .= ' AND cu.owner_user_id IN (' . implode(',', $ps) . ')';
         }
 
-        if ($dueStart !== '') {
-            $sql .= ' AND c.sign_date >= :due_start';
-            $params['due_start'] = $dueStart;
-        }
-        if ($dueEnd !== '') {
-            $sql .= ' AND c.sign_date <= :due_end';
-            $params['due_end'] = $dueEnd;
-        }
-
+        // status：viewMode-aware
+        $statusClauseForDue = '';
+        $statusClauseForPaid = '';
+        $statusParams = [];
         if ($status !== '') {
             if ($viewMode === 'contract') {
                 if ($status === '已结清') {
-                    $sql .= ' AND (c.status = "已结清" OR c.manual_status = "已结清")';
+                    $c = ' AND (c.status = "已结清" OR c.manual_status = "已结清")';
+                    $statusClauseForDue = $c;
+                    $statusClauseForPaid = $c;
                 } elseif ($status === '未结清') {
-                    $sql .= ' AND (c.status <> "已结清" AND (c.manual_status IS NULL OR c.manual_status = "" OR c.manual_status <> "已结清"))';
+                    $c = ' AND (c.status <> "已结清" AND (c.manual_status IS NULL OR c.manual_status = "" OR c.manual_status <> "已结清"))';
+                    $statusClauseForDue = $c;
+                    $statusClauseForPaid = $c;
                 } else {
-                    $sql .= ' AND (
+                    $c = ' AND (
                         (c.manual_status IS NOT NULL AND c.manual_status <> "" AND c.manual_status = :status)
                         OR (
                             (c.manual_status IS NULL OR c.manual_status = "")
                             AND c.status = :status
                         )
                     )';
-                    $params['status'] = $status;
+                    $statusClauseForDue = $c;
+                    $statusClauseForPaid = $c;
+                    $statusParams['status'] = $status;
                 }
             } elseif ($viewMode === 'installment') {
+                $instCond = '';
                 if ($status === '已收') {
-                    $sql .= ' AND (i.amount_due > 0 AND (i.amount_due - i.amount_paid) <= 0.00001)';
+                    $instCond = 'i.amount_due > 0 AND (i.amount_due - i.amount_paid) <= 0.00001';
                 } elseif ($status === '部分已收') {
-                    $sql .= ' AND (i.amount_paid > 0.00001 AND (i.amount_due - i.amount_paid) > 0.00001)';
+                    $instCond = 'i.amount_paid > 0.00001 AND (i.amount_due - i.amount_paid) > 0.00001';
                 } elseif ($status === '催款') {
-                    $sql .= ' AND (i.amount_paid <= 0.00001 AND (i.amount_due - i.amount_paid) > 0.00001 AND i.manual_status = "催款")';
+                    $instCond = 'i.amount_paid <= 0.00001 AND (i.amount_due - i.amount_paid) > 0.00001 AND i.manual_status = "催款"';
                 } elseif ($status === '逾期') {
-                    $sql .= ' AND (i.amount_paid <= 0.00001 AND (i.amount_due - i.amount_paid) > 0.00001'
+                    $instCond = 'i.amount_paid <= 0.00001 AND (i.amount_due - i.amount_paid) > 0.00001'
                         . ' AND (i.manual_status IS NULL OR i.manual_status = "" OR i.manual_status = "待收")'
-                        . ' AND i.due_date < CURDATE())';
+                        . ' AND i.due_date < CURDATE()';
                 } elseif ($status === '待收') {
-                    $sql .= ' AND (i.amount_paid <= 0.00001 AND (i.amount_due - i.amount_paid) > 0.00001'
+                    $instCond = 'i.amount_paid <= 0.00001 AND (i.amount_due - i.amount_paid) > 0.00001'
                         . ' AND (i.manual_status IS NULL OR i.manual_status = "" OR i.manual_status = "待收")'
-                        . ' AND (i.due_date >= CURDATE()))';
+                        . ' AND i.due_date >= CURDATE()';
+                }
+                if ($instCond !== '') {
+                    $statusClauseForDue = ' AND (' . $instCond . ')';
+                    $statusClauseForPaid = ' AND EXISTS (SELECT 1 FROM finance_installments i WHERE i.id = r.installment_id AND i.deleted_at IS NULL AND (' . $instCond . '))';
                 } else {
-                    $sql .= ' AND 1=0';
+                    $statusClauseForDue = ' AND 1=0';
+                    $statusClauseForPaid = ' AND 1=0';
                 }
             }
         }
 
-        if (!empty($salesUserIds)) {
-            $ps = [];
-            foreach ($salesUserIds as $idx => $uid) {
-                $k = 'sum_sales_' . $idx;
-                $ps[] = ':' . $k;
-                $params[$k] = $uid;
-            }
-            $sql .= ' AND c.sales_user_id IN (' . implode(',', $ps) . ')';
-        } elseif (!empty($ownerUserIds)) {
-            $ps = [];
-            foreach ($ownerUserIds as $idx => $uid) {
-                $k = 'sum_owner_' . $idx;
-                $ps[] = ':' . $k;
-                $params[$k] = $uid;
-            }
-            $sql .= ' AND cu.owner_user_id IN (' . implode(',', $ps) . ')';
+        // 查询 A：应收 / 未收 / contract_count / installment_count
+        $dueSql = 'SELECT
+            COUNT(DISTINCT c.id) AS contract_count,
+            COUNT(i.id) AS installment_count,
+            COALESCE(SUM(i.amount_due), 0) AS sum_due,
+            COALESCE(SUM(GREATEST(i.amount_due - i.amount_paid, 0)), 0) AS sum_unpaid
+        FROM finance_contracts c
+        INNER JOIN customers cu ON cu.id = c.customer_id
+        LEFT JOIN finance_installments i ON i.contract_id = c.id AND i.deleted_at IS NULL
+        WHERE 1=1' . $commonWhere . $statusClauseForDue;
+        $dueParams = array_merge($commonParams, $statusParams);
+        if ($periodStart !== '') {
+            $dueSql .= ' AND c.sign_date >= :period_start';
+            $dueParams['period_start'] = $periodStart;
         }
-
-        if ($receiptStart !== '' || $receiptEnd !== '') {
-            $receiptCondition = 'r.amount_applied > 0';
-            if ($receiptStart !== '') {
-                $receiptCondition .= ' AND r.received_date >= :receipt_start';
-                $params['receipt_start'] = $receiptStart . ' 00:00:00';
-            }
-            if ($receiptEnd !== '') {
-                $receiptCondition .= ' AND r.received_date <= :receipt_end';
-                $params['receipt_end'] = $receiptEnd . ' 23:59:59';
-            }
-            if ($viewMode === 'installment') {
-                $sql .= ' AND EXISTS (SELECT 1 FROM finance_receipts r WHERE r.installment_id = i.id AND ' . $receiptCondition . ')';
-            } else {
-                $sql .= ' AND EXISTS (SELECT 1 FROM finance_receipts r WHERE r.contract_id = c.id AND ' . $receiptCondition . ')';
-            }
+        if ($periodEnd !== '') {
+            $dueSql .= ' AND c.sign_date <= :period_end';
+            $dueParams['period_end'] = $periodEnd;
         }
+        $dueRow = Db::queryOne($dueSql, $dueParams) ?: [];
 
-        $row = Db::queryOne($sql, $params);
-        return $row ?: ['contract_count' => 0, 'installment_count' => 0, 'sum_due' => 0, 'sum_paid' => 0, 'sum_unpaid' => 0];
+        // 查询 B：已收（时段内实收金额）
+        $paidSql = 'SELECT COALESCE(SUM(r.amount_applied), 0) AS sum_paid
+        FROM finance_receipts r
+        INNER JOIN finance_contracts c ON c.id = r.contract_id
+        INNER JOIN customers cu ON cu.id = r.customer_id
+        WHERE r.amount_applied > 0' . $commonWhere . $statusClauseForPaid;
+        $paidParams = array_merge($commonParams, $statusParams);
+        if ($periodStart !== '') {
+            $paidSql .= ' AND r.received_date >= :period_start_ts';
+            $paidParams['period_start_ts'] = $periodStart . ' 00:00:00';
+        }
+        if ($periodEnd !== '') {
+            $paidSql .= ' AND r.received_date <= :period_end_ts';
+            $paidParams['period_end_ts'] = $periodEnd . ' 23:59:59';
+        }
+        $paidRow = Db::queryOne($paidSql, $paidParams) ?: [];
+
+        return [
+            'contract_count' => (int)($dueRow['contract_count'] ?? 0),
+            'installment_count' => (int)($dueRow['installment_count'] ?? 0),
+            'sum_due' => (float)($dueRow['sum_due'] ?? 0),
+            'sum_paid' => (float)($paidRow['sum_paid'] ?? 0),
+            'sum_unpaid' => (float)($dueRow['sum_unpaid'] ?? 0),
+        ];
     }
 
     /**
