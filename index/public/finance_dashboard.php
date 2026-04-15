@@ -631,8 +631,40 @@ if ($viewMode === 'contract' || $viewMode === 'installment') {
         $sumParams['due_end'] = $dueEnd;
     }
     if ($status !== '') {
-        $sumSql .= ' AND c.status = :status';
-        $sumParams['status'] = $status;
+        if ($viewMode === 'contract') {
+            // 与明细 SQL 保持一致：手动状态优先，已结清/未结清单独处理
+            if ($status === '已结清') {
+                $sumSql .= ' AND (c.status = "已结清" OR c.manual_status = "已结清")';
+            } elseif ($status === '未结清') {
+                $sumSql .= ' AND (c.status <> "已结清" AND (c.manual_status IS NULL OR c.manual_status = "" OR c.manual_status <> "已结清"))';
+            } else {
+                $sumSql .= ' AND (
+                    (c.manual_status IS NOT NULL AND c.manual_status <> "" AND c.manual_status = :status)
+                    OR (
+                        (c.manual_status IS NULL OR c.manual_status = "")
+                        AND c.status = :status
+                    )
+                )';
+                $sumParams['status'] = $status;
+            }
+        } elseif ($viewMode === 'installment') {
+            // 分期视图：状态过滤作用在分期行
+            if ($status === '已收') {
+                $sumSql .= ' AND (i.amount_due > 0 AND (i.amount_due - i.amount_paid) <= 0.00001)';
+            } elseif ($status === '部分已收') {
+                $sumSql .= ' AND (i.amount_paid > 0.00001 AND (i.amount_due - i.amount_paid) > 0.00001)';
+            } elseif ($status === '催款') {
+                $sumSql .= ' AND (i.amount_paid <= 0.00001 AND (i.amount_due - i.amount_paid) > 0.00001 AND i.manual_status = "催款")';
+            } elseif ($status === '逾期') {
+                $sumSql .= ' AND (i.amount_paid <= 0.00001 AND (i.amount_due - i.amount_paid) > 0.00001'
+                    . ' AND (i.manual_status IS NULL OR i.manual_status = "" OR i.manual_status = "待收")'
+                    . ' AND i.due_date < CURDATE())';
+            } elseif ($status === '待收') {
+                $sumSql .= ' AND (i.amount_paid <= 0.00001 AND (i.amount_due - i.amount_paid) > 0.00001'
+                    . ' AND (i.manual_status IS NULL OR i.manual_status = "" OR i.manual_status = "待收")'
+                    . ' AND (i.due_date >= CURDATE()))';
+            }
+        }
     }
     if (!empty($salesUserIds)) {
         $ps = [];
@@ -659,11 +691,9 @@ if ($viewMode === 'contract' || $viewMode === 'installment') {
         }
         $sumParams['focus_user_id'] = $focusUserId;
     }
-    // 按实收日期筛选
-    $useReceiptPeriodSum = false;
+    // 按实收日期筛选：仅缩小合同集（与明细 SQL 一致），sum_paid 仍取累计 amount_paid
     if ($receiptStart !== '' || $receiptEnd !== '') {
-        $useReceiptPeriodSum = true;
-        $receiptCondition = '1=1';
+        $receiptCondition = 'r.amount_applied > 0';
         if ($receiptStart !== '') {
             $receiptCondition .= ' AND r.received_date >= :receipt_start';
             $sumParams['receipt_start'] = $receiptStart . ' 00:00:00';
@@ -675,66 +705,6 @@ if ($viewMode === 'contract' || $viewMode === 'installment') {
         $sumSql .= ' AND EXISTS (SELECT 1 FROM finance_receipts r WHERE r.contract_id = c.id AND ' . $receiptCondition . ')';
     }
     $sumRow = Db::queryOne($sumSql, $sumParams) ?: $sumRow;
-    
-    // 当按实收时间筛选时，单独计算该时间段内的实际收款总额
-    if ($useReceiptPeriodSum) {
-        $receiptSumParams = [];
-        $receiptSumSql = 'SELECT COALESCE(SUM(r.amount_applied), 0) AS period_paid
-            FROM finance_receipts r
-            INNER JOIN finance_contracts c ON c.id = r.contract_id
-            INNER JOIN customers cu ON cu.id = r.customer_id
-            WHERE r.amount_applied > 0';
-        if ($user['role'] === 'sales') {
-            $receiptSumSql .= ' AND c.sales_user_id = :sales_user_id';
-            $receiptSumParams['sales_user_id'] = (int)$user['id'];
-        }
-        if ($keyword !== '') {
-            $receiptSumSql .= ' AND (cu.name LIKE :kw OR cu.mobile LIKE :kw OR cu.customer_code LIKE :kw OR c.contract_no LIKE :kw OR cu.customer_group LIKE :kw)';
-            $receiptSumParams['kw'] = '%' . $keyword . '%';
-        }
-        if ($status !== '') {
-            $receiptSumSql .= ' AND c.status = :status';
-            $receiptSumParams['status'] = $status;
-        }
-        if (!empty($salesUserIds)) {
-            $ps = [];
-            foreach ($salesUserIds as $idx => $uid) {
-                $k = 'rsum_sales_' . $idx;
-                $ps[] = ':' . $k;
-                $receiptSumParams[$k] = $uid;
-            }
-            $receiptSumSql .= ' AND c.sales_user_id IN (' . implode(',', $ps) . ')';
-        } elseif (!empty($ownerUserIds)) {
-            $ps = [];
-            foreach ($ownerUserIds as $idx => $uid) {
-                $k = 'rsum_owner_' . $idx;
-                $ps[] = ':' . $k;
-                $receiptSumParams[$k] = $uid;
-            }
-            $receiptSumSql .= ' AND cu.owner_user_id IN (' . implode(',', $ps) . ')';
-        }
-        if ($focusUserType !== '' && $focusUserId > 0) {
-            if ($focusUserType === 'sales') {
-                $receiptSumSql .= ' AND c.sales_user_id = :focus_user_id';
-            } else {
-                $receiptSumSql .= ' AND cu.owner_user_id = :focus_user_id';
-            }
-            $receiptSumParams['focus_user_id'] = $focusUserId;
-        }
-        if ($receiptStart !== '') {
-            $receiptSumSql .= ' AND r.received_date >= :receipt_start';
-            $receiptSumParams['receipt_start'] = $receiptStart . ' 00:00:00';
-        }
-        if ($receiptEnd !== '') {
-            $receiptSumSql .= ' AND r.received_date <= :receipt_end';
-            $receiptSumParams['receipt_end'] = $receiptEnd . ' 23:59:59';
-        }
-        $periodPaidRow = Db::queryOne($receiptSumSql, $receiptSumParams);
-        if ($periodPaidRow) {
-            $sumRow['sum_paid'] = (float)($periodPaidRow['period_paid'] ?? 0);
-            $sumRow['sum_unpaid'] = max(0, $sumRow['sum_due'] - $sumRow['sum_paid']);
-        }
-    }
     
     // 按货币分别统计（用于前端汇率转换）
     $sumByCurrencySql = str_replace(
@@ -750,74 +720,6 @@ if ($viewMode === 'contract' || $viewMode === 'installment') {
             'sum_paid' => (float)($cr['sum_paid'] ?? 0),
             'sum_unpaid' => (float)($cr['sum_unpaid'] ?? 0),
         ];
-    }
-    
-    // 当按实收时间筛选时，按货币分组重新计算该时间段内的实际收款
-    if ($useReceiptPeriodSum) {
-        $receiptByCurrencySql = 'SELECT c.currency, COALESCE(SUM(r.amount_applied), 0) AS period_paid
-            FROM finance_receipts r
-            INNER JOIN finance_contracts c ON c.id = r.contract_id
-            INNER JOIN customers cu ON cu.id = r.customer_id
-            WHERE r.amount_applied > 0';
-        $receiptByCurrencyParams = [];
-        if ($user['role'] === 'sales') {
-            $receiptByCurrencySql .= ' AND c.sales_user_id = :sales_user_id';
-            $receiptByCurrencyParams['sales_user_id'] = (int)$user['id'];
-        }
-        if ($keyword !== '') {
-            $receiptByCurrencySql .= ' AND (cu.name LIKE :kw OR cu.mobile LIKE :kw OR cu.customer_code LIKE :kw OR c.contract_no LIKE :kw OR cu.customer_group LIKE :kw)';
-            $receiptByCurrencyParams['kw'] = '%' . $keyword . '%';
-        }
-        if ($status !== '') {
-            $receiptByCurrencySql .= ' AND c.status = :status';
-            $receiptByCurrencyParams['status'] = $status;
-        }
-        if (!empty($salesUserIds)) {
-            $ps = [];
-            foreach ($salesUserIds as $idx => $uid) {
-                $k = 'rbc_sales_' . $idx;
-                $ps[] = ':' . $k;
-                $receiptByCurrencyParams[$k] = $uid;
-            }
-            $receiptByCurrencySql .= ' AND c.sales_user_id IN (' . implode(',', $ps) . ')';
-        } elseif (!empty($ownerUserIds)) {
-            $ps = [];
-            foreach ($ownerUserIds as $idx => $uid) {
-                $k = 'rbc_owner_' . $idx;
-                $ps[] = ':' . $k;
-                $receiptByCurrencyParams[$k] = $uid;
-            }
-            $receiptByCurrencySql .= ' AND cu.owner_user_id IN (' . implode(',', $ps) . ')';
-        }
-        if ($focusUserType !== '' && $focusUserId > 0) {
-            if ($focusUserType === 'sales') {
-                $receiptByCurrencySql .= ' AND c.sales_user_id = :focus_user_id';
-            } else {
-                $receiptByCurrencySql .= ' AND cu.owner_user_id = :focus_user_id';
-            }
-            $receiptByCurrencyParams['focus_user_id'] = $focusUserId;
-        }
-        if ($receiptStart !== '') {
-            $receiptByCurrencySql .= ' AND r.received_date >= :receipt_start';
-            $receiptByCurrencyParams['receipt_start'] = $receiptStart . ' 00:00:00';
-        }
-        if ($receiptEnd !== '') {
-            $receiptByCurrencySql .= ' AND r.received_date <= :receipt_end';
-            $receiptByCurrencyParams['receipt_end'] = $receiptEnd . ' 23:59:59';
-        }
-        $receiptByCurrencySql .= ' GROUP BY c.currency';
-        $receiptCurrencyRows = Db::query($receiptByCurrencySql, $receiptByCurrencyParams);
-        // 更新 sumByCurrency 中的 sum_paid 和 sum_unpaid
-        $periodPaidByCurrency = [];
-        foreach ($receiptCurrencyRows as $rcr) {
-            $code = $rcr['currency'] ?: 'TWD';
-            $periodPaidByCurrency[$code] = (float)($rcr['period_paid'] ?? 0);
-        }
-        foreach ($sumByCurrency as $code => &$vals) {
-            $vals['sum_paid'] = $periodPaidByCurrency[$code] ?? 0;
-            $vals['sum_unpaid'] = max(0, $vals['sum_due'] - $vals['sum_paid']);
-        }
-        unset($vals);
     }
     
     // 新单/复购统计（按货币分组）- 基于实际收款记录
@@ -1951,41 +1853,32 @@ document.addEventListener('DOMContentLoaded', function() {
     
     if (typeof AjaxDashboard !== 'undefined' && DashboardConfig.viewMode === 'contract') {
         console.log('[财务工作台] 启用Ajax模式 - 一次性加载全部数据');
-        
+
         // 初始加载数据（不分页，加载全部）
         AjaxDashboard.reload();
-        
-        // 绑定筛选器事件
+
+        // 绑定筛选器事件 —— 走 applyDashboardFilters 整页刷新（让顶部汇总与表格同步）
         ['keyword', 'customerGroup', 'activityTag', 'status', 'dueStart', 'dueEnd'].forEach(id => {
             const el = document.getElementById(id);
             if (el) {
                 el.addEventListener('change', () => {
-                    AjaxDashboard.debounce(() => AjaxDashboard.reload());
+                    AjaxDashboard.debounce(() => applyDashboardFilters());
                 });
             }
         });
-        
+
         // 绑定多选筛选器
         ['salesUsers', 'ownerUsers'].forEach(id => {
             const el = document.getElementById(id);
             if (el) {
-                el.addEventListener('change', () => AjaxDashboard.reload());
+                el.addEventListener('change', () => applyDashboardFilters());
             }
         });
-        
+
         // 绑定分组选择
         const groupEl = document.getElementById('dashGroup1');
         if (groupEl) {
-            groupEl.addEventListener('change', () => AjaxDashboard.reload());
-        }
-        
-        // 绑定搜索按钮
-        const searchBtn = document.querySelector('button[type="submit"]');
-        if (searchBtn) {
-            searchBtn.addEventListener('click', (e) => {
-                e.preventDefault();
-                AjaxDashboard.reload();
-            });
+            groupEl.addEventListener('change', () => applyDashboardFilters());
         }
     }
 });

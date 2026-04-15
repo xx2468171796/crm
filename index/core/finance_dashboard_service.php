@@ -94,6 +94,8 @@ class FinanceDashboardService
             'status' => trim((string)($get['status'] ?? '')),
             'due_start' => trim((string)($get['due_start'] ?? '')),
             'due_end' => trim((string)($get['due_end'] ?? '')),
+            'receipt_start' => trim((string)($get['receipt_start'] ?? '')),
+            'receipt_end' => trim((string)($get['receipt_end'] ?? '')),
             'sales_user_ids' => [],
             'owner_user_ids' => [],
         ];
@@ -206,7 +208,7 @@ class FinanceDashboardService
 
         if ($viewMode !== 'staff_summary') {
             $summary = $this->getSummary($viewMode, $filters);
-            
+
             if (!empty($groupBy) && $groupBy[0] === 'sales_user') {
                 $groupStats = $this->getGroupStats($viewMode, $filters);
             }
@@ -345,6 +347,9 @@ class FinanceDashboardService
 
     /**
      * 获取汇总统计
+     * 与 finance_dashboard.php 的 SSR sumSql 保持一致：
+     * - viewMode-aware 状态过滤（合同手动状态优先；分期作用在分期行）
+     * - 实收日期只缩小合同集，sum_paid 仍取累计 amount_paid（与明细累计列对齐）
      */
     private function getSummary(string $viewMode, array $filters): array
     {
@@ -354,13 +359,17 @@ class FinanceDashboardService
         $customerGroup = trim((string)($filters['customer_group'] ?? ''));
         $activityTag = trim((string)($filters['activity_tag'] ?? ''));
         $status = trim((string)($filters['status'] ?? ''));
+        $dueStart = trim((string)($filters['due_start'] ?? ''));
+        $dueEnd = trim((string)($filters['due_end'] ?? ''));
+        $receiptStart = trim((string)($filters['receipt_start'] ?? ''));
+        $receiptEnd = trim((string)($filters['receipt_end'] ?? ''));
         $salesUserIds = $filters['sales_user_ids'] ?? [];
         $ownerUserIds = $filters['owner_user_ids'] ?? [];
 
         if (!is_array($salesUserIds)) $salesUserIds = [];
         if (!is_array($ownerUserIds)) $ownerUserIds = [];
 
-        $sql = 'SELECT 
+        $sql = 'SELECT
             COUNT(DISTINCT c.id) AS contract_count,
             COUNT(i.id) AS installment_count,
             COALESCE(SUM(i.amount_due), 0) AS sum_due,
@@ -377,7 +386,7 @@ class FinanceDashboardService
         }
 
         if ($keyword !== '') {
-            $sql .= ' AND (cu.name LIKE :kw OR cu.mobile LIKE :kw OR cu.customer_code LIKE :kw OR c.contract_no LIKE :kw)';
+            $sql .= ' AND (cu.name LIKE :kw OR cu.mobile LIKE :kw OR cu.customer_code LIKE :kw OR c.contract_no LIKE :kw OR cu.customer_group LIKE :kw)';
             $params['kw'] = '%' . $keyword . '%';
         }
 
@@ -391,9 +400,48 @@ class FinanceDashboardService
             $params['activity_tag'] = $activityTag;
         }
 
+        if ($dueStart !== '') {
+            $sql .= ' AND c.sign_date >= :due_start';
+            $params['due_start'] = $dueStart;
+        }
+        if ($dueEnd !== '') {
+            $sql .= ' AND c.sign_date <= :due_end';
+            $params['due_end'] = $dueEnd;
+        }
+
         if ($status !== '') {
-            $sql .= ' AND c.status = :status';
-            $params['status'] = $status;
+            if ($viewMode === 'contract') {
+                if ($status === '已结清') {
+                    $sql .= ' AND (c.status = "已结清" OR c.manual_status = "已结清")';
+                } elseif ($status === '未结清') {
+                    $sql .= ' AND (c.status <> "已结清" AND (c.manual_status IS NULL OR c.manual_status = "" OR c.manual_status <> "已结清"))';
+                } else {
+                    $sql .= ' AND (
+                        (c.manual_status IS NOT NULL AND c.manual_status <> "" AND c.manual_status = :status)
+                        OR (
+                            (c.manual_status IS NULL OR c.manual_status = "")
+                            AND c.status = :status
+                        )
+                    )';
+                    $params['status'] = $status;
+                }
+            } elseif ($viewMode === 'installment') {
+                if ($status === '已收') {
+                    $sql .= ' AND (i.amount_due > 0 AND (i.amount_due - i.amount_paid) <= 0.00001)';
+                } elseif ($status === '部分已收') {
+                    $sql .= ' AND (i.amount_paid > 0.00001 AND (i.amount_due - i.amount_paid) > 0.00001)';
+                } elseif ($status === '催款') {
+                    $sql .= ' AND (i.amount_paid <= 0.00001 AND (i.amount_due - i.amount_paid) > 0.00001 AND i.manual_status = "催款")';
+                } elseif ($status === '逾期') {
+                    $sql .= ' AND (i.amount_paid <= 0.00001 AND (i.amount_due - i.amount_paid) > 0.00001'
+                        . ' AND (i.manual_status IS NULL OR i.manual_status = "" OR i.manual_status = "待收")'
+                        . ' AND i.due_date < CURDATE())';
+                } elseif ($status === '待收') {
+                    $sql .= ' AND (i.amount_paid <= 0.00001 AND (i.amount_due - i.amount_paid) > 0.00001'
+                        . ' AND (i.manual_status IS NULL OR i.manual_status = "" OR i.manual_status = "待收")'
+                        . ' AND (i.due_date >= CURDATE()))';
+                }
+            }
         }
 
         if (!empty($salesUserIds)) {
@@ -412,6 +460,19 @@ class FinanceDashboardService
                 $params[$k] = $uid;
             }
             $sql .= ' AND cu.owner_user_id IN (' . implode(',', $ps) . ')';
+        }
+
+        if ($receiptStart !== '' || $receiptEnd !== '') {
+            $receiptCondition = 'r.amount_applied > 0';
+            if ($receiptStart !== '') {
+                $receiptCondition .= ' AND r.received_date >= :receipt_start';
+                $params['receipt_start'] = $receiptStart . ' 00:00:00';
+            }
+            if ($receiptEnd !== '') {
+                $receiptCondition .= ' AND r.received_date <= :receipt_end';
+                $params['receipt_end'] = $receiptEnd . ' 23:59:59';
+            }
+            $sql .= ' AND EXISTS (SELECT 1 FROM finance_receipts r WHERE r.contract_id = c.id AND ' . $receiptCondition . ')';
         }
 
         $row = Db::queryOne($sql, $params);
