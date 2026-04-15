@@ -440,6 +440,8 @@ class FinanceDashboardService
                     $sql .= ' AND (i.amount_paid <= 0.00001 AND (i.amount_due - i.amount_paid) > 0.00001'
                         . ' AND (i.manual_status IS NULL OR i.manual_status = "" OR i.manual_status = "待收")'
                         . ' AND (i.due_date >= CURDATE()))';
+                } else {
+                    $sql .= ' AND 1=0';
                 }
             }
         }
@@ -472,7 +474,11 @@ class FinanceDashboardService
                 $receiptCondition .= ' AND r.received_date <= :receipt_end';
                 $params['receipt_end'] = $receiptEnd . ' 23:59:59';
             }
-            $sql .= ' AND EXISTS (SELECT 1 FROM finance_receipts r WHERE r.contract_id = c.id AND ' . $receiptCondition . ')';
+            if ($viewMode === 'installment') {
+                $sql .= ' AND EXISTS (SELECT 1 FROM finance_receipts r WHERE r.installment_id = i.id AND ' . $receiptCondition . ')';
+            } else {
+                $sql .= ' AND EXISTS (SELECT 1 FROM finance_receipts r WHERE r.contract_id = c.id AND ' . $receiptCondition . ')';
+            }
         }
 
         $row = Db::queryOne($sql, $params);

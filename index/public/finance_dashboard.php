@@ -663,6 +663,8 @@ if ($viewMode === 'contract' || $viewMode === 'installment') {
                 $sumSql .= ' AND (i.amount_paid <= 0.00001 AND (i.amount_due - i.amount_paid) > 0.00001'
                     . ' AND (i.manual_status IS NULL OR i.manual_status = "" OR i.manual_status = "待收")'
                     . ' AND (i.due_date >= CURDATE()))';
+            } else {
+                $sumSql .= ' AND 1=0';
             }
         }
     }
@@ -691,7 +693,7 @@ if ($viewMode === 'contract' || $viewMode === 'installment') {
         }
         $sumParams['focus_user_id'] = $focusUserId;
     }
-    // 按实收日期筛选：仅缩小合同集（与明细 SQL 一致），sum_paid 仍取累计 amount_paid
+    // 按实收日期筛选：与明细 SQL 完全一致（viewMode-aware：分期视图按分期匹配，合同视图按合同匹配）
     if ($receiptStart !== '' || $receiptEnd !== '') {
         $receiptCondition = 'r.amount_applied > 0';
         if ($receiptStart !== '') {
@@ -702,7 +704,11 @@ if ($viewMode === 'contract' || $viewMode === 'installment') {
             $receiptCondition .= ' AND r.received_date <= :receipt_end';
             $sumParams['receipt_end'] = $receiptEnd . ' 23:59:59';
         }
-        $sumSql .= ' AND EXISTS (SELECT 1 FROM finance_receipts r WHERE r.contract_id = c.id AND ' . $receiptCondition . ')';
+        if ($viewMode === 'installment') {
+            $sumSql .= ' AND EXISTS (SELECT 1 FROM finance_receipts r WHERE r.installment_id = i.id AND ' . $receiptCondition . ')';
+        } else {
+            $sumSql .= ' AND EXISTS (SELECT 1 FROM finance_receipts r WHERE r.contract_id = c.id AND ' . $receiptCondition . ')';
+        }
     }
     $sumRow = Db::queryOne($sumSql, $sumParams) ?: $sumRow;
     
