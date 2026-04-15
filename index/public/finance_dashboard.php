@@ -780,8 +780,46 @@ if ($viewMode === 'contract' || $viewMode === 'installment') {
         $orderTypeParams['receipt_end'] = $receiptEnd . ' 23:59:59';
     }
     if ($status !== '') {
-        $orderTypeSql .= ' AND c.status = :status';
-        $orderTypeParams['status'] = $status;
+        if ($viewMode === 'contract') {
+            // 与明细 SQL 一致：手动状态优先，已结清/未结清单独处理
+            if ($status === '已结清') {
+                $orderTypeSql .= ' AND (c.status = "已结清" OR c.manual_status = "已结清")';
+            } elseif ($status === '未结清') {
+                $orderTypeSql .= ' AND (c.status <> "已结清" AND (c.manual_status IS NULL OR c.manual_status = "" OR c.manual_status <> "已结清"))';
+            } else {
+                $orderTypeSql .= ' AND (
+                    (c.manual_status IS NOT NULL AND c.manual_status <> "" AND c.manual_status = :status)
+                    OR (
+                        (c.manual_status IS NULL OR c.manual_status = "")
+                        AND c.status = :status
+                    )
+                )';
+                $orderTypeParams['status'] = $status;
+            }
+        } elseif ($viewMode === 'installment') {
+            // 分期视图：限制收款绑定的分期满足分期状态条件
+            $instCond = '';
+            if ($status === '已收') {
+                $instCond = 'i.amount_due > 0 AND (i.amount_due - i.amount_paid) <= 0.00001';
+            } elseif ($status === '部分已收') {
+                $instCond = 'i.amount_paid > 0.00001 AND (i.amount_due - i.amount_paid) > 0.00001';
+            } elseif ($status === '催款') {
+                $instCond = 'i.amount_paid <= 0.00001 AND (i.amount_due - i.amount_paid) > 0.00001 AND i.manual_status = "催款"';
+            } elseif ($status === '逾期') {
+                $instCond = 'i.amount_paid <= 0.00001 AND (i.amount_due - i.amount_paid) > 0.00001'
+                    . ' AND (i.manual_status IS NULL OR i.manual_status = "" OR i.manual_status = "待收")'
+                    . ' AND i.due_date < CURDATE()';
+            } elseif ($status === '待收') {
+                $instCond = 'i.amount_paid <= 0.00001 AND (i.amount_due - i.amount_paid) > 0.00001'
+                    . ' AND (i.manual_status IS NULL OR i.manual_status = "" OR i.manual_status = "待收")'
+                    . ' AND i.due_date >= CURDATE()';
+            }
+            if ($instCond !== '') {
+                $orderTypeSql .= ' AND EXISTS (SELECT 1 FROM finance_installments i WHERE i.id = r.installment_id AND i.deleted_at IS NULL AND (' . $instCond . '))';
+            } else {
+                $orderTypeSql .= ' AND 1=0';
+            }
+        }
     }
     if (!empty($salesUserIds)) {
         $ps = [];
@@ -861,8 +899,21 @@ if ($viewMode === 'contract') {
         $groupStatsParams['activity_tag'] = $activityTag;
     }
     if ($status !== '') {
-        $groupStatsSql .= ' AND c.status = :status';
-        $groupStatsParams['status'] = $status;
+        // groupStatsSql 仅在 viewMode='contract' 下运行，与明细 SQL 一致：手动状态优先
+        if ($status === '已结清') {
+            $groupStatsSql .= ' AND (c.status = "已结清" OR c.manual_status = "已结清")';
+        } elseif ($status === '未结清') {
+            $groupStatsSql .= ' AND (c.status <> "已结清" AND (c.manual_status IS NULL OR c.manual_status = "" OR c.manual_status <> "已结清"))';
+        } else {
+            $groupStatsSql .= ' AND (
+                (c.manual_status IS NOT NULL AND c.manual_status <> "" AND c.manual_status = :status)
+                OR (
+                    (c.manual_status IS NULL OR c.manual_status = "")
+                    AND c.status = :status
+                )
+            )';
+            $groupStatsParams['status'] = $status;
+        }
     }
     if (!empty($salesUserIds)) {
         $ps = [];
@@ -900,7 +951,7 @@ if ($viewMode === 'contract') {
     }
     // 按实收日期筛选
     if ($receiptStart !== '' || $receiptEnd !== '') {
-        $receiptCondition = '1=1';
+        $receiptCondition = 'r.amount_applied > 0';
         if ($receiptStart !== '') {
             $receiptCondition .= ' AND r.received_date >= :receipt_start';
             $groupStatsParams['receipt_start'] = $receiptStart . ' 00:00:00';
@@ -964,8 +1015,21 @@ if ($viewMode === 'contract') {
         $ownerGroupStatsParams['activity_tag'] = $activityTag;
     }
     if ($status !== '') {
-        $ownerGroupStatsSql .= ' AND c.status = :status';
-        $ownerGroupStatsParams['status'] = $status;
+        // ownerGroupStatsSql 仅在 viewMode='contract' 下运行，与明细 SQL 一致
+        if ($status === '已结清') {
+            $ownerGroupStatsSql .= ' AND (c.status = "已结清" OR c.manual_status = "已结清")';
+        } elseif ($status === '未结清') {
+            $ownerGroupStatsSql .= ' AND (c.status <> "已结清" AND (c.manual_status IS NULL OR c.manual_status = "" OR c.manual_status <> "已结清"))';
+        } else {
+            $ownerGroupStatsSql .= ' AND (
+                (c.manual_status IS NOT NULL AND c.manual_status <> "" AND c.manual_status = :status)
+                OR (
+                    (c.manual_status IS NULL OR c.manual_status = "")
+                    AND c.status = :status
+                )
+            )';
+            $ownerGroupStatsParams['status'] = $status;
+        }
     }
     if (!empty($ownerUserIds)) {
         $ps = [];
@@ -991,7 +1055,7 @@ if ($viewMode === 'contract') {
     }
     // 按实收日期筛选
     if ($receiptStart !== '' || $receiptEnd !== '') {
-        $receiptCondition = '1=1';
+        $receiptCondition = 'r.amount_applied > 0';
         if ($receiptStart !== '') {
             $receiptCondition .= ' AND r.received_date >= :receipt_start';
             $ownerGroupStatsParams['receipt_start'] = $receiptStart . ' 00:00:00';
