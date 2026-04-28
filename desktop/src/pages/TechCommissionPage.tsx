@@ -24,7 +24,16 @@ interface ProjectCommission {
   commission_amount: number;
   commission_note: string;
   commission_set_at: number | null;
+  commission_type_id: number | null;
+  commission_type_name: string | null;
   assigned_at: string;
+}
+
+interface TypeSummary {
+  type_id: number | null;
+  type_name: string;
+  total_commission: number;
+  project_count: number;
 }
 
 export default function TechCommissionPage() {
@@ -112,6 +121,22 @@ export default function TechCommissionPage() {
       total_users: filteredData.length,
     };
   }, [filteredData]);
+
+  // 按提成类型合计（基于当前筛选）
+  const byType = useMemo<TypeSummary[]>(() => {
+    const buckets = new Map<number, TypeSummary>();
+    filteredData.forEach(u => {
+      (u.projects || []).forEach(p => {
+        const tid = p.commission_type_id ?? 0;
+        const tname = p.commission_type_id ? (p.commission_type_name || '未命名类型') : '未分类';
+        const cur = buckets.get(tid) ?? { type_id: tid > 0 ? tid : null, type_name: tname, total_commission: 0, project_count: 0 };
+        cur.total_commission += p.commission_amount || 0;
+        cur.project_count += 1;
+        buckets.set(tid, cur);
+      });
+    });
+    return Array.from(buckets.values()).sort((a, b) => b.total_commission - a.total_commission);
+  }, [filteredData]);
   
   // 设置时间范围
   const handleDateRangeChange = (range: 'all' | 'month' | 'quarter' | 'year' | 'custom') => {
@@ -158,7 +183,7 @@ export default function TechCommissionPage() {
   
   // 导出 CSV
   const handleExport = () => {
-    const headers = ['设计师', '项目名', '客户名', '客户类型', '提成金额', '提成日期'];
+    const headers = ['设计师', '项目名', '客户名', '客户类型', '提成类型', '提成金额', '提成日期'];
     const rows: (string | number)[][] = [];
     filteredData.forEach(u => {
       (u.projects || []).forEach(p => {
@@ -167,6 +192,7 @@ export default function TechCommissionPage() {
           p.project_name,
           p.customer_name,
           p.customer_type || '',
+          p.commission_type_name || '未分类',
           p.commission_amount || 0,
           p.commission_set_at ? new Date(p.commission_set_at * 1000).toLocaleDateString('zh-CN') : '',
         ]);
@@ -243,7 +269,33 @@ export default function TechCommissionPage() {
             </div>
           </div>
         </div>
-        
+
+        {/* 按提成类型分类合计 */}
+        {byType.length > 0 && (
+          <div className="bg-white rounded-xl p-4 border shadow-sm mb-6">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-semibold text-gray-700">按提成类型分类合计</h3>
+              <span className="text-xs text-gray-400">共 {byType.length} 类</span>
+            </div>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              {byType.map((t) => {
+                const pct = summary.total_amount > 0 ? Math.round(t.total_commission / summary.total_amount * 100) : 0;
+                const isUnclassified = !t.type_id;
+                return (
+                  <div
+                    key={t.type_id ?? 'none'}
+                    className={`rounded-lg border p-3 ${isUnclassified ? 'bg-gray-50 border-gray-200' : 'bg-indigo-50/40 border-indigo-100'}`}
+                  >
+                    <div className="text-xs text-gray-500 mb-1">{t.type_name}</div>
+                    <div className="text-lg font-bold text-indigo-700">¥{t.total_commission.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+                    <div className="text-xs text-gray-400 mt-1">{t.project_count} 条 · 占 {pct}%</div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         {/* 筛选区域 */}
         <div className="bg-white rounded-xl p-4 border shadow-sm mb-6 space-y-4">
           {/* 时间范围筛选 */}
@@ -469,6 +521,9 @@ export default function TechCommissionPage() {
                                   {p.customer_type && (
                                     <span className="px-1.5 py-0.5 text-xs rounded bg-orange-100 text-orange-700">{p.customer_type}</span>
                                   )}
+                                  <span className={`px-1.5 py-0.5 text-xs rounded ${p.commission_type_name ? 'bg-indigo-100 text-indigo-700' : 'bg-gray-100 text-gray-500'}`}>
+                                    {p.commission_type_name || '未分类'}
+                                  </span>
                                   <ExternalLink className="w-3 h-3 text-gray-300 group-hover:text-indigo-500" />
                                 </div>
                                 <div className="flex items-center gap-3">

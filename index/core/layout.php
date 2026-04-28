@@ -367,6 +367,9 @@ function layout_header(string $title = 'ANKOTTI 客户跟进系统', bool $showN
                         <?php if ($user && ($user['role'] === 'dept_leader' || isAdmin($user))): ?>
                         <li><hr class="dropdown-divider"></li>
                         <li><a class="dropdown-item" href="index.php?page=tech_commission_manage">提成管理</a></li>
+                        <?php if (isAdmin($user)): ?>
+                        <li><a class="dropdown-item" href="index.php?page=tech_commission_types_manage">提成类型设置</a></li>
+                        <?php endif; ?>
                         <?php endif; ?>
                     </ul>
                 </li>

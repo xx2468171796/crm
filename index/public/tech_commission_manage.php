@@ -112,7 +112,7 @@ layout_header($pageTitle);
     </div>
 
     <!-- 汇总卡片 -->
-    <div class="row mb-4 g-3">
+    <div class="row mb-3 g-3">
         <div class="col-md-4">
             <div class="stat-card blue">
                 <div class="stat-label">总提成金额</div>
@@ -130,6 +130,16 @@ layout_header($pageTitle);
                 <div class="stat-label">未设置提成</div>
                 <div class="stat-value" id="unsetCount">0 <small style="font-size:0.5em">个</small></div>
             </div>
+        </div>
+    </div>
+
+    <!-- 按类型分组合计 -->
+    <div class="card border-0 mb-4" id="byTypeCard" style="display:none;">
+        <div class="card-header bg-white border-bottom py-3">
+            <span class="fw-bold"><i class="bi bi-tags me-2"></i>按提成类型分类合计</span>
+        </div>
+        <div class="card-body">
+            <div class="row g-2" id="byTypeContainer"></div>
         </div>
     </div>
 
@@ -194,6 +204,13 @@ layout_header($pageTitle);
                     </div>
                 </div>
                 <div class="mb-3">
+                    <label class="form-label">提成类型</label>
+                    <select class="form-select" id="editCommissionTypeId">
+                        <option value="">未分类</option>
+                    </select>
+                    <div class="form-text">在「提成类型设置」中维护可选项</div>
+                </div>
+                <div class="mb-3">
                     <label class="form-label">备注</label>
                     <textarea class="form-control" id="editCommissionNote" rows="2" placeholder="可选，提成说明"></textarea>
                 </div>
@@ -208,16 +225,38 @@ layout_header($pageTitle);
 
 <script>
 const COMMISSION_API = API_URL + '/tech_commission.php';
+const TYPES_API = API_URL + '/tech_commission_types.php';
 const isAdmin = <?= isAdmin($user) ? 'true' : 'false' ?>;
 let commissionModal;
 let reportData = null;
+let commissionTypeOptions = []; // [{id, name}]
 
 document.addEventListener('DOMContentLoaded', function() {
     commissionModal = new bootstrap.Modal(document.getElementById('commissionModal'));
     loadDepartments();
     loadTechUsers();
+    loadCommissionTypes();
     loadData();
 });
+
+function loadCommissionTypes() {
+    fetch(TYPES_API + '?action=options')
+        .then(r => r.json())
+        .then(res => {
+            if (res.success && Array.isArray(res.data)) {
+                commissionTypeOptions = res.data;
+                const sel = document.getElementById('editCommissionTypeId');
+                sel.innerHTML = '<option value="">未分类</option>';
+                res.data.forEach(t => {
+                    const opt = document.createElement('option');
+                    opt.value = t.id;
+                    opt.textContent = t.name;
+                    sel.appendChild(opt);
+                });
+            }
+        })
+        .catch(err => console.error('加载提成类型失败:', err));
+}
 
 function handlePeriodChange() {
     const period = document.getElementById('filterPeriod').value;
@@ -343,39 +382,45 @@ function renderReport(data) {
                 <th>项目编号</th>
                 <th>项目名称</th>
                 <th>客户</th>
+                <th>类型</th>
                 <th>状态</th>
                 <th class="text-end">提成</th>
                 <th>操作</th>
             </tr></thead><tbody>`;
-            
+
             user.projects.forEach(p => {
-                const commission = p.commission_amount > 0 
+                const commission = p.commission_amount > 0
                     ? `<span class="commission-badge set">¥${parseFloat(p.commission_amount).toFixed(2)}</span>`
                     : `<span class="commission-badge unset">未设置</span>`;
-                
+                const typeName = p.commission_type_name
+                    ? `<span class="badge bg-light text-dark border">${escapeHtml(p.commission_type_name)}</span>`
+                    : `<span class="text-muted small">未分类</span>`;
+
                 html += `
                     <tr class="project-detail-row">
                         <td></td>
                         <td><small class="text-muted">${escapeHtml(p.project_code || '-')}</small></td>
                         <td><a href="/index.php?page=project_detail&id=${p.project_id}" class="text-decoration-none">${escapeHtml(p.project_name)}</a></td>
                         <td>${escapeHtml(p.customer_name || '-')}</td>
+                        <td>${typeName}</td>
                         <td><span class="badge bg-info">${escapeHtml(p.current_status || '-')}</span></td>
                         <td class="text-end">${commission}</td>
                         <td>
-                            <button class="btn btn-sm btn-outline-primary py-0 px-2" onclick="event.stopPropagation(); openEditModal({
-                                assignment_id: ${p.assignment_id},
-                                tech_username: '${escapeHtml(user.realname || user.username)}',
-                                project_name: '${escapeHtml(p.project_name).replace(/'/g, "\\'")}',
-                                commission_amount: ${p.commission_amount || 0},
-                                commission_note: '${escapeHtml(p.commission_note || '').replace(/'/g, "\\'")}'
-                            })">
+                            <button class="btn btn-sm btn-outline-primary py-0 px-2" onclick='event.stopPropagation(); openEditModal(${JSON.stringify({
+                                assignment_id: p.assignment_id,
+                                tech_username: user.realname || user.username,
+                                project_name: p.project_name,
+                                commission_amount: p.commission_amount || 0,
+                                commission_note: p.commission_note || "",
+                                commission_type_id: p.commission_type_id || ""
+                            }).replace(/'/g, "&#39;")})'>
                                 编辑
                             </button>
                         </td>
                     </tr>
                 `;
             });
-            
+
             html += `</tbody></table></td></tr>`;
         }
     });
@@ -397,6 +442,32 @@ function updateSummaryCards(summary) {
     document.getElementById('totalCommission').textContent = `¥${parseFloat(summary.total_commission || 0).toLocaleString()}`;
     document.getElementById('setCount').innerHTML = `${summary.set_count || 0} <small style="font-size:0.5em">个</small>`;
     document.getElementById('unsetCount').innerHTML = `${summary.unset_count || 0} <small style="font-size:0.5em">个</small>`;
+
+    // 按类型分类合计
+    const byType = (reportData && Array.isArray(reportData.by_type)) ? reportData.by_type : [];
+    const card = document.getElementById('byTypeCard');
+    const container = document.getElementById('byTypeContainer');
+    if (!byType.length) {
+        card.style.display = 'none';
+        container.innerHTML = '';
+        return;
+    }
+    card.style.display = '';
+    const total = byType.reduce((s, t) => s + parseFloat(t.total_commission || 0), 0);
+    container.innerHTML = byType.map(t => {
+        const amt = parseFloat(t.total_commission || 0);
+        const pct = total > 0 ? Math.round(amt / total * 100) : 0;
+        const isUnclassified = !t.type_id;
+        return `
+            <div class="col-md-3 col-sm-6">
+                <div class="border rounded p-3 h-100" style="background:${isUnclassified ? '#fafbfc' : '#f5f7ff'};">
+                    <div class="text-muted small mb-1">${escapeHtml(t.type_name)}</div>
+                    <div class="fw-bold fs-5 text-primary">¥${amt.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</div>
+                    <div class="text-muted small">${t.project_count} 条 · 占 ${pct}%</div>
+                </div>
+            </div>
+        `;
+    }).join('');
 }
 
 function exportData() {
@@ -427,6 +498,7 @@ function openEditModal(assignment) {
     document.getElementById('editProjectName').value = assignment.project_name;
     document.getElementById('editCommissionAmount').value = assignment.commission_amount || '';
     document.getElementById('editCommissionNote').value = assignment.commission_note || '';
+    document.getElementById('editCommissionTypeId').value = assignment.commission_type_id ? String(assignment.commission_type_id) : '';
     commissionModal.show();
 }
 
@@ -434,19 +506,22 @@ function saveCommission() {
     const assignmentId = document.getElementById('editAssignmentId').value;
     const amount = document.getElementById('editCommissionAmount').value;
     const note = document.getElementById('editCommissionNote').value;
-    
+    const typeIdRaw = document.getElementById('editCommissionTypeId').value;
+    const typeId = typeIdRaw ? parseInt(typeIdRaw) : null;
+
     if (!amount || isNaN(amount) || parseFloat(amount) < 0) {
         showToast('请输入有效的提成金额', 'warning');
         return;
     }
-    
+
     fetch(`${COMMISSION_API}?action=set_commission`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
             assignment_id: assignmentId,
             commission_amount: parseFloat(amount),
-            commission_note: note
+            commission_note: note,
+            commission_type_id: typeId
         })
     })
     .then(r => r.json())

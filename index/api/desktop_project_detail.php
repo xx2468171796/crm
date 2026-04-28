@@ -118,12 +118,16 @@ try {
 
     // 获取技术负责人
     $techUsers = Db::query("
-        SELECT pta.id as assignment_id, u.id, u.username, u.realname, pta.commission_amount, pta.commission_note, pta.commission_set_at
+        SELECT pta.id as assignment_id, u.id, u.username, u.realname,
+               pta.commission_amount, pta.commission_note, pta.commission_set_at,
+               pta.commission_type_id,
+               tct.name as commission_type_name
         FROM project_tech_assignments pta
         LEFT JOIN users u ON pta.tech_user_id = u.id
+        LEFT JOIN tech_commission_types tct ON tct.id = pta.commission_type_id
         WHERE pta.project_id = ?
     ", [$projectId]);
-    
+
     $techList = [];
     foreach ($techUsers as $tech) {
         $techList[] = [
@@ -133,6 +137,8 @@ try {
             'commission' => $tech['commission_amount'] ? (float)$tech['commission_amount'] : null,
             'commission_note' => $tech['commission_note'],
             'commission_set_at' => $tech['commission_set_at'] ? (int)$tech['commission_set_at'] : null,
+            'commission_type_id' => $tech['commission_type_id'] !== null ? (int)$tech['commission_type_id'] : null,
+            'commission_type_name' => $tech['commission_type_name'],
         ];
     }
     

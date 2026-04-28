@@ -57,6 +57,13 @@ interface TechUser {
   commission: number | null;
   commission_note: string | null;
   commission_set_at: number | null;
+  commission_type_id?: number | null;
+  commission_type_name?: string | null;
+}
+
+interface CommissionTypeOption {
+  id: number;
+  name: string;
 }
 
 interface DaysInfo {
@@ -239,6 +246,8 @@ export default function ProjectDetailPage() {
   const [showCommissionEditor, setShowCommissionEditor] = useState(false);
   const [editingTech, setEditingTech] = useState<TechUser | null>(null);
   const [commissionAmount, setCommissionAmount] = useState('');
+  const [commissionTypeId, setCommissionTypeId] = useState<string>('');
+  const [commissionTypeOptions, setCommissionTypeOptions] = useState<CommissionTypeOption[]>([]);
   
   // 文件上传
   const [uploading, setUploading] = useState(false);
@@ -711,6 +720,24 @@ export default function ProjectDetailPage() {
       toast({ title: '批量删除失败', description: err.message, variant: 'destructive' });
     }
   };
+
+  // 加载提成类型选项（启用中）
+  useEffect(() => {
+    if (!serverUrl || !token) return;
+    (async () => {
+      try {
+        const res = await fetch(`${serverUrl}/api/tech_commission_types.php?action=options`, {
+          headers: { 'Authorization': `Bearer ${token}` },
+        });
+        const data = await res.json();
+        if (data.success && Array.isArray(data.data)) {
+          setCommissionTypeOptions(data.data);
+        }
+      } catch (e) {
+        console.warn('加载提成类型失败', e);
+      }
+    })();
+  }, [serverUrl, token]);
 
   // 桌面端拖拽：使用 Tauri 原生 onDragDropEvent（Web dataTransfer.files 在 Tauri 里经常为空）
   useEffect(() => {
@@ -2429,7 +2456,7 @@ export default function ProjectDetailPage() {
                             <div className="flex-1 min-w-0">
                               <p className="text-sm font-medium text-gray-800 truncate">{tech.name}</p>
                               {canSeeCommission && tech.commission !== null ? (
-                                <p className="text-xs text-green-600">¥{tech.commission}{tech.commission_set_at ? ` · ${new Date(tech.commission_set_at * 1000).toLocaleDateString('zh-CN')}` : ''}</p>
+                                <p className="text-xs text-green-600">¥{tech.commission}{tech.commission_type_name ? ` · ${tech.commission_type_name}` : ''}{tech.commission_set_at ? ` · ${new Date(tech.commission_set_at * 1000).toLocaleDateString('zh-CN')}` : ''}</p>
                               ) : canSeeCommission ? (
                                 <p className="text-xs text-gray-400">未设置提成</p>
                               ) : null}
@@ -2441,6 +2468,7 @@ export default function ProjectDetailPage() {
                                   setCommissionAmount(tech.commission?.toString() || '');
                                   setCommissionNote(tech.commission_note || '');
                                   setCommissionDate(tech.commission_set_at ? new Date(tech.commission_set_at * 1000).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10));
+                                  setCommissionTypeId(tech.commission_type_id ? String(tech.commission_type_id) : '');
                                   setShowCommissionEditor(true);
                                 }}
                                 className="text-indigo-600 hover:text-indigo-800"
@@ -2930,6 +2958,7 @@ export default function ProjectDetailPage() {
                             setCommissionAmount(tech.commission?.toString() || '');
                             setCommissionNote(tech.commission_note || '');
                             setCommissionDate(tech.commission_set_at ? new Date(tech.commission_set_at * 1000).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10));
+                            setCommissionTypeId(tech.commission_type_id ? String(tech.commission_type_id) : '');
                             setShowCommissionEditor(true);
                           }}
                           className="px-4 py-2 text-sm bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors"
@@ -3011,6 +3040,19 @@ export default function ProjectDetailPage() {
                 />
               </div>
               <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">提成类型</label>
+                <select
+                  value={commissionTypeId}
+                  onChange={(e) => setCommissionTypeId(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                >
+                  <option value="">未分类</option>
+                  {commissionTypeOptions.map(t => (
+                    <option key={t.id} value={t.id}>{t.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">提成日期</label>
                 <input
                   type="date"
@@ -3089,6 +3131,7 @@ export default function ProjectDetailPage() {
                           commission_amount: parseFloat(commissionAmount) || 0,
                           commission_note: commissionNote,
                           commission_date: commissionDate,
+                          commission_type_id: commissionTypeId ? parseInt(commissionTypeId) : null,
                         }),
                       });
                       const data = await res.json();

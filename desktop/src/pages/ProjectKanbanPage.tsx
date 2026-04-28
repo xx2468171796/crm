@@ -14,6 +14,13 @@ interface TechUser {
   assignment_id?: number;
   commission?: number | null;
   commission_note?: string | null;
+  commission_type_id?: number | null;
+  commission_type_name?: string | null;
+}
+
+interface CommissionTypeOption {
+  id: number;
+  name: string;
 }
 
 interface Project {
@@ -105,6 +112,8 @@ export default function ProjectKanbanPage() {
   const [editingTech, setEditingTech] = useState<TechUser | null>(null);
   const [commissionAmount, setCommissionAmount] = useState('');
   const [commissionNote, setCommissionNote] = useState('');
+  const [commissionTypeId, setCommissionTypeId] = useState<string>('');
+  const [commissionTypeOptions, setCommissionTypeOptions] = useState<CommissionTypeOption[]>([]);
   
   // 表格视图分组展开状态
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
@@ -231,6 +240,24 @@ export default function ProjectKanbanPage() {
   useEffect(() => {
     loadFilters();
   }, [loadFilters]);
+
+  // 加载提成类型
+  useEffect(() => {
+    if (!serverUrl || !token) return;
+    (async () => {
+      try {
+        const res = await fetch(`${serverUrl}/api/tech_commission_types.php?action=options`, {
+          headers: { 'Authorization': `Bearer ${token}` },
+        });
+        const data = await res.json();
+        if (data.success && Array.isArray(data.data)) {
+          setCommissionTypeOptions(data.data);
+        }
+      } catch (e) {
+        console.warn('加载提成类型失败', e);
+      }
+    })();
+  }, [serverUrl, token]);
 
   // 加载客户列表（支持分页）
   const loadCustomers = useCallback(async (page = 1, append = false) => {
@@ -430,6 +457,7 @@ export default function ProjectKanbanPage() {
     setEditingTech(tech);
     setCommissionAmount(tech.commission?.toString() || '');
     setCommissionNote(tech.commission_note || '');
+    setCommissionTypeId(tech.commission_type_id ? String(tech.commission_type_id) : '');
     setShowCommissionEditor(true);
   };
 
@@ -474,6 +502,7 @@ export default function ProjectKanbanPage() {
           assignment_id: editingTech.assignment_id,
           commission_amount: parseFloat(commissionAmount) || 0,
           commission_note: commissionNote,
+          commission_type_id: commissionTypeId ? parseInt(commissionTypeId) : null,
         }),
       });
       const data = await res.json();
@@ -1054,7 +1083,12 @@ export default function ProjectKanbanPage() {
                                   </div>
                                   <span className="text-xs text-gray-600">{tech.name}</span>
                                   {tech.commission != null && (
-                                    <span className="text-xs text-green-600">¥{tech.commission}</span>
+                                    <span className="text-xs text-green-600">
+                                      ¥{tech.commission}
+                                      {tech.commission_type_name && (
+                                        <span className="ml-1 px-1 py-px bg-indigo-50 text-indigo-700 rounded text-[10px]">{tech.commission_type_name}</span>
+                                      )}
+                                    </span>
                                   )}
                                 </div>
                                 {isManager && tech.assignment_id && (
@@ -1233,6 +1267,19 @@ export default function ProjectKanbanPage() {
                   placeholder="请输入提成金额"
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">提成类型</label>
+                <select
+                  value={commissionTypeId}
+                  onChange={(e) => setCommissionTypeId(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">未分类</option>
+                  {commissionTypeOptions.map(t => (
+                    <option key={t.id} value={t.id}>{t.name}</option>
+                  ))}
+                </select>
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">备注</label>
