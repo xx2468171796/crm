@@ -13,12 +13,25 @@
 require_once __DIR__ . '/../core/api_init.php';
 require_once __DIR__ . '/../core/db.php';
 require_once __DIR__ . '/../core/auth.php';
+require_once __DIR__ . '/../core/desktop_auth.php';
 require_once __DIR__ . '/../core/rbac.php';
 
 header('Content-Type: application/json; charset=utf-8');
 
-auth_require();
-$user = current_user();
+// 双轨认证：优先 Bearer Token（桌面端），失败则回退到 session（Web 端）
+$user = null;
+$bearerToken = desktop_get_token();
+if ($bearerToken) {
+    $user = desktop_verify_token($bearerToken);
+}
+if (!$user) {
+    $user = current_user();
+}
+if (!$user) {
+    http_response_code(401);
+    echo json_encode(['success' => false, 'error' => '未认证'], JSON_UNESCAPED_UNICODE);
+    exit;
+}
 $action = $_GET['action'] ?? $_POST['action'] ?? '';
 
 function jsonOut(array $payload, int $status = 200): void
