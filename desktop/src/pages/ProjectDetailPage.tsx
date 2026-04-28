@@ -752,18 +752,25 @@ export default function ProjectDetailPage() {
     }
   };
 
+  // 把 unix 秒转成 datetime-local 用的本地时间字符串 "YYYY-MM-DDTHH:mm"
+  const toDatetimeLocal = (ts?: number | null): string => {
+    const d = ts ? new Date(ts * 1000) : new Date();
+    const pad = (n: number) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  };
+
   const resetCommissionEntryForm = () => {
     setEditingEntryId(null);
     setCommissionAmount('');
     setCommissionNote('');
-    setCommissionDate(new Date().toISOString().slice(0, 10));
+    setCommissionDate(toDatetimeLocal());
   };
 
   const startEditCommissionEntry = (e: CommissionEntry) => {
     setEditingEntryId(e.id);
     setCommissionAmount(String(e.amount));
     setCommissionNote(e.note || '');
-    setCommissionDate(e.entry_at ? new Date(e.entry_at * 1000).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10));
+    setCommissionDate(toDatetimeLocal(e.entry_at));
   };
 
   const saveCommissionEntry = async () => {
@@ -771,7 +778,9 @@ export default function ProjectDetailPage() {
     const amt = parseFloat(commissionAmount);
     if (!amt || amt <= 0) { toast({ title: '请输入有效的提成金额', variant: 'destructive' }); return; }
     if (!commissionDate) { toast({ title: '请选择时间', variant: 'destructive' }); return; }
-    const entryAt = Math.floor(new Date(commissionDate + 'T00:00:00').getTime() / 1000);
+    // datetime-local 已含 'YYYY-MM-DDTHH:mm'，直接 new Date 解析为本地时间
+    const entryAt = Math.floor(new Date(commissionDate).getTime() / 1000);
+    if (!entryAt || isNaN(entryAt)) { toast({ title: '时间格式错误', variant: 'destructive' }); return; }
     setSavingEntry(true);
     try {
       const isEdit = editingEntryId != null;
@@ -2541,7 +2550,7 @@ export default function ProjectDetailPage() {
                             <div className="flex-1 min-w-0">
                               <p className="text-sm font-medium text-gray-800 truncate">{tech.name}</p>
                               {canSeeCommission && tech.commission !== null ? (
-                                <p className="text-xs text-green-600">¥{tech.commission}{tech.entry_count && tech.entry_count > 1 ? ` (${tech.entry_count} 条)` : ''}{tech.commission_set_at ? ` · ${new Date(tech.commission_set_at * 1000).toLocaleDateString('zh-CN')}` : ''}</p>
+                                <p className="text-xs text-green-600">¥{tech.commission}{tech.entry_count && tech.entry_count > 1 ? ` (${tech.entry_count} 条)` : ''}{tech.commission_set_at ? ` · ${new Date(tech.commission_set_at * 1000).toLocaleString('zh-CN', { year:'numeric', month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit', hour12:false })}` : ''}</p>
                               ) : canSeeCommission ? (
                                 <p className="text-xs text-gray-400">未设置提成</p>
                               ) : null}
@@ -3025,7 +3034,7 @@ export default function ProjectDetailPage() {
                         <div>
                           <p className="font-medium text-gray-800">{tech.name}</p>
                           {canSeeCommission && tech.commission !== null ? (
-                            <p className="text-sm text-green-600">提成: ¥{tech.commission}{tech.commission_set_at ? ` · ${new Date(tech.commission_set_at * 1000).toLocaleDateString('zh-CN')}` : ''}</p>
+                            <p className="text-sm text-green-600">提成: ¥{tech.commission}{tech.entry_count && tech.entry_count > 1 ? ` (${tech.entry_count} 条)` : ''}{tech.commission_set_at ? ` · ${new Date(tech.commission_set_at * 1000).toLocaleString('zh-CN', { year:'numeric', month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit', hour12:false })}` : ''}</p>
                           ) : canSeeCommission ? (
                             <p className="text-sm text-gray-400">未设置提成</p>
                           ) : null}
@@ -3138,7 +3147,7 @@ export default function ProjectDetailPage() {
                       <div className="flex-1 min-w-0">
                         <div className="flex items-baseline gap-3 flex-wrap">
                           <span className="font-semibold text-green-600">¥{Number(e.amount).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
-                          <span className="text-xs text-gray-500">{e.entry_at ? new Date(e.entry_at * 1000).toLocaleDateString('zh-CN') : ''}</span>
+                          <span className="text-xs text-gray-500">{e.entry_at ? new Date(e.entry_at * 1000).toLocaleString('zh-CN', { year:'numeric', month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit', hour12:false }) : ''}</span>
                           {e.created_by_name && <span className="text-xs text-gray-400">· {e.created_by_name}</span>}
                         </div>
                         <div className="text-sm text-gray-700 mt-0.5 break-words">
@@ -3170,16 +3179,17 @@ export default function ProjectDetailPage() {
                     className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-indigo-500"
                   />
                 </div>
-                <div className="col-span-4">
+                <div className="col-span-5">
                   <label className="block text-xs text-gray-500 mb-1">时间 *</label>
                   <input
-                    type="date"
+                    type="datetime-local"
+                    step={60}
                     value={commissionDate}
                     onChange={(e) => setCommissionDate(e.target.value)}
                     className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-indigo-500"
                   />
                 </div>
-                <div className="col-span-5">
+                <div className="col-span-4">
                   <label className="block text-xs text-gray-500 mb-1">备注</label>
                   <input
                     type="text"

@@ -223,7 +223,7 @@ layout_header($pageTitle);
                         </div>
                         <div class="col-md-4">
                             <label class="form-label small">时间 <span class="text-danger">*</span></label>
-                            <input type="date" class="form-control form-control-sm" id="entryDate">
+                            <input type="datetime-local" class="form-control form-control-sm" id="entryDate" step="60">
                         </div>
                         <div class="col-md-5">
                             <label class="form-label small">备注</label>
@@ -486,7 +486,7 @@ function loadEntries(assignmentId) {
                 return;
             }
             list.innerHTML = entries.map(e => {
-                const dt = e.entry_at ? new Date(e.entry_at * 1000).toLocaleDateString('zh-CN') : '';
+                const dt = e.entry_at ? new Date(e.entry_at * 1000).toLocaleString('zh-CN', { year:'numeric', month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit', hour12:false }) : '';
                 const author = e.created_by_name ? `· 录入人 ${escapeHtml(e.created_by_name)}` : '';
                 return `
                     <div class="tl-entry">
@@ -512,11 +512,18 @@ function loadEntries(assignmentId) {
         });
 }
 
+// 把 unix 秒转成 datetime-local 用的本地时间字符串 "YYYY-MM-DDTHH:mm"
+function toDatetimeLocal(ts) {
+    const d = ts ? new Date(ts * 1000) : new Date();
+    const pad = n => String(n).padStart(2, '0');
+    return d.getFullYear() + '-' + pad(d.getMonth()+1) + '-' + pad(d.getDate()) + 'T' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+}
+
 function resetEntryForm() {
     document.getElementById('editEntryId').value = '';
     document.getElementById('entryAmount').value = '';
     document.getElementById('entryNote').value = '';
-    document.getElementById('entryDate').value = new Date().toISOString().slice(0, 10);
+    document.getElementById('entryDate').value = toDatetimeLocal();
     document.getElementById('entryFormTitle').textContent = '新增一条';
     document.getElementById('btnSaveEntry').textContent = '保存新增';
     document.getElementById('btnCancelEdit').classList.add('d-none');
@@ -526,7 +533,7 @@ function startEditEntry(entry) {
     document.getElementById('editEntryId').value = entry.id;
     document.getElementById('entryAmount').value = entry.amount;
     document.getElementById('entryNote').value = entry.note || '';
-    document.getElementById('entryDate').value = entry.entry_at ? new Date(entry.entry_at * 1000).toISOString().slice(0,10) : new Date().toISOString().slice(0,10);
+    document.getElementById('entryDate').value = toDatetimeLocal(entry.entry_at);
     document.getElementById('entryFormTitle').textContent = '编辑第 #' + entry.id + ' 条';
     document.getElementById('btnSaveEntry').textContent = '保存修改';
     document.getElementById('btnCancelEdit').classList.remove('d-none');
@@ -542,7 +549,9 @@ function saveEntry() {
     const dateStr = document.getElementById('entryDate').value;
     if (!amount || isNaN(amount) || amount <= 0) { showToast('请输入有效的提成金额', 'warning'); return; }
     if (!dateStr) { showToast('请选择时间', 'warning'); return; }
-    const entryAt = Math.floor(new Date(dateStr + 'T00:00:00').getTime() / 1000);
+    // datetime-local 已包含 'YYYY-MM-DDTHH:mm'，直接 new Date 取本地时间
+    const entryAt = Math.floor(new Date(dateStr).getTime() / 1000);
+    if (!entryAt || isNaN(entryAt)) { showToast('时间格式错误', 'warning'); return; }
 
     const isEdit = entryId > 0;
     const action = isEdit ? 'update' : 'add';

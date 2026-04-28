@@ -169,7 +169,7 @@ export default function TechCommissionPage() {
           p.customer_name,
           p.customer_type || '',
           p.commission_amount || 0,
-          p.commission_set_at ? new Date(p.commission_set_at * 1000).toLocaleDateString('zh-CN') : '',
+          p.commission_set_at ? new Date(p.commission_set_at * 1000).toLocaleString('zh-CN', { year:'numeric', month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit', hour12:false }) : '',
           (p.commission_note || '').replace(/[",\n\r]/g, ' '),
         ]);
       });
@@ -478,7 +478,7 @@ export default function TechCommissionPage() {
                                 </div>
                                 <div className="flex items-center gap-3">
                                   {p.commission_set_at && (
-                                    <span className="text-xs text-gray-400">{new Date(p.commission_set_at * 1000).toLocaleDateString('zh-CN')}</span>
+                                    <span className="text-xs text-gray-400">{new Date(p.commission_set_at * 1000).toLocaleString('zh-CN', { year:'numeric', month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit', hour12:false })}</span>
                                   )}
                                   <span className="text-green-600 font-medium">¥{(p.commission_amount || 0).toLocaleString()}</span>
                                 </div>
