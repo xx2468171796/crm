@@ -57,13 +57,19 @@ interface TechUser {
   commission: number | null;
   commission_note: string | null;
   commission_set_at: number | null;
-  commission_type_id?: number | null;
-  commission_type_name?: string | null;
+  entry_count?: number;
 }
 
-interface CommissionTypeOption {
+interface CommissionEntry {
   id: number;
-  name: string;
+  assignment_id: number;
+  amount: number;
+  note: string | null;
+  entry_at: number;
+  created_by: number;
+  created_by_name: string | null;
+  created_at: number;
+  updated_at: number;
 }
 
 interface DaysInfo {
@@ -242,12 +248,14 @@ export default function ProjectDetailPage() {
   const [showFormDetail, setShowFormDetail] = useState(false);
   const [selectedFormId, setSelectedFormId] = useState<number | null>(null);
   
-  // 提成设置弹窗
+  // 提成时间线弹窗
   const [showCommissionEditor, setShowCommissionEditor] = useState(false);
   const [editingTech, setEditingTech] = useState<TechUser | null>(null);
   const [commissionAmount, setCommissionAmount] = useState('');
-  const [commissionTypeId, setCommissionTypeId] = useState<string>('');
-  const [commissionTypeOptions, setCommissionTypeOptions] = useState<CommissionTypeOption[]>([]);
+  const [commissionEntries, setCommissionEntries] = useState<CommissionEntry[]>([]);
+  const [commissionEntriesLoading, setCommissionEntriesLoading] = useState(false);
+  const [editingEntryId, setEditingEntryId] = useState<number | null>(null);
+  const [savingEntry, setSavingEntry] = useState(false);
   
   // 文件上传
   const [uploading, setUploading] = useState(false);
@@ -721,23 +729,100 @@ export default function ProjectDetailPage() {
     }
   };
 
-  // 加载提成类型选项（启用中）
-  useEffect(() => {
-    if (!serverUrl || !token) return;
-    (async () => {
-      try {
-        const res = await fetch(`${serverUrl}/api/tech_commission_types.php?action=options`, {
-          headers: { 'Authorization': `Bearer ${token}` },
-        });
-        const data = await res.json();
-        if (data.success && Array.isArray(data.data)) {
-          setCommissionTypeOptions(data.data);
-        }
-      } catch (e) {
-        console.warn('加载提成类型失败', e);
+  // 加载某个 assignment 的提成时间线
+  const loadCommissionEntries = async (assignmentId: number) => {
+    if (!serverUrl || !token || !assignmentId) return;
+    setCommissionEntriesLoading(true);
+    try {
+      const res = await fetch(`${serverUrl}/api/tech_commission_entries.php?action=list&assignment_id=${assignmentId}`, {
+        headers: { 'Authorization': `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (data.success && data.data && Array.isArray(data.data.entries)) {
+        setCommissionEntries(data.data.entries);
+      } else {
+        setCommissionEntries([]);
+        if (!data.success) toast({ title: data.error || '加载时间线失败', variant: 'destructive' });
       }
-    })();
-  }, [serverUrl, token]);
+    } catch (e) {
+      console.error('加载提成时间线失败', e);
+      setCommissionEntries([]);
+    } finally {
+      setCommissionEntriesLoading(false);
+    }
+  };
+
+  const resetCommissionEntryForm = () => {
+    setEditingEntryId(null);
+    setCommissionAmount('');
+    setCommissionNote('');
+    setCommissionDate(new Date().toISOString().slice(0, 10));
+  };
+
+  const startEditCommissionEntry = (e: CommissionEntry) => {
+    setEditingEntryId(e.id);
+    setCommissionAmount(String(e.amount));
+    setCommissionNote(e.note || '');
+    setCommissionDate(e.entry_at ? new Date(e.entry_at * 1000).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10));
+  };
+
+  const saveCommissionEntry = async () => {
+    if (!serverUrl || !token || !editingTech) return;
+    const amt = parseFloat(commissionAmount);
+    if (!amt || amt <= 0) { toast({ title: '请输入有效的提成金额', variant: 'destructive' }); return; }
+    if (!commissionDate) { toast({ title: '请选择时间', variant: 'destructive' }); return; }
+    const entryAt = Math.floor(new Date(commissionDate + 'T00:00:00').getTime() / 1000);
+    setSavingEntry(true);
+    try {
+      const isEdit = editingEntryId != null;
+      const action = isEdit ? 'update' : 'add';
+      const body = isEdit
+        ? { id: editingEntryId, amount: amt, note: commissionNote, entry_at: entryAt }
+        : { assignment_id: editingTech.assignment_id, amount: amt, note: commissionNote, entry_at: entryAt };
+      const res = await fetch(`${serverUrl}/api/tech_commission_entries.php?action=${action}`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json();
+      if (data.success) {
+        toast({ title: isEdit ? '已更新' : '已新增', variant: 'success' });
+        resetCommissionEntryForm();
+        await loadCommissionEntries(editingTech.assignment_id);
+        loadProject('overview');
+      } else {
+        toast({ title: data.error || '保存失败', variant: 'destructive' });
+      }
+    } catch (e) {
+      console.error(e);
+      toast({ title: '网络错误', variant: 'destructive' });
+    } finally {
+      setSavingEntry(false);
+    }
+  };
+
+  const deleteCommissionEntry = async (entryId: number) => {
+    if (!serverUrl || !token || !editingTech) return;
+    if (!confirm('确认删除这条提成记录？')) return;
+    try {
+      const res = await fetch(`${serverUrl}/api/tech_commission_entries.php?action=delete`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: entryId }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        toast({ title: '已删除', variant: 'success' });
+        await loadCommissionEntries(editingTech.assignment_id);
+        loadProject('overview');
+      } else {
+        toast({ title: data.error || '删除失败', variant: 'destructive' });
+      }
+    } catch (e) {
+      console.error(e);
+      toast({ title: '网络错误', variant: 'destructive' });
+    }
+  };
 
   // 桌面端拖拽：使用 Tauri 原生 onDragDropEvent（Web dataTransfer.files 在 Tauri 里经常为空）
   useEffect(() => {
@@ -2456,7 +2541,7 @@ export default function ProjectDetailPage() {
                             <div className="flex-1 min-w-0">
                               <p className="text-sm font-medium text-gray-800 truncate">{tech.name}</p>
                               {canSeeCommission && tech.commission !== null ? (
-                                <p className="text-xs text-green-600">¥{tech.commission}{tech.commission_type_name ? ` · ${tech.commission_type_name}` : ''}{tech.commission_set_at ? ` · ${new Date(tech.commission_set_at * 1000).toLocaleDateString('zh-CN')}` : ''}</p>
+                                <p className="text-xs text-green-600">¥{tech.commission}{tech.entry_count && tech.entry_count > 1 ? ` (${tech.entry_count} 条)` : ''}{tech.commission_set_at ? ` · ${new Date(tech.commission_set_at * 1000).toLocaleDateString('zh-CN')}` : ''}</p>
                               ) : canSeeCommission ? (
                                 <p className="text-xs text-gray-400">未设置提成</p>
                               ) : null}
@@ -2465,10 +2550,8 @@ export default function ProjectDetailPage() {
                               <button
                                 onClick={() => {
                                   setEditingTech(tech);
-                                  setCommissionAmount(tech.commission?.toString() || '');
-                                  setCommissionNote(tech.commission_note || '');
-                                  setCommissionDate(tech.commission_set_at ? new Date(tech.commission_set_at * 1000).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10));
-                                  setCommissionTypeId(tech.commission_type_id ? String(tech.commission_type_id) : '');
+                                  resetCommissionEntryForm();
+                                  loadCommissionEntries(tech.assignment_id);
                                   setShowCommissionEditor(true);
                                 }}
                                 className="text-indigo-600 hover:text-indigo-800"
@@ -2955,10 +3038,8 @@ export default function ProjectDetailPage() {
                         <button
                           onClick={() => {
                             setEditingTech(tech);
-                            setCommissionAmount(tech.commission?.toString() || '');
-                            setCommissionNote(tech.commission_note || '');
-                            setCommissionDate(tech.commission_set_at ? new Date(tech.commission_set_at * 1000).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10));
-                            setCommissionTypeId(tech.commission_type_id ? String(tech.commission_type_id) : '');
+                            resetCommissionEntryForm();
+                            loadCommissionEntries(tech.assignment_id);
                             setShowCommissionEditor(true);
                           }}
                           className="px-4 py-2 text-sm bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors"
@@ -3021,134 +3102,103 @@ export default function ProjectDetailPage() {
         />
       )}
       
-      {/* 提成设置弹窗 */}
+      {/* 提成时间线弹窗 */}
       {showCommissionEditor && editingTech && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl p-6 w-[400px] shadow-2xl">
-            <h3 className="text-lg font-semibold text-gray-800 mb-4">
-              设置提成 - {editingTech.name}
-            </h3>
-            <div className="space-y-4">
+          <div className="bg-white rounded-xl p-6 w-[640px] max-h-[85vh] flex flex-col shadow-2xl">
+            <div className="flex items-start justify-between mb-3">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">提成金额 (元)</label>
-                <input
-                  type="number"
-                  value={commissionAmount}
-                  onChange={(e) => setCommissionAmount(e.target.value)}
-                  placeholder="请输入提成金额"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                />
+                <h3 className="text-lg font-semibold text-gray-800">提成时间线 - {editingTech.name}</h3>
+                <p className="text-xs text-gray-500 mt-0.5">同一个项目可多次发提成，每条记录金额 / 备注 / 时间</p>
               </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">提成类型</label>
-                <select
-                  value={commissionTypeId}
-                  onChange={(e) => setCommissionTypeId(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                >
-                  <option value="">未分类</option>
-                  {commissionTypeOptions.map(t => (
-                    <option key={t.id} value={t.id}>{t.name}</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">提成日期</label>
-                <input
-                  type="date"
-                  value={commissionDate}
-                  onChange={(e) => setCommissionDate(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">备注</label>
-                <textarea
-                  value={commissionNote}
-                  onChange={(e) => setCommissionNote(e.target.value)}
-                  placeholder="可选，填写提成说明"
-                  rows={3}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none"
-                />
-              </div>
+              <button
+                onClick={() => { setShowCommissionEditor(false); setEditingTech(null); resetCommissionEntryForm(); }}
+                className="text-gray-400 hover:text-gray-600 text-xl leading-none"
+              >×</button>
             </div>
-            <div className="flex justify-between mt-6">
-              {editingTech.commission !== null ? (
+
+            <div className="flex items-baseline gap-3 mb-3 pb-3 border-b">
+              <span className="text-sm text-gray-500">累计提成：</span>
+              <span className="text-2xl font-bold text-green-600">
+                ¥{commissionEntries.reduce((s, e) => s + (Number(e.amount) || 0), 0).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+              </span>
+              <span className="text-xs text-gray-400">{commissionEntries.length} 条</span>
+            </div>
+
+            <div className="flex-1 min-h-0 overflow-auto pr-1 mb-3">
+              {commissionEntriesLoading ? (
+                <div className="text-center text-gray-400 py-8 text-sm">加载中...</div>
+              ) : commissionEntries.length === 0 ? (
+                <div className="text-center text-gray-400 py-8 text-sm">暂无提成记录，请在下方添加</div>
+              ) : (
+                <div className="space-y-2">
+                  {commissionEntries.map(e => (
+                    <div key={e.id} className={`flex items-start p-3 rounded-lg border ${editingEntryId === e.id ? 'bg-indigo-50 border-indigo-200' : 'bg-gray-50 border-gray-200'}`}>
+                      <div className="w-2 h-2 rounded-full bg-indigo-500 mt-2 mr-3 flex-shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-baseline gap-3 flex-wrap">
+                          <span className="font-semibold text-green-600">¥{Number(e.amount).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
+                          <span className="text-xs text-gray-500">{e.entry_at ? new Date(e.entry_at * 1000).toLocaleDateString('zh-CN') : ''}</span>
+                          {e.created_by_name && <span className="text-xs text-gray-400">· {e.created_by_name}</span>}
+                        </div>
+                        <div className="text-sm text-gray-700 mt-0.5 break-words">
+                          {e.note || <span className="text-gray-400">无备注</span>}
+                        </div>
+                      </div>
+                      <div className="flex gap-1 flex-shrink-0 ml-2">
+                        <button onClick={() => startEditCommissionEntry(e)} className="text-xs text-indigo-600 hover:underline px-1">编辑</button>
+                        <button onClick={() => deleteCommissionEntry(e.id)} className="text-xs text-red-600 hover:underline px-1">删除</button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="border-t pt-3">
+              <div className="text-sm font-medium text-gray-700 mb-2">
+                {editingEntryId != null ? `编辑第 #${editingEntryId} 条` : '新增一条'}
+              </div>
+              <div className="grid grid-cols-12 gap-2">
+                <div className="col-span-3">
+                  <label className="block text-xs text-gray-500 mb-1">金额 *</label>
+                  <input
+                    type="number"
+                    value={commissionAmount}
+                    onChange={(e) => setCommissionAmount(e.target.value)}
+                    placeholder="必填"
+                    className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                </div>
+                <div className="col-span-4">
+                  <label className="block text-xs text-gray-500 mb-1">时间 *</label>
+                  <input
+                    type="date"
+                    value={commissionDate}
+                    onChange={(e) => setCommissionDate(e.target.value)}
+                    className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                </div>
+                <div className="col-span-5">
+                  <label className="block text-xs text-gray-500 mb-1">备注</label>
+                  <input
+                    type="text"
+                    value={commissionNote}
+                    onChange={(e) => setCommissionNote(e.target.value)}
+                    placeholder="比如：修改三稿 / 完工奖"
+                    maxLength={500}
+                    className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                </div>
+              </div>
+              <div className="flex gap-2 mt-3 justify-end">
+                {editingEntryId != null && (
+                  <button onClick={resetCommissionEntryForm} className="px-3 py-1.5 text-sm text-gray-600 hover:text-gray-800">取消编辑</button>
+                )}
                 <button
-                  onClick={async () => {
-                    if (!serverUrl || !token || !editingTech) return;
-                    if (!confirm('确定要删除该提成记录吗？')) return;
-                    try {
-                      const res = await fetch(`${serverUrl}/api/desktop_tech_commission.php?action=delete_commission`, {
-                        method: 'POST',
-                        headers: {
-                          'Authorization': `Bearer ${token}`,
-                          'Content-Type': 'application/json',
-                        },
-                        body: JSON.stringify({ assignment_id: editingTech.assignment_id }),
-                      });
-                      const data = await res.json();
-                      if (data.success) {
-                        toast({ title: '提成已删除', variant: 'success' });
-                        setShowCommissionEditor(false);
-                        setEditingTech(null);
-                        loadProject('overview');
-                      } else {
-                        toast({ title: data.error || '删除失败', variant: 'destructive' });
-                      }
-                    } catch (e) {
-                      console.error('删除提成失败:', e);
-                      toast({ title: '删除失败', variant: 'destructive' });
-                    }
-                  }}
-                  className="px-4 py-2 text-sm text-red-600 hover:text-red-800 hover:bg-red-50 rounded-lg"
-                >
-                  删除提成
-                </button>
-              ) : <div />}
-              <div className="flex gap-3">
-                <button
-                  onClick={() => {
-                    setShowCommissionEditor(false);
-                    setEditingTech(null);
-                  }}
-                  className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800"
-                >
-                  取消
-                </button>
-                <button
-                  onClick={async () => {
-                    if (!serverUrl || !token || !editingTech) return;
-                    try {
-                      const res = await fetch(`${serverUrl}/api/desktop_tech_commission.php?action=set_commission`, {
-                        method: 'POST',
-                        headers: {
-                          'Authorization': `Bearer ${token}`,
-                          'Content-Type': 'application/json',
-                        },
-                        body: JSON.stringify({
-                          assignment_id: editingTech.assignment_id,
-                          commission_amount: parseFloat(commissionAmount) || 0,
-                          commission_note: commissionNote,
-                          commission_date: commissionDate,
-                          commission_type_id: commissionTypeId ? parseInt(commissionTypeId) : null,
-                        }),
-                      });
-                      const data = await res.json();
-                      if (data.success) {
-                        toast({ title: '提成设置成功', variant: 'success' });
-                        setShowCommissionEditor(false);
-                        setEditingTech(null);
-                        loadProject('overview');
-                      } else {
-                        toast({ title: data.error || '设置失败', variant: 'destructive' });
-                      }
-                    } catch (e) {
-                      console.error('设置提成失败:', e);
-                      toast({ title: '设置失败', variant: 'destructive' });
-                    }
-                  }}
-                  className="px-4 py-2 text-sm text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg"
+                  onClick={saveCommissionEntry}
+                  disabled={savingEntry}
+                  className="px-4 py-1.5 text-sm text-white bg-indigo-600 hover:bg-indigo-700 rounded disabled:opacity-50"
                 >
                   保存
                 </button>

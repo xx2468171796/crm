@@ -133,16 +133,6 @@ layout_header($pageTitle);
         </div>
     </div>
 
-    <!-- 按类型分组合计 -->
-    <div class="card border-0 mb-4" id="byTypeCard" style="display:none;">
-        <div class="card-header bg-white border-bottom py-3">
-            <span class="fw-bold"><i class="bi bi-tags me-2"></i>按提成类型分类合计</span>
-        </div>
-        <div class="card-body">
-            <div class="row g-2" id="byTypeContainer"></div>
-        </div>
-    </div>
-
     <!-- 分组列表 -->
     <div class="card border-0 shadow-sm">
         <div class="card-header bg-white border-bottom py-3">
@@ -178,46 +168,76 @@ layout_header($pageTitle);
     </div>
 </div>
 
-<!-- 设置提成弹窗 -->
+<style>
+.tl-entry { display:flex; align-items:flex-start; padding:10px 12px; border-radius:8px; margin-bottom:8px; background:#f8fafc; border:1px solid #e2e8f0; }
+.tl-dot { flex-shrink:0; width:8px; height:8px; border-radius:50%; background:#6366f1; margin-top:8px; margin-right:12px; }
+.tl-body { flex:1; min-width:0; }
+.tl-row1 { display:flex; gap:12px; align-items:baseline; }
+.tl-amt { font-weight:600; color:#10b981; font-size:1.05em; }
+.tl-date { color:#64748b; font-size:0.85em; }
+.tl-author { color:#94a3b8; font-size:0.8em; }
+.tl-note { color:#334155; font-size:0.9em; margin-top:2px; word-break:break-word; }
+.tl-actions { flex-shrink:0; margin-left:8px; }
+.tl-empty { text-align:center; color:#94a3b8; padding:24px 0; }
+</style>
+
+<!-- 时间线弹窗 -->
 <div class="modal fade" id="commissionModal" tabindex="-1">
-    <div class="modal-dialog">
+    <div class="modal-dialog modal-lg">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title">设置提成</h5>
+                <h5 class="modal-title">提成时间线</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
                 <input type="hidden" id="editAssignmentId">
-                <div class="mb-3">
-                    <label class="form-label">技术人员</label>
-                    <input type="text" class="form-control" id="editTechName" readonly>
-                </div>
-                <div class="mb-3">
-                    <label class="form-label">项目名称</label>
-                    <input type="text" class="form-control" id="editProjectName" readonly>
-                </div>
-                <div class="mb-3">
-                    <label class="form-label">提成金额 <span class="text-danger">*</span></label>
-                    <div class="input-group">
-                        <span class="input-group-text">¥</span>
-                        <input type="number" step="0.01" min="0" class="form-control" id="editCommissionAmount" placeholder="请输入金额">
+                <input type="hidden" id="editEntryId">
+                <div class="row mb-3">
+                    <div class="col-6"><label class="form-label small text-muted mb-1">技术人员</label>
+                        <div id="editTechName" class="fw-semibold">-</div>
+                    </div>
+                    <div class="col-6"><label class="form-label small text-muted mb-1">项目</label>
+                        <div id="editProjectName" class="fw-semibold">-</div>
                     </div>
                 </div>
-                <div class="mb-3">
-                    <label class="form-label">提成类型</label>
-                    <select class="form-select" id="editCommissionTypeId">
-                        <option value="">未分类</option>
-                    </select>
-                    <div class="form-text">在「提成类型设置」中维护可选项</div>
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <div>
+                        <span class="text-muted small">累计提成：</span>
+                        <span class="fw-bold text-success" id="entryTotal">¥0.00</span>
+                        <span class="text-muted small ms-2" id="entryCount">0 条</span>
+                    </div>
                 </div>
-                <div class="mb-3">
-                    <label class="form-label">备注</label>
-                    <textarea class="form-control" id="editCommissionNote" rows="2" placeholder="可选，提成说明"></textarea>
+                <div id="entryList" class="mb-3">
+                    <div class="tl-empty"><div class="spinner-border spinner-border-sm me-2"></div>加载中...</div>
+                </div>
+                <hr>
+                <div>
+                    <h6 class="mb-2" id="entryFormTitle">新增一条</h6>
+                    <div class="row g-2">
+                        <div class="col-md-3">
+                            <label class="form-label small">金额 <span class="text-danger">*</span></label>
+                            <div class="input-group input-group-sm">
+                                <span class="input-group-text">¥</span>
+                                <input type="number" step="0.01" min="0" class="form-control" id="entryAmount" placeholder="必填">
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label small">时间 <span class="text-danger">*</span></label>
+                            <input type="date" class="form-control form-control-sm" id="entryDate">
+                        </div>
+                        <div class="col-md-5">
+                            <label class="form-label small">备注</label>
+                            <input type="text" class="form-control form-control-sm" id="entryNote" placeholder="比如：修改三稿 / 完工奖 / 加班补偿..." maxlength="500">
+                        </div>
+                    </div>
+                    <div class="mt-2 d-flex gap-2">
+                        <button type="button" class="btn btn-primary btn-sm" onclick="saveEntry()" id="btnSaveEntry">保存新增</button>
+                        <button type="button" class="btn btn-outline-secondary btn-sm d-none" onclick="cancelEntryEdit()" id="btnCancelEdit">取消编辑</button>
+                    </div>
                 </div>
             </div>
             <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
-                <button type="button" class="btn btn-primary" onclick="saveCommission()">保存</button>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
             </div>
         </div>
     </div>
@@ -225,38 +245,17 @@ layout_header($pageTitle);
 
 <script>
 const COMMISSION_API = API_URL + '/tech_commission.php';
-const TYPES_API = API_URL + '/tech_commission_types.php';
+const ENTRIES_API = API_URL + '/tech_commission_entries.php';
 const isAdmin = <?= isAdmin($user) ? 'true' : 'false' ?>;
 let commissionModal;
 let reportData = null;
-let commissionTypeOptions = []; // [{id, name}]
 
 document.addEventListener('DOMContentLoaded', function() {
     commissionModal = new bootstrap.Modal(document.getElementById('commissionModal'));
     loadDepartments();
     loadTechUsers();
-    loadCommissionTypes();
     loadData();
 });
-
-function loadCommissionTypes() {
-    fetch(TYPES_API + '?action=options')
-        .then(r => r.json())
-        .then(res => {
-            if (res.success && Array.isArray(res.data)) {
-                commissionTypeOptions = res.data;
-                const sel = document.getElementById('editCommissionTypeId');
-                sel.innerHTML = '<option value="">未分类</option>';
-                res.data.forEach(t => {
-                    const opt = document.createElement('option');
-                    opt.value = t.id;
-                    opt.textContent = t.name;
-                    sel.appendChild(opt);
-                });
-            }
-        })
-        .catch(err => console.error('加载提成类型失败:', err));
-}
 
 function handlePeriodChange() {
     const period = document.getElementById('filterPeriod').value;
@@ -382,9 +381,8 @@ function renderReport(data) {
                 <th>项目编号</th>
                 <th>项目名称</th>
                 <th>客户</th>
-                <th>类型</th>
                 <th>状态</th>
-                <th class="text-end">提成</th>
+                <th class="text-end">累计提成</th>
                 <th>操作</th>
             </tr></thead><tbody>`;
 
@@ -392,9 +390,6 @@ function renderReport(data) {
                 const commission = p.commission_amount > 0
                     ? `<span class="commission-badge set">¥${parseFloat(p.commission_amount).toFixed(2)}</span>`
                     : `<span class="commission-badge unset">未设置</span>`;
-                const typeName = p.commission_type_name
-                    ? `<span class="badge bg-light text-dark border">${escapeHtml(p.commission_type_name)}</span>`
-                    : `<span class="text-muted small">未分类</span>`;
 
                 html += `
                     <tr class="project-detail-row">
@@ -402,19 +397,15 @@ function renderReport(data) {
                         <td><small class="text-muted">${escapeHtml(p.project_code || '-')}</small></td>
                         <td><a href="/index.php?page=project_detail&id=${p.project_id}" class="text-decoration-none">${escapeHtml(p.project_name)}</a></td>
                         <td>${escapeHtml(p.customer_name || '-')}</td>
-                        <td>${typeName}</td>
                         <td><span class="badge bg-info">${escapeHtml(p.current_status || '-')}</span></td>
                         <td class="text-end">${commission}</td>
                         <td>
                             <button class="btn btn-sm btn-outline-primary py-0 px-2" onclick='event.stopPropagation(); openEditModal(${JSON.stringify({
                                 assignment_id: p.assignment_id,
                                 tech_username: user.realname || user.username,
-                                project_name: p.project_name,
-                                commission_amount: p.commission_amount || 0,
-                                commission_note: p.commission_note || "",
-                                commission_type_id: p.commission_type_id || ""
+                                project_name: p.project_name
                             }).replace(/'/g, "&#39;")})'>
-                                编辑
+                                时间线
                             </button>
                         </td>
                     </tr>
@@ -442,32 +433,6 @@ function updateSummaryCards(summary) {
     document.getElementById('totalCommission').textContent = `¥${parseFloat(summary.total_commission || 0).toLocaleString()}`;
     document.getElementById('setCount').innerHTML = `${summary.set_count || 0} <small style="font-size:0.5em">个</small>`;
     document.getElementById('unsetCount').innerHTML = `${summary.unset_count || 0} <small style="font-size:0.5em">个</small>`;
-
-    // 按类型分类合计
-    const byType = (reportData && Array.isArray(reportData.by_type)) ? reportData.by_type : [];
-    const card = document.getElementById('byTypeCard');
-    const container = document.getElementById('byTypeContainer');
-    if (!byType.length) {
-        card.style.display = 'none';
-        container.innerHTML = '';
-        return;
-    }
-    card.style.display = '';
-    const total = byType.reduce((s, t) => s + parseFloat(t.total_commission || 0), 0);
-    container.innerHTML = byType.map(t => {
-        const amt = parseFloat(t.total_commission || 0);
-        const pct = total > 0 ? Math.round(amt / total * 100) : 0;
-        const isUnclassified = !t.type_id;
-        return `
-            <div class="col-md-3 col-sm-6">
-                <div class="border rounded p-3 h-100" style="background:${isUnclassified ? '#fafbfc' : '#f5f7ff'};">
-                    <div class="text-muted small mb-1">${escapeHtml(t.type_name)}</div>
-                    <div class="fw-bold fs-5 text-primary">¥${amt.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</div>
-                    <div class="text-muted small">${t.project_count} 条 · 占 ${pct}%</div>
-                </div>
-            </div>
-        `;
-    }).join('');
 }
 
 function exportData() {
@@ -494,50 +459,125 @@ function unusedUpdateTechUserFilter(byUser) {
 
 function openEditModal(assignment) {
     document.getElementById('editAssignmentId').value = assignment.assignment_id;
-    document.getElementById('editTechName').value = assignment.tech_username;
-    document.getElementById('editProjectName').value = assignment.project_name;
-    document.getElementById('editCommissionAmount').value = assignment.commission_amount || '';
-    document.getElementById('editCommissionNote').value = assignment.commission_note || '';
-    document.getElementById('editCommissionTypeId').value = assignment.commission_type_id ? String(assignment.commission_type_id) : '';
+    document.getElementById('editEntryId').value = '';
+    document.getElementById('editTechName').textContent = assignment.tech_username;
+    document.getElementById('editProjectName').textContent = assignment.project_name;
+    resetEntryForm();
+    loadEntries(assignment.assignment_id);
     commissionModal.show();
 }
 
-function saveCommission() {
-    const assignmentId = document.getElementById('editAssignmentId').value;
-    const amount = document.getElementById('editCommissionAmount').value;
-    const note = document.getElementById('editCommissionNote').value;
-    const typeIdRaw = document.getElementById('editCommissionTypeId').value;
-    const typeId = typeIdRaw ? parseInt(typeIdRaw) : null;
-
-    if (!amount || isNaN(amount) || parseFloat(amount) < 0) {
-        showToast('请输入有效的提成金额', 'warning');
-        return;
-    }
-
-    fetch(`${COMMISSION_API}?action=set_commission`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-            assignment_id: assignmentId,
-            commission_amount: parseFloat(amount),
-            commission_note: note,
-            commission_type_id: typeId
+function loadEntries(assignmentId) {
+    const list = document.getElementById('entryList');
+    list.innerHTML = '<div class="tl-empty"><div class="spinner-border spinner-border-sm me-2"></div>加载中...</div>';
+    fetch(`${ENTRIES_API}?action=list&assignment_id=${assignmentId}`)
+        .then(r => r.json())
+        .then(res => {
+            if (!res.success) {
+                list.innerHTML = `<div class="tl-empty text-danger">${escapeHtml(res.error || '加载失败')}</div>`;
+                return;
+            }
+            const data = res.data || {};
+            const entries = data.entries || [];
+            document.getElementById('entryTotal').textContent = '¥' + Number(data.total_amount || 0).toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2});
+            document.getElementById('entryCount').textContent = (data.entry_count || 0) + ' 条';
+            if (!entries.length) {
+                list.innerHTML = '<div class="tl-empty">暂无提成记录，请在下方添加</div>';
+                return;
+            }
+            list.innerHTML = entries.map(e => {
+                const dt = e.entry_at ? new Date(e.entry_at * 1000).toLocaleDateString('zh-CN') : '';
+                const author = e.created_by_name ? `· 录入人 ${escapeHtml(e.created_by_name)}` : '';
+                return `
+                    <div class="tl-entry">
+                        <div class="tl-dot"></div>
+                        <div class="tl-body">
+                            <div class="tl-row1">
+                                <span class="tl-amt">¥${Number(e.amount).toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}</span>
+                                <span class="tl-date">${escapeHtml(dt)}</span>
+                                <span class="tl-author">${author}</span>
+                            </div>
+                            <div class="tl-note">${e.note ? escapeHtml(e.note) : '<span class="text-muted">无备注</span>'}</div>
+                        </div>
+                        <div class="tl-actions">
+                            <button class="btn btn-sm btn-outline-primary py-0 px-2" onclick='startEditEntry(${JSON.stringify(e).replace(/'/g, "&#39;")})'>编辑</button>
+                            <button class="btn btn-sm btn-outline-danger py-0 px-2" onclick="deleteEntry(${e.id})">删除</button>
+                        </div>
+                    </div>`;
+            }).join('');
         })
+        .catch(err => {
+            console.error(err);
+            list.innerHTML = '<div class="tl-empty text-danger">网络错误</div>';
+        });
+}
+
+function resetEntryForm() {
+    document.getElementById('editEntryId').value = '';
+    document.getElementById('entryAmount').value = '';
+    document.getElementById('entryNote').value = '';
+    document.getElementById('entryDate').value = new Date().toISOString().slice(0, 10);
+    document.getElementById('entryFormTitle').textContent = '新增一条';
+    document.getElementById('btnSaveEntry').textContent = '保存新增';
+    document.getElementById('btnCancelEdit').classList.add('d-none');
+}
+
+function startEditEntry(entry) {
+    document.getElementById('editEntryId').value = entry.id;
+    document.getElementById('entryAmount').value = entry.amount;
+    document.getElementById('entryNote').value = entry.note || '';
+    document.getElementById('entryDate').value = entry.entry_at ? new Date(entry.entry_at * 1000).toISOString().slice(0,10) : new Date().toISOString().slice(0,10);
+    document.getElementById('entryFormTitle').textContent = '编辑第 #' + entry.id + ' 条';
+    document.getElementById('btnSaveEntry').textContent = '保存修改';
+    document.getElementById('btnCancelEdit').classList.remove('d-none');
+}
+
+function cancelEntryEdit() { resetEntryForm(); }
+
+function saveEntry() {
+    const assignmentId = parseInt(document.getElementById('editAssignmentId').value);
+    const entryId = parseInt(document.getElementById('editEntryId').value || '0');
+    const amount = parseFloat(document.getElementById('entryAmount').value);
+    const note = document.getElementById('entryNote').value;
+    const dateStr = document.getElementById('entryDate').value;
+    if (!amount || isNaN(amount) || amount <= 0) { showToast('请输入有效的提成金额', 'warning'); return; }
+    if (!dateStr) { showToast('请选择时间', 'warning'); return; }
+    const entryAt = Math.floor(new Date(dateStr + 'T00:00:00').getTime() / 1000);
+
+    const isEdit = entryId > 0;
+    const action = isEdit ? 'update' : 'add';
+    const payload = isEdit
+        ? { id: entryId, amount, note, entry_at: entryAt }
+        : { assignment_id: assignmentId, amount, note, entry_at: entryAt };
+
+    fetch(`${ENTRIES_API}?action=${action}`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
     })
-    .then(r => r.json())
-    .then(result => {
-        if (result.success) {
-            commissionModal.hide();
+        .then(r => r.json())
+        .then(res => {
+            if (!res.success) { showToast(res.error || '保存失败', 'danger'); return; }
+            showToast(isEdit ? '已更新' : '已新增', 'success');
+            resetEntryForm();
+            loadEntries(assignmentId);
+            loadData(); // 刷新外层报表里的累计金额
+        });
+}
+
+function deleteEntry(entryId) {
+    if (!confirm('确认删除这条提成记录？')) return;
+    const assignmentId = parseInt(document.getElementById('editAssignmentId').value);
+    fetch(`${ENTRIES_API}?action=delete`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: entryId }),
+    })
+        .then(r => r.json())
+        .then(res => {
+            if (!res.success) { showToast(res.error || '删除失败', 'danger'); return; }
+            showToast('已删除', 'success');
+            loadEntries(assignmentId);
             loadData();
-            showToast('设置成功', 'success');
-        } else {
-            showToast(result.message || '设置失败', 'danger');
-        }
-    })
-    .catch(err => {
-        console.error('保存失败:', err);
-        showToast('网络请求失败', 'danger');
-    });
+        });
 }
 
 function showError(message) {

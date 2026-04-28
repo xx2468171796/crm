@@ -172,12 +172,11 @@ function handleKanban($user, $isManager, $statusList) {
         $placeholders = implode(',', array_fill(0, count($projectIds), '?'));
         $techSql = "
             SELECT pta.id as assignment_id, pta.project_id, pta.commission_amount, pta.commission_note,
-                   pta.commission_type_id, pta.commission_set_at,
-                   tct.name as commission_type_name,
+                   pta.commission_set_at,
+                   (SELECT COUNT(*) FROM tech_commission_entries WHERE assignment_id = pta.id) AS entry_count,
                    u.id as user_id, u.realname, u.username
             FROM project_tech_assignments pta
             LEFT JOIN users u ON pta.tech_user_id = u.id
-            LEFT JOIN tech_commission_types tct ON tct.id = pta.commission_type_id
             WHERE pta.project_id IN ({$placeholders})
         ";
         $techRows = Db::query($techSql, $projectIds);
@@ -191,9 +190,8 @@ function handleKanban($user, $isManager, $statusList) {
                 'assignment_id' => (int)$row['assignment_id'],
                 'commission' => $row['commission_amount'] !== null ? (float)$row['commission_amount'] : null,
                 'commission_note' => $row['commission_note'],
-                'commission_type_id' => $row['commission_type_id'] !== null ? (int)$row['commission_type_id'] : null,
-                'commission_type_name' => $row['commission_type_name'],
                 'commission_set_at' => $row['commission_set_at'] !== null ? (int)$row['commission_set_at'] : null,
+                'entry_count' => (int)($row['entry_count'] ?? 0),
             ];
         }
     }
@@ -590,11 +588,10 @@ function handleAssignTech($user, $isManager) {
     $techUsers = Db::query(
         "SELECT pta.id as assignment_id, u.id, u.realname as name, u.username,
                 pta.commission_amount as commission, pta.commission_note,
-                pta.commission_type_id, pta.commission_set_at,
-                tct.name as commission_type_name
+                pta.commission_set_at,
+                (SELECT COUNT(*) FROM tech_commission_entries WHERE assignment_id = pta.id) AS entry_count
          FROM project_tech_assignments pta
          LEFT JOIN users u ON pta.tech_user_id = u.id
-         LEFT JOIN tech_commission_types tct ON tct.id = pta.commission_type_id
          WHERE pta.project_id = ?",
         [$projectId]
     );
@@ -607,9 +604,8 @@ function handleAssignTech($user, $isManager) {
             'assignment_id' => (int)$tech['assignment_id'],
             'commission' => $tech['commission'] !== null ? (float)$tech['commission'] : null,
             'commission_note' => $tech['commission_note'],
-            'commission_type_id' => $tech['commission_type_id'] !== null ? (int)$tech['commission_type_id'] : null,
-            'commission_type_name' => $tech['commission_type_name'],
             'commission_set_at' => $tech['commission_set_at'] !== null ? (int)$tech['commission_set_at'] : null,
+            'entry_count' => (int)($tech['entry_count'] ?? 0),
         ];
     }
     

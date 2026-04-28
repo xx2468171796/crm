@@ -116,15 +116,13 @@ try {
         }
     }
 
-    // 获取技术负责人
+    // 获取技术负责人（commission 为时间线累计金额，由 entries 表汇总后缓存到 pta.commission_amount）
     $techUsers = Db::query("
         SELECT pta.id as assignment_id, u.id, u.username, u.realname,
                pta.commission_amount, pta.commission_note, pta.commission_set_at,
-               pta.commission_type_id,
-               tct.name as commission_type_name
+               (SELECT COUNT(*) FROM tech_commission_entries WHERE assignment_id = pta.id) AS entry_count
         FROM project_tech_assignments pta
         LEFT JOIN users u ON pta.tech_user_id = u.id
-        LEFT JOIN tech_commission_types tct ON tct.id = pta.commission_type_id
         WHERE pta.project_id = ?
     ", [$projectId]);
 
@@ -137,8 +135,7 @@ try {
             'commission' => $tech['commission_amount'] ? (float)$tech['commission_amount'] : null,
             'commission_note' => $tech['commission_note'],
             'commission_set_at' => $tech['commission_set_at'] ? (int)$tech['commission_set_at'] : null,
-            'commission_type_id' => $tech['commission_type_id'] !== null ? (int)$tech['commission_type_id'] : null,
-            'commission_type_name' => $tech['commission_type_name'],
+            'entry_count' => (int)($tech['entry_count'] ?? 0),
         ];
     }
     

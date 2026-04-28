@@ -66,9 +66,7 @@ function handleMyProjects($user) {
             pta.commission_amount,
             pta.commission_note,
             pta.commission_set_at,
-            pta.commission_type_id,
             pta.assigned_at,
-            tct.name as commission_type_name,
             p.id as project_id,
             p.project_code,
             p.project_name,
@@ -80,7 +78,6 @@ function handleMyProjects($user) {
         JOIN projects p ON pta.project_id = p.id AND p.deleted_at IS NULL
         LEFT JOIN customers c ON p.customer_id = c.id
         LEFT JOIN users setter ON pta.commission_set_by = setter.id
-        LEFT JOIN tech_commission_types tct ON tct.id = pta.commission_type_id
         WHERE pta.tech_user_id = ?
         ORDER BY pta.assigned_at DESC
     ", [$userId]);
@@ -90,10 +87,9 @@ function handleMyProjects($user) {
     $projectCount = count($projects);
     foreach ($projects as &$p) {
         $totalCommission += floatval($p['commission_amount'] ?? 0);
-        // 强制金额/时间/类型 ID 为数字，避免前端字符串拼接 bug
+        // 强制金额/时间为数字，避免前端字符串拼接 bug
         $p['commission_amount'] = $p['commission_amount'] !== null ? (float)$p['commission_amount'] : null;
         $p['commission_set_at'] = $p['commission_set_at'] !== null ? (int)$p['commission_set_at'] : null;
-        $p['commission_type_id'] = $p['commission_type_id'] !== null ? (int)$p['commission_type_id'] : null;
     }
     unset($p);
     
@@ -147,9 +143,7 @@ function handleTeamSummary($user, $isManager) {
             pta.commission_amount,
             pta.commission_note,
             pta.commission_set_at,
-            pta.commission_type_id,
             pta.assigned_at,
-            tct.name as commission_type_name,
             p.id as project_id,
             p.project_code,
             p.project_name,
@@ -162,14 +156,12 @@ function handleTeamSummary($user, $isManager) {
         JOIN projects p ON pta.project_id = p.id
         JOIN users u ON pta.tech_user_id = u.id
         LEFT JOIN customers c ON p.customer_id = c.id
-        LEFT JOIN tech_commission_types tct ON tct.id = pta.commission_type_id
         WHERE {$where}
         ORDER BY u.id, pta.commission_set_at DESC
     ", $params);
     
-    // 按技术人员分组汇总 + 按提成类型汇总
+    // 按技术人员分组汇总
     $byUser = [];
-    $byType = []; // type_id => ['type_id', 'type_name', 'total_commission', 'project_count']
     $totalAmount = 0;
     $totalProjects = 0;
 
@@ -185,37 +177,16 @@ function handleTeamSummary($user, $isManager) {
             ];
         }
         $commission = floatval($a['commission_amount'] ?? 0);
-        // 强制金额字段为数字（避免 MySQL DECIMAL 经 json_encode 输出为字符串导致前端拼接 bug）
+        // 强制金额字段为数字（避免 MySQL DECIMAL 经 json_encode 输出为字符串）
         $a['commission_amount'] = $a['commission_amount'] !== null ? (float)$a['commission_amount'] : null;
         $a['commission_set_at'] = $a['commission_set_at'] !== null ? (int)$a['commission_set_at'] : null;
-        $a['commission_type_id'] = $a['commission_type_id'] !== null ? (int)$a['commission_type_id'] : null;
         $byUser[$uid]['total_commission'] += $commission;
         $byUser[$uid]['project_count']++;
         $byUser[$uid]['projects'][] = $a;
 
-        // 按类型汇总
-        $tid = $a['commission_type_id'] !== null ? (int)$a['commission_type_id'] : 0;
-        $tname = $a['commission_type_name'] ?? '';
-        $key = $tid;
-        if (!isset($byType[$key])) {
-            $byType[$key] = [
-                'type_id' => $tid > 0 ? $tid : null,
-                'type_name' => $tid > 0 ? $tname : '未分类',
-                'total_commission' => 0,
-                'project_count' => 0,
-            ];
-        }
-        $byType[$key]['total_commission'] += $commission;
-        $byType[$key]['project_count']++;
-
         $totalAmount += $commission;
         $totalProjects++;
     }
-
-    // 按合计金额倒序
-    usort($byType, function ($a, $b) {
-        return ($b['total_commission'] <=> $a['total_commission']);
-    });
 
     echo json_encode([
         'success' => true,
@@ -226,7 +197,6 @@ function handleTeamSummary($user, $isManager) {
                 'total_users' => count($byUser),
             ],
             'by_user' => array_values($byUser),
-            'by_type' => array_values($byType),
         ]
     ], JSON_UNESCAPED_UNICODE);
 }
@@ -262,25 +232,12 @@ function handleSetCommission($user, $isManager) {
     $commissionAmount = (float)($input['commission_amount'] ?? 0);
     $commissionNote = trim($input['commission_note'] ?? '');
     $commissionDate = trim($input['commission_date'] ?? '');
-    $commissionTypeId = isset($input['commission_type_id']) && $input['commission_type_id'] !== '' && $input['commission_type_id'] !== null
-        ? (int)$input['commission_type_id']
-        : null;
 
     if ($assignmentId <= 0) {
         error_log('[set_commission] 错误: 参数错误');
         http_response_code(400);
         echo json_encode(['success' => false, 'error' => '参数错误'], JSON_UNESCAPED_UNICODE);
         return;
-    }
-    if ($commissionTypeId !== null && $commissionTypeId > 0) {
-        $typeRow = Db::queryOne("SELECT id FROM tech_commission_types WHERE id = ? AND status = 1", [$commissionTypeId]);
-        if (!$typeRow) {
-            http_response_code(400);
-            echo json_encode(['success' => false, 'error' => '所选提成类型不存在或已停用'], JSON_UNESCAPED_UNICODE);
-            return;
-        }
-    } else {
-        $commissionTypeId = null;
     }
 
     // 检查分配记录是否存在
@@ -300,11 +257,12 @@ function handleSetCommission($user, $isManager) {
     } else {
         $setAt = time();
     }
+    // 兼容老接口：直接覆盖 pta 上的单条提成（不再写 entries 表，请使用 tech_commission_entries.php）
     Db::execute("
         UPDATE project_tech_assignments
-        SET commission_amount = ?, commission_note = ?, commission_set_by = ?, commission_set_at = ?, commission_type_id = ?
+        SET commission_amount = ?, commission_note = ?, commission_set_by = ?, commission_set_at = ?
         WHERE id = ?
-    ", [$commissionAmount, $commissionNote, $user['id'], $setAt, $commissionTypeId, $assignmentId]);
+    ", [$commissionAmount, $commissionNote, $user['id'], $setAt, $assignmentId]);
     error_log('[set_commission] 提成设置成功');
     
     echo json_encode([
@@ -350,10 +308,11 @@ function handleDeleteCommission($user, $isManager) {
         return;
     }
 
-    // 清空提成字段（含 type_id）
+    // 清空所有提成（entries 时间线 + pta 缓存字段）
+    Db::execute("DELETE FROM tech_commission_entries WHERE assignment_id = ?", [$assignmentId]);
     Db::execute("
         UPDATE project_tech_assignments
-        SET commission_amount = NULL, commission_note = NULL, commission_set_by = NULL, commission_set_at = NULL, commission_type_id = NULL
+        SET commission_amount = NULL, commission_note = NULL, commission_set_by = NULL, commission_set_at = NULL
         WHERE id = ?
     ", [$assignmentId]);
 

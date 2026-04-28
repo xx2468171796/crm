@@ -175,7 +175,6 @@ $routes = [
     // 技术提成
     'tech_my_projects'       => __DIR__ . '/tech_my_projects.php',
     'tech_commission_manage' => __DIR__ . '/tech_commission_manage.php',
-    'tech_commission_types_manage' => __DIR__ . '/tech_commission_types_manage.php',
     'admin_tech_finance'     => __DIR__ . '/admin_tech_finance.php',
     
     // 小工具

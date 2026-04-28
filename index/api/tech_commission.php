@@ -204,27 +204,11 @@ function handleSetCommission($pdo, $user) {
     $assignmentId = intval($data['assignment_id'] ?? 0);
     $commissionAmount = floatval($data['commission_amount'] ?? 0);
     $commissionNote = trim($data['commission_note'] ?? '');
-    // 提成类型（可选，0/null = 不分类）
-    $commissionTypeId = isset($data['commission_type_id']) && $data['commission_type_id'] !== '' && $data['commission_type_id'] !== null
-        ? (int)$data['commission_type_id']
-        : null;
 
     if ($assignmentId <= 0) {
         http_response_code(400);
         echo json_encode(['success' => false, 'message' => '参数错误'], JSON_UNESCAPED_UNICODE);
         return;
-    }
-    if ($commissionTypeId !== null && $commissionTypeId > 0) {
-        // 校验类型存在且启用
-        $stmt = $pdo->prepare('SELECT id FROM tech_commission_types WHERE id = ? AND status = 1');
-        $stmt->execute([$commissionTypeId]);
-        if (!$stmt->fetch(PDO::FETCH_ASSOC)) {
-            http_response_code(400);
-            echo json_encode(['success' => false, 'message' => '所选提成类型不存在或已停用'], JSON_UNESCAPED_UNICODE);
-            return;
-        }
-    } else {
-        $commissionTypeId = null;
     }
     
     // 检查分配记录是否存在
@@ -250,13 +234,13 @@ function handleSetCommission($pdo, $user) {
         return;
     }
     
-    // 更新提成
+    // 兼容老接口：直接覆盖 pta 上的单条提成（不再写 entries 表，请使用 tech_commission_entries.php）
     $stmt = $pdo->prepare("
         UPDATE project_tech_assignments
-        SET commission_amount = ?, commission_set_by = ?, commission_set_at = ?, commission_note = ?, commission_type_id = ?
+        SET commission_amount = ?, commission_set_by = ?, commission_set_at = ?, commission_note = ?
         WHERE id = ?
     ");
-    $stmt->execute([$commissionAmount, $user['id'], time(), $commissionNote, $commissionTypeId, $assignmentId]);
+    $stmt->execute([$commissionAmount, $user['id'], time(), $commissionNote, $assignmentId]);
     
     echo json_encode(['success' => true, 'message' => '提成设置成功'], JSON_UNESCAPED_UNICODE);
 }
@@ -431,17 +415,15 @@ function handleReportDetailed($pdo, $user) {
     $stmt->execute($params);
     $byUser = $stmt->fetchAll(PDO::FETCH_ASSOC);
     
-    // 获取每个人的项目明细（带 type 信息）
+    // 获取每个人的项目明细
     $detailSql = "
         SELECT
             pta.id as assignment_id,
             pta.tech_user_id,
             pta.commission_amount,
             pta.commission_note,
-            pta.commission_type_id,
             pta.commission_set_at,
             pta.assigned_at,
-            tct.name as commission_type_name,
             p.id as project_id,
             p.project_code,
             p.project_name,
@@ -451,7 +433,6 @@ function handleReportDetailed($pdo, $user) {
         JOIN projects p ON pta.project_id = p.id AND p.deleted_at IS NULL
         JOIN users u ON pta.tech_user_id = u.id
         LEFT JOIN customers c ON p.customer_id = c.id
-        LEFT JOIN tech_commission_types tct ON tct.id = pta.commission_type_id
         WHERE $where
         ORDER BY pta.tech_user_id, pta.assigned_at DESC
     ";
@@ -460,31 +441,13 @@ function handleReportDetailed($pdo, $user) {
     $stmt->execute($params);
     $allDetails = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-    // 按用户分组明细 + 按类型汇总
+    // 按用户分组明细
     $detailsByUser = [];
-    $byType = [];
     foreach ($allDetails as $detail) {
         $uid = $detail['tech_user_id'];
         if (!isset($detailsByUser[$uid])) $detailsByUser[$uid] = [];
         $detailsByUser[$uid][] = $detail;
-
-        $tid = $detail['commission_type_id'] !== null ? (int)$detail['commission_type_id'] : 0;
-        $tname = $detail['commission_type_name'] ?? '';
-        $key = $tid;
-        if (!isset($byType[$key])) {
-            $byType[$key] = [
-                'type_id' => $tid > 0 ? $tid : null,
-                'type_name' => $tid > 0 ? $tname : '未分类',
-                'total_commission' => 0,
-                'project_count' => 0,
-            ];
-        }
-        $byType[$key]['total_commission'] += floatval($detail['commission_amount'] ?? 0);
-        $byType[$key]['project_count']++;
     }
-    usort($byType, function ($a, $b) {
-        return ($b['total_commission'] <=> $a['total_commission']);
-    });
 
     // 合并数据
     foreach ($byUser as &$userRow) {
@@ -509,7 +472,6 @@ function handleReportDetailed($pdo, $user) {
         'success' => true,
         'data' => [
             'users' => $byUser,
-            'by_type' => array_values($byType),
             'summary' => [
                 'total_commission' => $totalCommission,
                 'total_projects' => $totalProjects,
