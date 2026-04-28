@@ -2556,17 +2556,51 @@ export default function ProjectDetailPage() {
                               ) : null}
                             </div>
                             {canAssignProject() && (
-                              <button
-                                onClick={() => {
-                                  setEditingTech(tech);
-                                  resetCommissionEntryForm();
-                                  loadCommissionEntries(tech.assignment_id);
-                                  setShowCommissionEditor(true);
-                                }}
-                                className="text-indigo-600 hover:text-indigo-800"
-                              >
-                                <DollarSign className="w-4 h-4" />
-                              </button>
+                              <div className="flex items-center gap-2">
+                                <button
+                                  onClick={() => {
+                                    setEditingTech(tech);
+                                    resetCommissionEntryForm();
+                                    loadCommissionEntries(tech.assignment_id);
+                                    setShowCommissionEditor(true);
+                                  }}
+                                  className="text-indigo-600 hover:text-indigo-800"
+                                  title="设置提成"
+                                >
+                                  <DollarSign className="w-4 h-4" />
+                                </button>
+                                <button
+                                  onClick={async () => {
+                                    if (!serverUrl || !token) return;
+                                    const hasCommission = (tech.entry_count ?? 0) > 0;
+                                    const tip = hasCommission
+                                      ? `确认从本项目移除 ${tech.name}？这会同时删除其 ${tech.entry_count} 条提成记录，不可恢复。`
+                                      : `确认从本项目移除 ${tech.name}？`;
+                                    if (!confirm(tip)) return;
+                                    try {
+                                      const res = await fetch(`${serverUrl}/api/desktop_projects.php?action=remove_tech`, {
+                                        method: 'POST',
+                                        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+                                        body: JSON.stringify({ project_id: parseInt(id || '0'), tech_user_id: tech.id }),
+                                      });
+                                      const data = await res.json();
+                                      if (data.success) {
+                                        toast({ title: '已移除', variant: 'success' });
+                                        loadProject('overview');
+                                      } else {
+                                        toast({ title: data.error || '移除失败', variant: 'destructive' });
+                                      }
+                                    } catch (e) {
+                                      console.error('移除设计师失败', e);
+                                      toast({ title: '网络错误', variant: 'destructive' });
+                                    }
+                                  }}
+                                  className="text-red-500 hover:text-red-700"
+                                  title="从项目移除"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              </div>
                             )}
                           </div>
                         );

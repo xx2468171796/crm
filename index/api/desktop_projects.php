@@ -57,6 +57,9 @@ try {
         case 'assign_tech':
             handleAssignTech($user, $isManager);
             break;
+        case 'remove_tech':
+            handleRemoveTech($user, $isManager);
+            break;
         case 'customers':
             handleCustomers($user, $isManager);
             break;
@@ -544,9 +547,22 @@ function handleAssignTech($user, $isManager) {
     try {
         Db::beginTransaction();
         
-        // 删除不再分配的
+        // 删除不再分配的（同时清理提成时间线 entries，避免孤儿数据）
         if (!empty($toRemove)) {
             $placeholders = implode(',', array_fill(0, count($toRemove), '?'));
+            // 先取这些被移除人员对应的 assignment_id 列表
+            $removedAssignments = Db::query(
+                "SELECT id FROM project_tech_assignments WHERE project_id = ? AND tech_user_id IN ({$placeholders})",
+                array_merge([$projectId], array_values($toRemove))
+            );
+            $removedAssignmentIds = array_column($removedAssignments, 'id');
+            if (!empty($removedAssignmentIds)) {
+                $entryPlaceholders = implode(',', array_fill(0, count($removedAssignmentIds), '?'));
+                Db::execute(
+                    "DELETE FROM tech_commission_entries WHERE assignment_id IN ({$entryPlaceholders})",
+                    array_values($removedAssignmentIds)
+                );
+            }
             Db::execute(
                 "DELETE FROM project_tech_assignments WHERE project_id = ? AND tech_user_id IN ({$placeholders})",
                 array_merge([$projectId], array_values($toRemove))
@@ -618,6 +634,57 @@ function handleAssignTech($user, $isManager) {
             'removed' => count($toRemove),
         ]
     ], JSON_UNESCAPED_UNICODE);
+}
+
+/**
+ * 单条移除项目里的某个设计师 + 同时清掉该 assignment 的所有提成 entries
+ */
+function handleRemoveTech($user, $isManager) {
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+        http_response_code(405);
+        echo json_encode(['success' => false, 'error' => 'Method not allowed'], JSON_UNESCAPED_UNICODE);
+        return;
+    }
+    if (!$isManager) {
+        http_response_code(403);
+        echo json_encode(['success' => false, 'error' => '无权限'], JSON_UNESCAPED_UNICODE);
+        return;
+    }
+    $input = json_decode(file_get_contents('php://input'), true) ?: [];
+    $projectId = (int)($input['project_id'] ?? 0);
+    $techUserId = (int)($input['tech_user_id'] ?? 0);
+    if ($projectId <= 0 || $techUserId <= 0) {
+        http_response_code(400);
+        echo json_encode(['success' => false, 'error' => '参数错误'], JSON_UNESCAPED_UNICODE);
+        return;
+    }
+
+    $assignment = Db::queryOne(
+        'SELECT id FROM project_tech_assignments WHERE project_id = ? AND tech_user_id = ? LIMIT 1',
+        [$projectId, $techUserId]
+    );
+    if (!$assignment) {
+        http_response_code(404);
+        echo json_encode(['success' => false, 'error' => '该设计师不在本项目中'], JSON_UNESCAPED_UNICODE);
+        return;
+    }
+
+    try {
+        Db::beginTransaction();
+        // 先删提成 entries（避免孤儿）
+        Db::execute('DELETE FROM tech_commission_entries WHERE assignment_id = ?', [(int)$assignment['id']]);
+        // 再删分配记录
+        Db::execute('DELETE FROM project_tech_assignments WHERE id = ?', [(int)$assignment['id']]);
+        Db::commit();
+    } catch (Exception $e) {
+        Db::rollBack();
+        error_log('[remove_tech] 失败: ' . $e->getMessage());
+        http_response_code(500);
+        echo json_encode(['success' => false, 'error' => '服务器错误'], JSON_UNESCAPED_UNICODE);
+        return;
+    }
+
+    echo json_encode(['success' => true, 'message' => '已移除该设计师及其提成记录'], JSON_UNESCAPED_UNICODE);
 }
 
 /**
