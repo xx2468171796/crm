@@ -130,7 +130,9 @@ export default function TechCommissionPage() {
         const tid = p.commission_type_id ?? 0;
         const tname = p.commission_type_id ? (p.commission_type_name || '未命名类型') : '未分类';
         const cur = buckets.get(tid) ?? { type_id: tid > 0 ? tid : null, type_name: tname, total_commission: 0, project_count: 0 };
-        cur.total_commission += p.commission_amount || 0;
+        // commission_amount 从 PHP MySQL 出来可能是字符串，强制转 number 避免字符串拼接
+        const amt = parseFloat(String(p.commission_amount ?? 0)) || 0;
+        cur.total_commission += amt;
         cur.project_count += 1;
         buckets.set(tid, cur);
       });

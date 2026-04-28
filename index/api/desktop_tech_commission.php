@@ -88,9 +88,14 @@ function handleMyProjects($user) {
     // 计算汇总
     $totalCommission = 0;
     $projectCount = count($projects);
-    foreach ($projects as $p) {
+    foreach ($projects as &$p) {
         $totalCommission += floatval($p['commission_amount'] ?? 0);
+        // 强制金额/时间/类型 ID 为数字，避免前端字符串拼接 bug
+        $p['commission_amount'] = $p['commission_amount'] !== null ? (float)$p['commission_amount'] : null;
+        $p['commission_set_at'] = $p['commission_set_at'] !== null ? (int)$p['commission_set_at'] : null;
+        $p['commission_type_id'] = $p['commission_type_id'] !== null ? (int)$p['commission_type_id'] : null;
     }
+    unset($p);
     
     echo json_encode([
         'success' => true,
@@ -180,6 +185,10 @@ function handleTeamSummary($user, $isManager) {
             ];
         }
         $commission = floatval($a['commission_amount'] ?? 0);
+        // 强制金额字段为数字（避免 MySQL DECIMAL 经 json_encode 输出为字符串导致前端拼接 bug）
+        $a['commission_amount'] = $a['commission_amount'] !== null ? (float)$a['commission_amount'] : null;
+        $a['commission_set_at'] = $a['commission_set_at'] !== null ? (int)$a['commission_set_at'] : null;
+        $a['commission_type_id'] = $a['commission_type_id'] !== null ? (int)$a['commission_type_id'] : null;
         $byUser[$uid]['total_commission'] += $commission;
         $byUser[$uid]['project_count']++;
         $byUser[$uid]['projects'][] = $a;
