@@ -329,157 +329,203 @@ function handleReport($pdo, $user) {
 }
 
 /**
- * 获取详细报表（支持筛选、分组、展开明细）
+ * 获取详细报表 —— 时间范围按 entries.entry_at 逐条聚合
+ *
+ * 时段内合计 = 该时段内 entries.amount 的 SUM
+ * set_count: 时段内有 ≥1 条 entry 的项目数（或无时段筛选时 = 累计有提成的项目数）
+ * unset_count: 没有时段内 entry 的项目数
  */
 function handleReportDetailed($pdo, $user) {
-    // 权限检查
     if (!isAdmin($user) && $user['role'] !== 'dept_leader') {
         http_response_code(403);
         echo json_encode(['success' => false, 'message' => '无权限'], JSON_UNESCAPED_UNICODE);
         return;
     }
-    
-    // 筛选参数
+
     $departmentId = intval($_GET['department_id'] ?? 0);
     $techUserId = intval($_GET['tech_user_id'] ?? 0);
     $dateStart = trim($_GET['date_start'] ?? '');
     $dateEnd = trim($_GET['date_end'] ?? '');
     $projectStatus = trim($_GET['project_status'] ?? '');
     $keyword = trim($_GET['keyword'] ?? '');
-    
-    // 构建 WHERE 条件
-    $where = '1=1';
-    $params = [];
-    
-    // 部门筛选（非管理员只能看本部门）
+
+    // assignment 级筛选条件（与时间无关）
+    $assignWhere = 'p.deleted_at IS NULL';
+    $assignParams = [];
     if (!isAdmin($user)) {
-        $where .= ' AND u.department_id = ?';
-        $params[] = $user['department_id'];
+        $assignWhere .= ' AND u.department_id = ?';
+        $assignParams[] = $user['department_id'];
     } elseif ($departmentId > 0) {
-        $where .= ' AND u.department_id = ?';
-        $params[] = $departmentId;
+        $assignWhere .= ' AND u.department_id = ?';
+        $assignParams[] = $departmentId;
     }
-    
-    // 技术人员筛选
     if ($techUserId > 0) {
-        $where .= ' AND pta.tech_user_id = ?';
-        $params[] = $techUserId;
+        $assignWhere .= ' AND pta.tech_user_id = ?';
+        $assignParams[] = $techUserId;
     }
-    
-    // 时间范围筛选（按提成设置时间）
+    if ($projectStatus) {
+        $assignWhere .= ' AND p.current_status = ?';
+        $assignParams[] = $projectStatus;
+    }
+    if ($keyword) {
+        $assignWhere .= ' AND (p.project_name LIKE ? OR p.project_code LIKE ? OR c.name LIKE ? OR u.realname LIKE ?)';
+        $kw = "%{$keyword}%";
+        $assignParams = array_merge($assignParams, [$kw, $kw, $kw, $kw]);
+    }
+
+    // entry 级时间筛选（仅作用于 entries.entry_at）
+    $entryDateClause = '';
+    $entryDateParams = [];
     if ($dateStart) {
-        $where .= ' AND DATE(FROM_UNIXTIME(pta.commission_set_at)) >= ?';
-        $params[] = $dateStart;
+        $startTs = strtotime($dateStart);
+        if ($startTs !== false) { $entryDateClause .= ' AND e.entry_at >= ?'; $entryDateParams[] = $startTs; }
     }
     if ($dateEnd) {
-        $where .= ' AND DATE(FROM_UNIXTIME(pta.commission_set_at)) <= ?';
-        $params[] = $dateEnd;
+        $endTs = strtotime($dateEnd . ' 23:59:59');
+        if ($endTs !== false) { $entryDateClause .= ' AND e.entry_at <= ?'; $entryDateParams[] = $endTs; }
     }
-    
-    // 项目状态筛选
-    if ($projectStatus) {
-        $where .= ' AND p.current_status = ?';
-        $params[] = $projectStatus;
-    }
-    
-    // 关键词搜索
-    if ($keyword) {
-        $where .= ' AND (p.project_name LIKE ? OR p.project_code LIKE ? OR c.name LIKE ? OR u.realname LIKE ?)';
-        $kw = "%{$keyword}%";
-        $params = array_merge($params, [$kw, $kw, $kw, $kw]);
-    }
-    
-    // 获取所有符合条件的分配记录（按人员分组）
-    $sql = "
-        SELECT 
+    $hasDateFilter = !empty($entryDateClause);
+
+    // 1) 取所有 assignment + 项目 + 设计师 + 部门
+    $assignSql = "
+        SELECT
+            pta.id as assignment_id,
+            pta.tech_user_id,
+            pta.assigned_at,
             u.id as user_id,
             COALESCE(u.realname, u.username) as realname,
             u.username,
             d.id as department_id,
             d.name as department_name,
-            COUNT(*) as project_count,
-            SUM(COALESCE(pta.commission_amount, 0)) as total_commission,
-            SUM(CASE WHEN pta.commission_amount > 0 THEN 1 ELSE 0 END) as set_count,
-            SUM(CASE WHEN pta.commission_amount IS NULL OR pta.commission_amount = 0 THEN 1 ELSE 0 END) as unset_count
-        FROM project_tech_assignments pta
-        JOIN projects p ON pta.project_id = p.id AND p.deleted_at IS NULL
-        JOIN users u ON pta.tech_user_id = u.id
-        LEFT JOIN departments d ON u.department_id = d.id
-        LEFT JOIN customers c ON p.customer_id = c.id
-        WHERE $where
-        GROUP BY u.id
-        ORDER BY total_commission DESC, project_count DESC
-    ";
-    
-    $stmt = $pdo->prepare($sql);
-    $stmt->execute($params);
-    $byUser = $stmt->fetchAll(PDO::FETCH_ASSOC);
-    
-    // 获取每个人的项目明细
-    $detailSql = "
-        SELECT
-            pta.id as assignment_id,
-            pta.tech_user_id,
-            pta.commission_amount,
-            pta.commission_note,
-            pta.commission_set_at,
-            pta.assigned_at,
             p.id as project_id,
             p.project_code,
             p.project_name,
             p.current_status,
             c.name as customer_name
         FROM project_tech_assignments pta
-        JOIN projects p ON pta.project_id = p.id AND p.deleted_at IS NULL
+        JOIN projects p ON pta.project_id = p.id
         JOIN users u ON pta.tech_user_id = u.id
+        LEFT JOIN departments d ON u.department_id = d.id
         LEFT JOIN customers c ON p.customer_id = c.id
-        WHERE $where
+        WHERE $assignWhere
         ORDER BY pta.tech_user_id, pta.assigned_at DESC
     ";
+    $stmt = $pdo->prepare($assignSql);
+    $stmt->execute($assignParams);
+    $assignments = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-    $stmt = $pdo->prepare($detailSql);
-    $stmt->execute($params);
-    $allDetails = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
-    // 按用户分组明细
-    $detailsByUser = [];
-    foreach ($allDetails as $detail) {
-        $uid = $detail['tech_user_id'];
-        if (!isset($detailsByUser[$uid])) $detailsByUser[$uid] = [];
-        $detailsByUser[$uid][] = $detail;
+    // 2) 拉取这些 assignment 在时段内（或全部）的 entries
+    $entriesByAssignment = [];
+    $assignmentIds = array_column($assignments, 'assignment_id');
+    if (!empty($assignmentIds)) {
+        $ph = implode(',', array_fill(0, count($assignmentIds), '?'));
+        $entriesSql = "SELECT e.id, e.assignment_id, e.amount, e.note, e.entry_at
+                       FROM tech_commission_entries e
+                       WHERE e.assignment_id IN ($ph)" . $entryDateClause . "
+                       ORDER BY e.assignment_id, e.entry_at DESC, e.id DESC";
+        $stmt2 = $pdo->prepare($entriesSql);
+        $stmt2->execute(array_merge(array_values($assignmentIds), $entryDateParams));
+        foreach ($stmt2->fetchAll(PDO::FETCH_ASSOC) as $r) {
+            $aid = (int)$r['assignment_id'];
+            if (!isset($entriesByAssignment[$aid])) $entriesByAssignment[$aid] = [];
+            $entriesByAssignment[$aid][] = $r;
+        }
     }
 
-    // 合并数据
-    foreach ($byUser as &$userRow) {
-        $userRow['projects'] = $detailsByUser[$userRow['user_id']] ?? [];
-    }
-    unset($userRow);
+    // 3) 按 user 聚合
+    $byUser = [];
+    foreach ($assignments as $a) {
+        $uid = (int)$a['user_id'];
+        $entries = $entriesByAssignment[(int)$a['assignment_id']] ?? [];
+        $sumAmount = 0.0;
+        foreach ($entries as $e) { $sumAmount += (float)$e['amount']; }
+        $entryCount = count($entries);
+        $latest = $entries[0] ?? null; // 已按 entry_at DESC 排序
 
-    // 计算汇总统计
+        if (!isset($byUser[$uid])) {
+            $byUser[$uid] = [
+                'user_id' => $uid,
+                'realname' => $a['realname'],
+                'username' => $a['username'],
+                'department_id' => $a['department_id'],
+                'department_name' => $a['department_name'],
+                'project_count' => 0,
+                'total_commission' => 0.0,
+                'set_count' => 0,
+                'unset_count' => 0,
+                'projects' => [],
+            ];
+        }
+        // 时段筛选打开时只列有命中 entry 的项目，未命中的不展示（避免误导）
+        if ($hasDateFilter && $entryCount === 0) {
+            continue;
+        }
+        $byUser[$uid]['project_count']++;
+        $byUser[$uid]['total_commission'] += $sumAmount;
+        if ($entryCount > 0) {
+            $byUser[$uid]['set_count']++;
+        } else {
+            $byUser[$uid]['unset_count']++;
+        }
+        $byUser[$uid]['projects'][] = [
+            'assignment_id' => (int)$a['assignment_id'],
+            'tech_user_id' => $uid,
+            'project_id' => (int)$a['project_id'],
+            'project_code' => $a['project_code'],
+            'project_name' => $a['project_name'],
+            'current_status' => $a['current_status'],
+            'customer_name' => $a['customer_name'],
+            'assigned_at' => $a['assigned_at'],
+            'commission_amount' => $sumAmount,
+            'commission_note' => $latest['note'] ?? null,
+            'commission_set_at' => $latest ? (int)$latest['entry_at'] : null,
+            'entry_count_in_range' => $entryCount,
+            'entries' => array_map(function ($e) {
+                return [
+                    'id' => (int)$e['id'],
+                    'amount' => (float)$e['amount'],
+                    'note' => $e['note'],
+                    'entry_at' => (int)$e['entry_at'],
+                ];
+            }, $entries),
+        ];
+    }
+
+    // 排序：按 total_commission DESC, project_count DESC
+    $byUserList = array_values($byUser);
+    usort($byUserList, function ($a, $b) {
+        if ($b['total_commission'] != $a['total_commission']) return $b['total_commission'] <=> $a['total_commission'];
+        return $b['project_count'] <=> $a['project_count'];
+    });
+
     $totalCommission = 0;
     $totalProjects = 0;
     $totalSetCount = 0;
     $totalUnsetCount = 0;
-
-    foreach ($byUser as $row) {
-        $totalCommission += floatval($row['total_commission']);
-        $totalProjects += intval($row['project_count']);
-        $totalSetCount += intval($row['set_count']);
-        $totalUnsetCount += intval($row['unset_count']);
+    foreach ($byUserList as $row) {
+        $totalCommission += $row['total_commission'];
+        $totalProjects += $row['project_count'];
+        $totalSetCount += $row['set_count'];
+        $totalUnsetCount += $row['unset_count'];
     }
 
     echo json_encode([
         'success' => true,
         'data' => [
-            'users' => $byUser,
+            'users' => $byUserList,
             'summary' => [
                 'total_commission' => $totalCommission,
                 'total_projects' => $totalProjects,
-                'user_count' => count($byUser),
+                'user_count' => count($byUserList),
                 'set_count' => $totalSetCount,
                 'unset_count' => $totalUnsetCount,
-                'avg_commission' => $totalProjects > 0 ? round($totalCommission / $totalProjects, 2) : 0
-            ]
-        ]
+                'avg_commission' => $totalProjects > 0 ? round($totalCommission / $totalProjects, 2) : 0,
+            ],
+            'date_range' => [
+                'start' => $dateStart ?: null,
+                'end' => $dateEnd ?: null,
+                'has_filter' => $hasDateFilter,
+            ],
+        ],
     ], JSON_UNESCAPED_UNICODE);
 }

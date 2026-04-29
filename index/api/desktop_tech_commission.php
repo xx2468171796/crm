@@ -106,7 +106,9 @@ function handleMyProjects($user) {
 }
 
 /**
- * 获取团队提成汇总（技术主管）
+ * 获取团队提成汇总（技术主管）—— 按 entries.entry_at 逐条聚合
+ * 时间范围筛选作用在每条 entry 的 entry_at 上，每个设计师的 total
+ * = 该范围内 entries.amount 之和；只统计有命中 entries 的合同
  */
 function handleTeamSummary($user, $isManager) {
     if (!$isManager) {
@@ -114,35 +116,36 @@ function handleTeamSummary($user, $isManager) {
         echo json_encode(['success' => false, 'error' => '无权限查看团队汇总'], JSON_UNESCAPED_UNICODE);
         return;
     }
-    
+
     $startDate = $_GET['start_date'] ?? null;
     $endDate = $_GET['end_date'] ?? null;
 
     $where = "p.deleted_at IS NULL";
     $params = [];
 
-    // 按提成日期(commission_set_at, INT时间戳)筛选
     if ($startDate) {
         $startTs = strtotime($startDate);
         if ($startTs !== false) {
-            $where .= " AND pta.commission_set_at >= ?";
+            $where .= " AND e.entry_at >= ?";
             $params[] = $startTs;
         }
     }
     if ($endDate) {
         $endTs = strtotime($endDate . ' 23:59:59');
         if ($endTs !== false) {
-            $where .= " AND pta.commission_set_at <= ?";
+            $where .= " AND e.entry_at <= ?";
             $params[] = $endTs;
         }
     }
 
-    $assignments = Db::query("
+    // 逐条 entry 拉取，连带 assignment / project / 设计师 / 客户信息
+    $rows = Db::query("
         SELECT
+            e.id as entry_id,
+            e.amount as entry_amount,
+            e.note as entry_note,
+            e.entry_at,
             pta.id as assignment_id,
-            pta.commission_amount,
-            pta.commission_note,
-            pta.commission_set_at,
             pta.assigned_at,
             p.id as project_id,
             p.project_code,
@@ -152,41 +155,79 @@ function handleTeamSummary($user, $isManager) {
             c.customer_type,
             u.id as tech_user_id,
             u.realname as tech_username
-        FROM project_tech_assignments pta
-        JOIN projects p ON pta.project_id = p.id
-        JOIN users u ON pta.tech_user_id = u.id
-        LEFT JOIN customers c ON p.customer_id = c.id
+        FROM tech_commission_entries e
+        JOIN project_tech_assignments pta ON pta.id = e.assignment_id
+        JOIN projects p ON p.id = pta.project_id
+        JOIN users u ON u.id = pta.tech_user_id
+        LEFT JOIN customers c ON c.id = p.customer_id
         WHERE {$where}
-        ORDER BY u.id, pta.commission_set_at DESC
+        ORDER BY u.id, p.id, e.entry_at DESC, e.id DESC
     ", $params);
-    
-    // 按技术人员分组汇总
+
+    // 按设计师 → 项目两级聚合
     $byUser = [];
     $totalAmount = 0;
-    $totalProjects = 0;
-
-    foreach ($assignments as $a) {
-        $uid = $a['tech_user_id'];
+    foreach ($rows as $r) {
+        $uid = (int)$r['tech_user_id'];
         if (!isset($byUser[$uid])) {
             $byUser[$uid] = [
                 'tech_user_id' => $uid,
-                'tech_username' => $a['tech_username'],
-                'total_commission' => 0,
+                'tech_username' => $r['tech_username'],
+                'total_commission' => 0.0,
                 'project_count' => 0,
-                'projects' => []
+                'projects' => [],
+                '_project_index' => [], // pid => index in projects[]
             ];
         }
-        $commission = floatval($a['commission_amount'] ?? 0);
-        // 强制金额字段为数字（避免 MySQL DECIMAL 经 json_encode 输出为字符串）
-        $a['commission_amount'] = $a['commission_amount'] !== null ? (float)$a['commission_amount'] : null;
-        $a['commission_set_at'] = $a['commission_set_at'] !== null ? (int)$a['commission_set_at'] : null;
-        $byUser[$uid]['total_commission'] += $commission;
-        $byUser[$uid]['project_count']++;
-        $byUser[$uid]['projects'][] = $a;
+        $u =& $byUser[$uid];
+        $pid = (int)$r['project_id'];
+        $amt = (float)$r['entry_amount'];
 
-        $totalAmount += $commission;
-        $totalProjects++;
+        if (!isset($u['_project_index'][$pid])) {
+            $u['_project_index'][$pid] = count($u['projects']);
+            $u['projects'][] = [
+                'assignment_id' => (int)$r['assignment_id'],
+                'project_id' => $pid,
+                'project_code' => $r['project_code'],
+                'project_name' => $r['project_name'],
+                'current_status' => $r['current_status'],
+                'customer_name' => $r['customer_name'],
+                'customer_type' => $r['customer_type'],
+                'commission_amount' => 0.0,         // 时段内本项目累计
+                'commission_note' => $r['entry_note'], // 最近一条备注（行已按时间倒序，所以第一次见到的是最新的）
+                'commission_set_at' => (int)$r['entry_at'], // 最近一条 entry_at
+                'entry_count_in_range' => 0,
+                'entries' => [],                     // 本项目在时段内的全部 entries（每条独立一行）
+                'assigned_at' => $r['assigned_at'],
+            ];
+            $u['project_count']++;
+        }
+        $idx = $u['_project_index'][$pid];
+        $u['projects'][$idx]['commission_amount'] += $amt;
+        $u['projects'][$idx]['entry_count_in_range']++;
+        $u['projects'][$idx]['entries'][] = [
+            'id' => (int)$r['entry_id'],
+            'amount' => $amt,
+            'note' => $r['entry_note'],
+            'entry_at' => (int)$r['entry_at'],
+        ];
+
+        $u['total_commission'] += $amt;
+        $totalAmount += $amt;
+        unset($u);
     }
+    // 清理内部索引
+    foreach ($byUser as &$u) {
+        unset($u['_project_index']);
+    }
+    unset($u);
+
+    // 按 total 倒序排
+    $byUserList = array_values($byUser);
+    usort($byUserList, function ($a, $b) { return $b['total_commission'] <=> $a['total_commission']; });
+
+    $totalProjects = 0;
+    foreach ($byUserList as $u) { $totalProjects += $u['project_count']; }
 
     echo json_encode([
         'success' => true,
@@ -194,9 +235,13 @@ function handleTeamSummary($user, $isManager) {
             'summary' => [
                 'total_amount' => $totalAmount,
                 'total_projects' => $totalProjects,
-                'total_users' => count($byUser),
+                'total_users' => count($byUserList),
             ],
-            'by_user' => array_values($byUser),
+            'by_user' => $byUserList,
+            'date_range' => [
+                'start' => $startDate,
+                'end' => $endDate,
+            ],
         ]
     ], JSON_UNESCAPED_UNICODE);
 }
