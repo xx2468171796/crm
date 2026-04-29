@@ -292,21 +292,27 @@ function loadTechUsers() {
         .catch(err => console.error('加载技术人员失败:', err));
 }
 
+// 本地日期格式化（避免 toISOString 转 UTC 后日期偏一天的 bug）
+function fmtLocalDate(d) {
+    const pad = n => String(n).padStart(2, '0');
+    return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+}
+
 function getDateRange() {
     const period = document.getElementById('filterPeriod').value;
     const now = new Date();
     let start = '', end = '';
-    
+
     if (period === 'this_month') {
-        start = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
-        end = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0];
+        start = fmtLocalDate(new Date(now.getFullYear(), now.getMonth(), 1));
+        end = fmtLocalDate(new Date(now.getFullYear(), now.getMonth() + 1, 0));
     } else if (period === 'last_month') {
-        start = new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString().split('T')[0];
-        end = new Date(now.getFullYear(), now.getMonth(), 0).toISOString().split('T')[0];
+        start = fmtLocalDate(new Date(now.getFullYear(), now.getMonth() - 1, 1));
+        end = fmtLocalDate(new Date(now.getFullYear(), now.getMonth(), 0));
     } else if (period === 'this_quarter') {
         const q = Math.floor(now.getMonth() / 3);
-        start = new Date(now.getFullYear(), q * 3, 1).toISOString().split('T')[0];
-        end = new Date(now.getFullYear(), (q + 1) * 3, 0).toISOString().split('T')[0];
+        start = fmtLocalDate(new Date(now.getFullYear(), q * 3, 1));
+        end = fmtLocalDate(new Date(now.getFullYear(), (q + 1) * 3, 0));
     } else if (period === 'custom') {
         start = document.getElementById('filterDateStart').value;
         end = document.getElementById('filterDateEnd').value;

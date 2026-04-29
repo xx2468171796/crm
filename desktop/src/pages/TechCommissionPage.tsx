@@ -114,6 +114,12 @@ export default function TechCommissionPage() {
   }, [filteredData]);
 
   
+  // 本地日期格式化（避免 toISOString 转 UTC 后日期偏一天的 bug）
+  const fmtLocalDate = (d: Date): string => {
+    const pad = (n: number) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  };
+
   // 设置时间范围
   const handleDateRangeChange = (range: 'all' | 'month' | 'quarter' | 'year' | 'custom') => {
     setDateRange(range);
@@ -121,17 +127,17 @@ export default function TechCommissionPage() {
     
     switch (range) {
       case 'month':
-        setStartDate(new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0]);
-        setEndDate(new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0]);
+        setStartDate(fmtLocalDate(new Date(now.getFullYear(), now.getMonth(), 1)));
+        setEndDate(fmtLocalDate(new Date(now.getFullYear(), now.getMonth() + 1, 0)));
         break;
       case 'quarter':
         const quarter = Math.floor(now.getMonth() / 3);
-        setStartDate(new Date(now.getFullYear(), quarter * 3, 1).toISOString().split('T')[0]);
-        setEndDate(new Date(now.getFullYear(), quarter * 3 + 3, 0).toISOString().split('T')[0]);
+        setStartDate(fmtLocalDate(new Date(now.getFullYear(), quarter * 3, 1)));
+        setEndDate(fmtLocalDate(new Date(now.getFullYear(), quarter * 3 + 3, 0)));
         break;
       case 'year':
-        setStartDate(new Date(now.getFullYear(), 0, 1).toISOString().split('T')[0]);
-        setEndDate(new Date(now.getFullYear(), 11, 31).toISOString().split('T')[0]);
+        setStartDate(fmtLocalDate(new Date(now.getFullYear(), 0, 1)));
+        setEndDate(fmtLocalDate(new Date(now.getFullYear(), 11, 31)));
         break;
       case 'custom':
         // 保持当前日期不变，让用户自己选择
@@ -180,7 +186,7 @@ export default function TechCommissionPage() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `技术提成汇总_${new Date().toISOString().split('T')[0]}.csv`;
+    a.download = `技术提成汇总_${fmtLocalDate(new Date())}.csv`;
     a.click();
     URL.revokeObjectURL(url);
     
