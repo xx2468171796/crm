@@ -13,6 +13,7 @@ import { requestOpenTaskDetail, requestOpenProjectDetail, requestOpenFormDetail,
 import ToastContainer from '@/components/Toast';
 import PopupNotificationContainer from '@/components/PopupNotification';
 import { toast, popup } from '@/stores/toast';
+import { fmtLocalDate } from '@/lib/dateUtil';
 import FloatingProjectSelector from '@/components/FloatingProjectSelector';
 import { http } from '@/lib/http';
 
@@ -176,7 +177,7 @@ export default function FloatingWindowV2() {
   const [showAssignTask, setShowAssignTask] = useState(false);
   const [assignTaskTitle, setAssignTaskTitle] = useState('');
   const [assignTaskUserId, setAssignTaskUserId] = useState<number | null>(null);
-  const [assignTaskDate, setAssignTaskDate] = useState(new Date().toISOString().split('T')[0]);
+  const [assignTaskDate, setAssignTaskDate] = useState(fmtLocalDate(new Date()));
   const [teamMembers, setTeamMembers] = useState<Array<{ id: number; name: string }>>([]);
   
   // 通知状态 - 使用 ref 避免 stale closure
@@ -501,7 +502,7 @@ export default function FloatingWindowV2() {
           project_code: t.project_code,
           status: t.status,
           priority: t.priority || 'medium',
-          task_date: t.deadline ? (typeof t.deadline === 'number' ? new Date(Number(t.deadline) * 1000).toISOString().split('T')[0] : t.deadline) : null,
+          task_date: t.deadline ? (typeof t.deadline === 'number' ? fmtLocalDate(new Date(Number(t.deadline) * 1000)) : t.deadline) : null,
           need_help: t.need_help ? 1 : 0,
           assigned_by: t.created_by || null,
           assigned_by_name: t.creator_name || null,

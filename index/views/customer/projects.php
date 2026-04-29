@@ -203,7 +203,9 @@ function loadPortalInfo() {
                 document.getElementById('portalEnabled').checked = enabled;
                 if (data.data.expires_at) {
                     var d = new Date(data.data.expires_at * 1000);
-                    document.getElementById('portalExpiresAt').value = d.toISOString().split('T')[0];
+                    var p = function(n) { return String(n).padStart(2, '0'); };
+                    // 用本地时间字段，避免 toISOString 转 UTC 后日期偏一天
+                    document.getElementById('portalExpiresAt').value = d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate());
                 }
                 if (data.data.access_count > 0) {
                     document.getElementById('portalInfo').style.display = 'block';

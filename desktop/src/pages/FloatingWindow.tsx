@@ -6,6 +6,7 @@ import { useAuthStore } from '@/stores/auth';
 import { useSettingsStore } from '@/stores/settings';
 import { onEvent, requestOpenTaskDetail, requestOpenProjectDetail, EVENTS } from '@/lib/windowEvents';
 import { http } from '@/lib/http';
+import { fmtLocalDate } from '@/lib/dateUtil';
 
 type TaskView = 'today' | 'yesterday' | 'future' | 'help' | 'assigned';
 
@@ -66,7 +67,7 @@ export default function FloatingWindow() {
   const [newTaskTitle, setNewTaskTitle] = useState('');
   const [newTaskProjectId, setNewTaskProjectId] = useState<number | null>(null);
   const [newTaskNeedHelp, setNewTaskNeedHelp] = useState(false);
-  const [newTaskDate, setNewTaskDate] = useState(new Date().toISOString().split('T')[0]);
+  const [newTaskDate, setNewTaskDate] = useState(fmtLocalDate(new Date()));
   const [newTaskPriority, setNewTaskPriority] = useState<'low' | 'medium' | 'high'>('medium');
   const [submitting, setSubmitting] = useState(false);
 
@@ -188,7 +189,7 @@ export default function FloatingWindow() {
         setNewTaskTitle('');
         setNewTaskProjectId(null);
         setNewTaskNeedHelp(false);
-        setNewTaskDate(new Date().toISOString().split('T')[0]);
+        setNewTaskDate(fmtLocalDate(new Date()));
         setNewTaskPriority('medium');
         loadTasks();
       }

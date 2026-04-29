@@ -1153,7 +1153,7 @@ $defaultTime = $firstContact && $firstContact['next_follow_time']
                     moduleName = '文件管理';
                 }
                 
-                const fileName = `${customerName}_${moduleName}_${new Date().toISOString().slice(0, 10).replace(/-/g, '')}_${Date.now()}.png`;
+                const fileName = `${customerName}_${moduleName}_${(() => { const d = new Date(); const p = n => String(n).padStart(2,'0'); return d.getFullYear()+p(d.getMonth()+1)+p(d.getDate()); })()}_${Date.now()}.png`;
                 
                 const canvas = await html2canvas(container, {
                     backgroundColor: '#F2F2F7',

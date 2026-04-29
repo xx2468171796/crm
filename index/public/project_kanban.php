@@ -1705,7 +1705,7 @@ function openPortalSettings(customerId, customerName) {
             
             const currentPassword = portalInfo.current_password || '';
             const isEnabled = portalInfo.enabled ? true : false;
-            const expiresAt = portalInfo.expires_at ? new Date(portalInfo.expires_at * 1000).toISOString().split('T')[0] : '';
+            const expiresAt = portalInfo.expires_at ? (() => { const d = new Date(portalInfo.expires_at * 1000); const p = n => String(n).padStart(2,'0'); return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate()); })() : '';
             
             const modalHtml = `
                 <div class="modal fade" id="portalSettingsModal" tabindex="-1">

@@ -609,7 +609,7 @@ function submitReceivableStatusChange() {
 
     // 如果是已收，需要调用收款登记
     if (newStatus === '已收') {
-        const receivedDate = new Date().toISOString().slice(0, 10);
+        const receivedDate = (() => { const d = new Date(); const p = n => String(n).padStart(2,'0'); return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate()); })();
         const method = document.getElementById('receivableStatusMethod')?.value || '';
         fetch(API_URL + '/finance_installment_get.php?id=' + installmentId)
             .then(r => r.json())

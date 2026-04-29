@@ -1627,7 +1627,7 @@ document.addEventListener('DOMContentLoaded', function() {
             start = new Date(now.getFullYear(), now.getMonth() - 1, 1);
             end = new Date(now.getFullYear(), now.getMonth(), 0);
         }
-        const fmt = (d) => d.toISOString().split('T')[0];
+        const fmt = (d) => { const p = n => String(n).padStart(2,'0'); return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate()); };
         return { start: fmt(start), end: fmt(end) };
     }
     

@@ -3,6 +3,7 @@ import { Calendar, Clock, CheckCircle, AlertCircle, Plus, Edit2, Trash2, Message
 import { useAuthStore } from '@/stores/auth';
 import { useSettingsStore } from '@/stores/settings';
 import ConfirmDialog from '@/components/ConfirmDialog';
+import { fmtLocalDate } from '@/lib/dateUtil';
 
 interface DailyTask {
   id: number;
@@ -29,7 +30,7 @@ export default function TaskPage() {
   const { serverUrl } = useSettingsStore();
   const [tasks, setTasks] = useState<DailyTask[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
+  const [selectedDate, setSelectedDate] = useState(fmtLocalDate(new Date()));
   const [showAddModal, setShowAddModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showDetailModal, setShowDetailModal] = useState(false);

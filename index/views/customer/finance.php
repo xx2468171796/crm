@@ -574,7 +574,7 @@ function submitFinanceStatusChange() {
     // 如果是已收，需要调用收款登记（支持混合支付：现金+预收）
     if (entityType === 'installment' && newStatus === '已收') {
         const dateEl = document.getElementById('financeReceiptDate');
-        const receivedDate = (dateEl && dateEl.value) ? dateEl.value : (new Date().toISOString().slice(0, 10));
+        const receivedDate = (dateEl && dateEl.value) ? dateEl.value : ((() => { const d = new Date(); const p = n => String(n).padStart(2,'0'); return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate()); })());
         const methodEl = document.getElementById('financeReceiptMethod');
         const method = (methodEl && methodEl.value) ? methodEl.value : '';
         const prepayAmountEl = document.getElementById('financePrepayAmount');

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Calendar } from 'lucide-react';
+import { fmtLocalDate } from '@/lib/dateUtil';
 
 export type TimeRange = 'all' | 'month' | 'last_month' | 'custom';
 
@@ -20,13 +21,13 @@ export default function TimeRangeFilter({ value, onChange, className = '', compa
     switch (range) {
       case 'month':
         return {
-          start: new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0],
-          end: new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0],
+          start: fmtLocalDate(new Date(now.getFullYear(), now.getMonth(), 1)),
+          end: fmtLocalDate(new Date(now.getFullYear(), now.getMonth() + 1, 0)),
         };
       case 'last_month':
         return {
-          start: new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString().split('T')[0],
-          end: new Date(now.getFullYear(), now.getMonth(), 0).toISOString().split('T')[0],
+          start: fmtLocalDate(new Date(now.getFullYear(), now.getMonth() - 1, 1)),
+          end: fmtLocalDate(new Date(now.getFullYear(), now.getMonth(), 0)),
         };
       default:
         return { start: '', end: '' };

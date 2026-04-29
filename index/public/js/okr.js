@@ -4,6 +4,12 @@
         return;
     }
 
+    // 用本地日期字段格式化为 YYYY-MM-DD，避免 toISOString 转 UTC 偏一天
+    const fmtLocalDate = (d) => {
+        const p = (n) => String(n).padStart(2, '0');
+        return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate());
+    };
+
     const state = {
         cycles: [],
         currentCycleId: null,
@@ -197,7 +203,7 @@
             refs.recentQuickAddInput.addEventListener('keydown', async (e) => {
                 if (e.key === 'Enter' && refs.recentQuickAddInput.value.trim()) {
                     const title = refs.recentQuickAddInput.value.trim();
-                    const dueDate = state.recentSelectedDate.toISOString().split('T')[0];
+                    const dueDate = fmtLocalDate(state.recentSelectedDate);
                     try {
                         await apiFetch('okr_task.php', {
                             method: 'POST',
@@ -2416,7 +2422,7 @@
 
         // 渲染日历格子
         refs.calendarDays.innerHTML = days.map(({ date, otherMonth }) => {
-            const dateKey = date.toISOString().split('T')[0];
+            const dateKey = fmtLocalDate(date);
             const dayTasks = tasksByDate[dateKey] || [];
             const isToday = date.toDateString() === today.toDateString();
             const isWeekend = date.getDay() === 0 || date.getDay() === 6;
@@ -2468,7 +2474,7 @@
         refs.recentDateStrip.innerHTML = dates.map(date => {
             const isToday = date.toDateString() === today.toDateString();
             const isSelected = date.toDateString() === selectedDate.toDateString();
-            const dateKey = date.toISOString().split('T')[0];
+            const dateKey = fmtLocalDate(date);
 
             const classes = ['recent-date-item'];
             if (isToday) classes.push('today');
@@ -2484,7 +2490,7 @@
         refs.recentDateLabel.textContent = `${month}月${day}日${isSelectedToday ? ' 今天' : ''}`;
 
         // 筛选选中日期的任务
-        const selectedDateKey = selectedDate.toISOString().split('T')[0];
+        const selectedDateKey = fmtLocalDate(selectedDate);
         const dayTasks = state.tasks.filter(task => {
             if (!task.due_date) return false;
             return task.due_date.split(' ')[0] === selectedDateKey;

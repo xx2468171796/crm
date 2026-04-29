@@ -4,6 +4,7 @@ import { useAuthStore } from '@/stores/auth';
 import { useSettingsStore } from '@/stores/settings';
 import { useToast } from '@/hooks/use-toast';
 import { isManager } from '@/lib/utils';
+import { fmtLocalDate } from '@/lib/dateUtil';
 
 type ViewType = 'today' | 'yesterday' | 'future' | 'help' | 'all';
 
@@ -38,7 +39,7 @@ export default function TeamProgressPage() {
   const [showAssignModal, setShowAssignModal] = useState(false);
   const [assignToUserId, setAssignToUserId] = useState<number | null>(null);
   const [assignTaskTitle, setAssignTaskTitle] = useState('');
-  const [assignTaskDate, setAssignTaskDate] = useState(new Date().toISOString().split('T')[0]);
+  const [assignTaskDate, setAssignTaskDate] = useState(fmtLocalDate(new Date()));
   const [submitting, setSubmitting] = useState(false);
 
   const views: { key: ViewType; label: string }[] = [
@@ -112,7 +113,7 @@ export default function TeamProgressPage() {
         setShowAssignModal(false);
         setAssignTaskTitle('');
         setAssignToUserId(null);
-        setAssignTaskDate(new Date().toISOString().split('T')[0]);
+        setAssignTaskDate(fmtLocalDate(new Date()));
         loadTeamTasks();
         toast({ title: '分配成功', variant: 'default' });
       } else {

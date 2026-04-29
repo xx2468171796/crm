@@ -153,7 +153,9 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 function formatDate(date) {
-    return date.toISOString().split('T')[0];
+    // 用本地时间字段，避免 toISOString 转 UTC 后日期偏一天
+    const pad = n => String(n).padStart(2, '0');
+    return date.getFullYear() + '-' + pad(date.getMonth() + 1) + '-' + pad(date.getDate());
 }
 
 function loadDepartments() {

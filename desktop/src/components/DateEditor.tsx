@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { X, Calendar } from 'lucide-react';
+import { fmtLocalDate } from '@/lib/dateUtil';
 
 interface DateEditorProps {
   open: boolean;
@@ -106,7 +107,7 @@ export default function DateEditor({
             <span className="text-xs text-gray-500">快捷设置:</span>
             <button
               onClick={() => {
-                const today = new Date().toISOString().split('T')[0];
+                const today = fmtLocalDate(new Date());
                 setNewStartDate(today);
               }}
               className="px-2 py-1 text-xs bg-gray-100 hover:bg-gray-200 rounded"
@@ -117,7 +118,7 @@ export default function DateEditor({
               onClick={() => {
                 const date = new Date();
                 date.setDate(date.getDate() + 7);
-                setNewDeadline(date.toISOString().split('T')[0]);
+                setNewDeadline(fmtLocalDate(date));
               }}
               className="px-2 py-1 text-xs bg-gray-100 hover:bg-gray-200 rounded"
             >
@@ -127,7 +128,7 @@ export default function DateEditor({
               onClick={() => {
                 const date = new Date();
                 date.setDate(date.getDate() + 14);
-                setNewDeadline(date.toISOString().split('T')[0]);
+                setNewDeadline(fmtLocalDate(date));
               }}
               className="px-2 py-1 text-xs bg-gray-100 hover:bg-gray-200 rounded"
             >
@@ -137,7 +138,7 @@ export default function DateEditor({
               onClick={() => {
                 const date = new Date();
                 date.setMonth(date.getMonth() + 1);
-                setNewDeadline(date.toISOString().split('T')[0]);
+                setNewDeadline(fmtLocalDate(date));
               }}
               className="px-2 py-1 text-xs bg-gray-100 hover:bg-gray-200 rounded"
             >
