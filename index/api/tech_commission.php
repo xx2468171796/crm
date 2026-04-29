@@ -234,15 +234,32 @@ function handleSetCommission($pdo, $user) {
         return;
     }
     
-    // 兼容老接口：直接覆盖 pta 上的单条提成（不再写 entries 表，请使用 tech_commission_entries.php）
-    $stmt = $pdo->prepare("
-        UPDATE project_tech_assignments
-        SET commission_amount = ?, commission_set_by = ?, commission_set_at = ?, commission_note = ?
-        WHERE id = ?
-    ");
-    $stmt->execute([$commissionAmount, $user['id'], time(), $commissionNote, $assignmentId]);
-    
-    echo json_encode(['success' => true, 'message' => '提成设置成功'], JSON_UNESCAPED_UNICODE);
+    // 老接口语义是"覆盖式"：清空原有 entries + 新插一条，再同步 pta 缓存。
+    // 保证旧调用方也走 entries 表，避免孤儿数据。
+    $now = time();
+    try {
+        $pdo->beginTransaction();
+        $pdo->prepare("DELETE FROM tech_commission_entries WHERE assignment_id = ?")
+            ->execute([$assignmentId]);
+        if ($commissionAmount > 0) {
+            $pdo->prepare("INSERT INTO tech_commission_entries (assignment_id, amount, note, entry_at, created_by, created_at, updated_at)
+                           VALUES (?, ?, ?, ?, ?, ?, ?)")
+                ->execute([$assignmentId, $commissionAmount, $commissionNote !== '' ? $commissionNote : null, $now, $user['id'], $now, $now]);
+        }
+        $pdo->prepare("UPDATE project_tech_assignments
+                       SET commission_amount = ?, commission_set_by = ?, commission_set_at = ?, commission_note = ?
+                       WHERE id = ?")
+            ->execute([$commissionAmount > 0 ? $commissionAmount : null, $user['id'], $commissionAmount > 0 ? $now : null, $commissionNote !== '' ? $commissionNote : null, $assignmentId]);
+        $pdo->commit();
+    } catch (Exception $e) {
+        $pdo->rollBack();
+        error_log('[set_commission web] 失败: ' . $e->getMessage());
+        http_response_code(500);
+        echo json_encode(['success' => false, 'message' => '服务器错误'], JSON_UNESCAPED_UNICODE);
+        return;
+    }
+
+    echo json_encode(['success' => true, 'message' => '提成设置成功（已写入 entries）'], JSON_UNESCAPED_UNICODE);
 }
 
 /**

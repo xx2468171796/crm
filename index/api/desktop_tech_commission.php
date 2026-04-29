@@ -294,21 +294,43 @@ function handleSetCommission($user, $isManager) {
         return;
     }
 
-    // 更新提成（commission_set_at 是 INT 类型存储时间戳）
-    // 如果前端传了日期，使用该日期的时间戳；否则使用当前时间
+    // 提成日期：前端传则用，否则当前时间
     if ($commissionDate) {
         $setAt = strtotime($commissionDate);
         if ($setAt === false) $setAt = time();
     } else {
         $setAt = time();
     }
-    // 兼容老接口：直接覆盖 pta 上的单条提成（不再写 entries 表，请使用 tech_commission_entries.php）
-    Db::execute("
-        UPDATE project_tech_assignments
-        SET commission_amount = ?, commission_note = ?, commission_set_by = ?, commission_set_at = ?
-        WHERE id = ?
-    ", [$commissionAmount, $commissionNote, $user['id'], $setAt, $assignmentId]);
-    error_log('[set_commission] 提成设置成功');
+
+    // 老接口语义是"覆盖式"：清空原有 entries + 新插一条，再同步 pta 缓存。
+    // 这样保证旧版桌面调这个 API 时也走 entries 表，不会产生孤儿数据。
+    try {
+        Db::beginTransaction();
+        Db::execute("DELETE FROM tech_commission_entries WHERE assignment_id = ?", [$assignmentId]);
+        if ($commissionAmount > 0) {
+            $now = time();
+            Db::execute(
+                "INSERT INTO tech_commission_entries (assignment_id, amount, note, entry_at, created_by, created_at, updated_at)
+                 VALUES (?, ?, ?, ?, ?, ?, ?)",
+                [$assignmentId, $commissionAmount, $commissionNote !== '' ? $commissionNote : null, $setAt, $user['id'], $now, $now]
+            );
+        }
+        // 同步 pta 缓存
+        Db::execute(
+            "UPDATE project_tech_assignments
+             SET commission_amount = ?, commission_note = ?, commission_set_by = ?, commission_set_at = ?
+             WHERE id = ?",
+            [$commissionAmount > 0 ? $commissionAmount : null, $commissionNote !== '' ? $commissionNote : null, $user['id'], $commissionAmount > 0 ? $setAt : null, $assignmentId]
+        );
+        Db::commit();
+    } catch (Exception $e) {
+        Db::rollBack();
+        error_log('[set_commission] 失败: ' . $e->getMessage());
+        http_response_code(500);
+        echo json_encode(['success' => false, 'error' => '服务器错误'], JSON_UNESCAPED_UNICODE);
+        return;
+    }
+    error_log('[set_commission] 提成设置成功（已写入 entries）');
     
     echo json_encode([
         'success' => true,
