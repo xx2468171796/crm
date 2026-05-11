@@ -564,7 +564,7 @@ function addRow(due = '', amt = '', pct = '', collector = '', method = '', curre
     const currencySelect = tr.querySelector('select[data-field="currency"]');
     if (currencySelect) {
         currencySelect.addEventListener('change', function() {
-            const contractCurrency = document.getElementById('currency')?.value || 'TWD';
+            const contractCurrency = document.getElementById('contractCurrency')?.value || 'TWD';
             const instCurrency = this.value;
             const amtInput = tr.querySelector('input[data-field="amount_due"]');
             const pctInput = tr.querySelector('input[data-field="percent"]');
