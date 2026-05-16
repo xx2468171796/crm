@@ -236,6 +236,8 @@ class FinanceDashboardService
         $status = trim((string)($filters['status'] ?? ''));
         $dueStart = trim((string)($filters['due_start'] ?? ''));
         $dueEnd = trim((string)($filters['due_end'] ?? ''));
+        $receiptStart = trim((string)($filters['receipt_start'] ?? ''));
+        $receiptEnd = trim((string)($filters['receipt_end'] ?? ''));
         $salesUserIds = $filters['sales_user_ids'] ?? [];
         $ownerUserIds = $filters['owner_user_ids'] ?? [];
 
@@ -335,6 +337,38 @@ class FinanceDashboardService
                 }
                 $sql .= ' AND cu.owner_user_id IN (' . implode(',', $ps) . ')';
                 $countSql .= ' AND cu.owner_user_id IN (' . implode(',', $ps) . ')';
+            }
+
+            // 按签约时间筛选（与 finance_dashboard.php SSR 逻辑一致）
+            if ($dueStart !== '') {
+                $sql .= ' AND c.sign_date >= :due_start';
+                $countSql .= ' AND c.sign_date >= :due_start';
+                $params['due_start'] = $dueStart;
+                $countParams['due_start'] = $dueStart;
+            }
+            if ($dueEnd !== '') {
+                $sql .= ' AND c.sign_date <= :due_end';
+                $countSql .= ' AND c.sign_date <= :due_end';
+                $params['due_end'] = $dueEnd;
+                $countParams['due_end'] = $dueEnd;
+            }
+
+            // 按实收日期筛选：筛选在该时间段内有收款的合同
+            if ($receiptStart !== '' || $receiptEnd !== '') {
+                $rc = 'r.amount_applied > 0';
+                if ($receiptStart !== '') {
+                    $rc .= ' AND r.received_date >= :receipt_start';
+                    $params['receipt_start'] = $receiptStart . ' 00:00:00';
+                    $countParams['receipt_start'] = $receiptStart . ' 00:00:00';
+                }
+                if ($receiptEnd !== '') {
+                    $rc .= ' AND r.received_date <= :receipt_end';
+                    $params['receipt_end'] = $receiptEnd . ' 23:59:59';
+                    $countParams['receipt_end'] = $receiptEnd . ' 23:59:59';
+                }
+                $existsClause = ' AND EXISTS (SELECT 1 FROM finance_receipts r WHERE r.contract_id = c.id AND ' . $rc . ')';
+                $sql .= $existsClause;
+                $countSql .= $existsClause;
             }
 
             $sql .= ' GROUP BY c.id';

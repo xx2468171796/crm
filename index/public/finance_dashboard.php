@@ -1852,12 +1852,9 @@ document.addEventListener('DOMContentLoaded', function() {
     if (dateType && dateStart && dateEnd) {
         initDateFields();
         dateType.addEventListener('change', function() {
-            initDateFields();
-            // 如果当前选择了本月/上月，重新应用日期范围
-            const period = periodSelect?.value || '';
-            if (period === 'this_month' || period === 'last_month') {
-                onPeriodChange();
-            }
+            // 切换签约/实收时间时，把当前显示的日期范围重新路由到对应的隐藏字段
+            // （之前用 initDateFields 会在自定义时间段下把日期清空，导致筛选失效）
+            syncDateFields();
         });
         dateStart.addEventListener('change', function() {
             syncDateFields();
