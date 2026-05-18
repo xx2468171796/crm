@@ -380,10 +380,10 @@ class FinanceDashboardService
     }
 
     /**
-     * 获取汇总统计 —— 双查询口径
-     * - 应收/未收：basis finance_contracts + installments，过滤 c.sign_date in period
-     * - 已收：basis finance_receipts.amount_applied，过滤 r.received_date in period
-     * 与 finance_dashboard.php 的 SSR sumRow 完全对齐
+     * 获取汇总统计 —— 单查询口径
+     * 「签约时间」下拉 → 按 c.sign_date 筛；「实收时间」→ 按 EXISTS(收款) 筛。
+     * 应收=SUM(amount_due) 已收=SUM(amount_paid 累计) 未收=SUM(GREATEST(due-paid,0))。
+     * 与 finance_dashboard.php 的 SSR sumRow / 明细表累加完全一致，顶部合计随下拉切换。
      */
     private function getSummary(string $viewMode, array $filters): array
     {
@@ -399,10 +399,6 @@ class FinanceDashboardService
         $ownerUserIds = $filters['owner_user_ids'] ?? [];
         if (!is_array($salesUserIds)) $salesUserIds = [];
         if (!is_array($ownerUserIds)) $ownerUserIds = [];
-
-        // 统一 period（dueStart/receiptStart 互斥，取非空的那个）
-        $periodStart = $dueStart !== '' ? $dueStart : $receiptStart;
-        $periodEnd = $dueEnd !== '' ? $dueEnd : $receiptEnd;
 
         // 构建非时间相关的共用 WHERE
         $commonWhere = '';
@@ -494,50 +490,89 @@ class FinanceDashboardService
             }
         }
 
-        // 查询 A：应收 / 未收 / contract_count / installment_count
-        $dueSql = 'SELECT
+        // 时间筛选：与明细表 / SSR sumRow 完全一致
+        //  「签约时间」走 c.sign_date；「实收时间」走 EXISTS(收款)。末日补 23:59:59 含整天。
+        $timeClause = '';
+        if ($dueStart !== '') {
+            $timeClause .= ' AND c.sign_date >= :sum_due_start';
+            $commonParams['sum_due_start'] = $dueStart;
+        }
+        if ($dueEnd !== '') {
+            $timeClause .= ' AND c.sign_date <= :sum_due_end';
+            $commonParams['sum_due_end'] = $dueEnd . ' 23:59:59';
+        }
+        if ($receiptStart !== '' || $receiptEnd !== '') {
+            $rc = 'r.amount_applied > 0';
+            if ($receiptStart !== '') {
+                $rc .= ' AND r.received_date >= :sum_rcpt_start';
+                $commonParams['sum_rcpt_start'] = $receiptStart . ' 00:00:00';
+            }
+            if ($receiptEnd !== '') {
+                $rc .= ' AND r.received_date <= :sum_rcpt_end';
+                $commonParams['sum_rcpt_end'] = $receiptEnd . ' 23:59:59';
+            }
+            if ($viewMode === 'installment') {
+                $timeClause .= ' AND EXISTS (SELECT 1 FROM finance_receipts r WHERE r.installment_id = i.id AND ' . $rc . ')';
+            } else {
+                $timeClause .= ' AND EXISTS (SELECT 1 FROM finance_receipts r WHERE r.contract_id = c.id AND ' . $rc . ')';
+            }
+        }
+
+        // 单查询：按货币 + 新单/复购 分组，与 finance_dashboard.php SSR sumRow 完全一致
+        $sumSql = 'SELECT
+            c.currency AS currency,
+            CASE WHEN c.id = fc.first_contract_id THEN "new" ELSE "repurchase" END AS order_type,
             COUNT(DISTINCT c.id) AS contract_count,
             COUNT(i.id) AS installment_count,
             COALESCE(SUM(i.amount_due), 0) AS sum_due,
+            COALESCE(SUM(i.amount_paid), 0) AS sum_paid,
             COALESCE(SUM(GREATEST(i.amount_due - i.amount_paid, 0)), 0) AS sum_unpaid
         FROM finance_contracts c
         INNER JOIN customers cu ON cu.id = c.customer_id
+        INNER JOIN (
+            SELECT customer_id, MIN(id) AS first_contract_id FROM finance_contracts GROUP BY customer_id
+        ) fc ON fc.customer_id = c.customer_id
         LEFT JOIN finance_installments i ON i.contract_id = c.id AND i.deleted_at IS NULL
-        WHERE 1=1' . $commonWhere . $statusClauseForDue;
-        $dueParams = array_merge($commonParams, $statusParams);
-        if ($periodStart !== '') {
-            $dueSql .= ' AND c.sign_date >= :period_start';
-            $dueParams['period_start'] = $periodStart;
-        }
-        if ($periodEnd !== '') {
-            $dueSql .= ' AND c.sign_date <= :period_end';
-            $dueParams['period_end'] = $periodEnd;
-        }
-        $dueRow = Db::queryOne($dueSql, $dueParams) ?: [];
+        WHERE 1=1' . $commonWhere . $statusClauseForDue . $timeClause . '
+        GROUP BY c.currency, order_type';
 
-        // 查询 B：已收（时段内实收金额）
-        $paidSql = 'SELECT COALESCE(SUM(r.amount_applied), 0) AS sum_paid
-        FROM finance_receipts r
-        INNER JOIN finance_contracts c ON c.id = r.contract_id
-        INNER JOIN customers cu ON cu.id = r.customer_id
-        WHERE r.amount_applied > 0' . $commonWhere . $statusClauseForPaid;
-        $paidParams = array_merge($commonParams, $statusParams);
-        if ($periodStart !== '') {
-            $paidSql .= ' AND r.received_date >= :period_start_ts';
-            $paidParams['period_start_ts'] = $periodStart . ' 00:00:00';
+        $row = ['contract_count' => 0, 'installment_count' => 0, 'sum_due' => 0, 'sum_paid' => 0, 'sum_unpaid' => 0];
+        $byCurrency = [];
+        $orderTypeByCurrency = ['new_order' => [], 'repurchase' => []];
+        foreach (Db::query($sumSql, array_merge($commonParams, $statusParams)) as $sr) {
+            $code = $sr['currency'] ?: 'TWD';
+            $due = (float)($sr['sum_due'] ?? 0);
+            $paid = (float)($sr['sum_paid'] ?? 0);
+            $unpaid = (float)($sr['sum_unpaid'] ?? 0);
+
+            $row['contract_count'] += (int)($sr['contract_count'] ?? 0);
+            $row['installment_count'] += (int)($sr['installment_count'] ?? 0);
+            $row['sum_due'] += $due;
+            $row['sum_paid'] += $paid;
+            $row['sum_unpaid'] += $unpaid;
+
+            if (!isset($byCurrency[$code])) {
+                $byCurrency[$code] = ['sum_due' => 0, 'sum_paid' => 0, 'sum_unpaid' => 0];
+            }
+            $byCurrency[$code]['sum_due'] += $due;
+            $byCurrency[$code]['sum_paid'] += $paid;
+            $byCurrency[$code]['sum_unpaid'] += $unpaid;
+
+            $otKey = ($sr['order_type'] === 'new') ? 'new_order' : 'repurchase';
+            if (!isset($orderTypeByCurrency[$otKey][$code])) {
+                $orderTypeByCurrency[$otKey][$code] = 0;
+            }
+            $orderTypeByCurrency[$otKey][$code] += $paid;
         }
-        if ($periodEnd !== '') {
-            $paidSql .= ' AND r.received_date <= :period_end_ts';
-            $paidParams['period_end_ts'] = $periodEnd . ' 23:59:59';
-        }
-        $paidRow = Db::queryOne($paidSql, $paidParams) ?: [];
 
         return [
-            'contract_count' => (int)($dueRow['contract_count'] ?? 0),
-            'installment_count' => (int)($dueRow['installment_count'] ?? 0),
-            'sum_due' => (float)($dueRow['sum_due'] ?? 0),
-            'sum_paid' => (float)($paidRow['sum_paid'] ?? 0),
-            'sum_unpaid' => (float)($dueRow['sum_unpaid'] ?? 0),
+            'contract_count' => $row['contract_count'],
+            'installment_count' => $row['installment_count'],
+            'sum_due' => $row['sum_due'],
+            'sum_paid' => $row['sum_paid'],
+            'sum_unpaid' => $row['sum_unpaid'],
+            'by_currency' => $byCurrency,
+            'order_type_by_currency' => $orderTypeByCurrency,
         ];
     }
 

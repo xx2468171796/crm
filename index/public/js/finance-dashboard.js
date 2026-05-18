@@ -2618,18 +2618,12 @@ const AjaxDashboard = {
 
     renderSummary(summary) {
         if (!summary) return;
-        
-        const el1 = document.getElementById('summaryContractCount');
-        if (el1) el1.textContent = summary.contract_count || 0;
-        
-        const el2 = document.getElementById('summarySumDue');
-        if (el2) el2.textContent = parseFloat(summary.sum_due || 0).toFixed(2);
-        
-        const el3 = document.getElementById('summarySumPaid');
-        if (el3) el3.textContent = parseFloat(summary.sum_paid || 0).toFixed(2);
-        
-        const el4 = document.getElementById('summarySumUnpaid');
-        if (el4) el4.textContent = parseFloat(summary.sum_unpaid || 0).toFixed(2);
+        // 顶部 5 张卡片（应收/已收/未收/新单/复购）由 finance_dashboard.php 内联脚本
+        // 的 window.updateDashboardSummary 负责重算（含按货币换算）。
+        // 历史遗留：曾写 summarySumDue 等 ID，但页面实际 ID 为 sumDueDisplay，导致空转。
+        if (typeof window.updateDashboardSummary === 'function') {
+            window.updateDashboardSummary(summary);
+        }
     },
 
     renderPagination(total, current, perPage) {

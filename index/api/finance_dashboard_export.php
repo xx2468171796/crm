@@ -142,7 +142,7 @@ if ($viewMode === 'staff_summary') {
     }
     if ($dueEnd !== '') {
         $sql .= ' AND c.sign_date <= :due_end';
-        $params['due_end'] = $dueEnd;
+        $params['due_end'] = $dueEnd . ' 23:59:59';
     }
     $sql .= ' GROUP BY uid
     ) cs ON cs.uid = u.id

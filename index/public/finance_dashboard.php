@@ -1135,10 +1135,10 @@ finance_sidebar_start('finance_dashboard');
 </div>
 <script>
 (function() {
-    // 按货币分别统计的金额
-    const sumByCurrency = <?= json_encode($sumByCurrency, JSON_UNESCAPED_UNICODE) ?>;
+    // 按货币分别统计的金额（AJAX 刷新时由 window.updateDashboardSummary 重新赋值）
+    let sumByCurrency = <?= json_encode($sumByCurrency, JSON_UNESCAPED_UNICODE) ?>;
     // 新单/复购按货币分别统计
-    const orderTypeByCurrency = <?= json_encode($orderTypeByCurrency ?? ['new_order' => [], 'repurchase' => []], JSON_UNESCAPED_UNICODE) ?>;
+    let orderTypeByCurrency = <?= json_encode($orderTypeByCurrency ?? ['new_order' => [], 'repurchase' => []], JSON_UNESCAPED_UNICODE) ?>;
     let rates = {};  // 各货币汇率
     
     fetch(API_URL + '/exchange_rate_list.php').then(r => r.json()).then(res => {
@@ -1222,6 +1222,15 @@ finance_sidebar_start('finance_dashboard');
         document.getElementById('sumNewOrderCurrency').textContent = currency;
         document.getElementById('sumRepurchaseCurrency').textContent = currency;
     }
+
+    // 供 AJAX 刷新（AjaxDashboard.renderSummary）调用：用接口返回的合计重算顶部 5 张卡片
+    // summary 来自 finance_dashboard_service.php::getSummary，与 SSR sumRow 同口径
+    window.updateDashboardSummary = function(summary) {
+        if (!summary) return;
+        sumByCurrency = summary.by_currency || {};
+        orderTypeByCurrency = summary.order_type_by_currency || { new_order: {}, repurchase: {} };
+        updateAmountDisplay();
+    };
     
     // 更新表格中的金额单元格显示
     function updateAmountCells() {
