@@ -23,6 +23,8 @@ $activityTag = trim($_GET['activity_tag'] ?? '');
 $status = trim($_GET['status'] ?? '');
 $dueStart = trim($_GET['due_start'] ?? '');
 $dueEnd = trim($_GET['due_end'] ?? '');
+$receiptStart = trim($_GET['receipt_start'] ?? '');
+$receiptEnd = trim($_GET['receipt_end'] ?? '');
 
 $groupBy = trim((string)($_GET['group_by'] ?? 'sales'));
 if (!in_array($groupBy, ['sales', 'owner'], true)) {
@@ -386,23 +388,32 @@ if ($status !== '') {
     }
 }
 
-if ($dueStart !== '') {
-    if ($viewMode === 'installment') {
-        $sql .= ' AND i.due_date >= :due_start';
-        $params['due_start'] = $dueStart;
-    } elseif ($viewMode === 'contract') {
-        $sql .= ' AND i.due_date >= :due_start';
+// 时间筛选：与财务工作台明细完全一致 —— 签约时间走 c.sign_date，实收时间走 EXISTS(收款)
+// 末日补 23:59:59 使 datetime 列 sign_date 包含整天
+if ($viewMode === 'contract' || $viewMode === 'installment') {
+    if ($dueStart !== '') {
+        $sql .= ' AND c.sign_date >= :due_start';
         $params['due_start'] = $dueStart;
     }
-}
-
-if ($dueEnd !== '') {
-    if ($viewMode === 'installment') {
-        $sql .= ' AND i.due_date <= :due_end';
-        $params['due_end'] = $dueEnd;
-    } elseif ($viewMode === 'contract') {
-        $sql .= ' AND i.due_date <= :due_end';
-        $params['due_end'] = $dueEnd;
+    if ($dueEnd !== '') {
+        $sql .= ' AND c.sign_date <= :due_end';
+        $params['due_end'] = $dueEnd . ' 23:59:59';
+    }
+    if ($receiptStart !== '' || $receiptEnd !== '') {
+        $receiptCondition = '1=1';
+        if ($receiptStart !== '') {
+            $receiptCondition .= ' AND r.received_date >= :receipt_start';
+            $params['receipt_start'] = $receiptStart . ' 00:00:00';
+        }
+        if ($receiptEnd !== '') {
+            $receiptCondition .= ' AND r.received_date <= :receipt_end';
+            $params['receipt_end'] = $receiptEnd . ' 23:59:59';
+        }
+        if ($viewMode === 'installment') {
+            $sql .= ' AND EXISTS (SELECT 1 FROM finance_receipts r WHERE r.installment_id = i.id AND r.amount_applied > 0 AND ' . $receiptCondition . ')';
+        } else {
+            $sql .= ' AND EXISTS (SELECT 1 FROM finance_receipts r WHERE r.contract_id = c.id AND r.amount_applied > 0 AND ' . $receiptCondition . ')';
+        }
     }
 }
 

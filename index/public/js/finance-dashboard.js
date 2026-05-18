@@ -420,6 +420,8 @@ function exportDashboard() {
     params.set('status', document.querySelector('select[name="status"]')?.value || '');
     params.set('due_start', document.querySelector('input[name="due_start"]')?.value || '');
     params.set('due_end', document.querySelector('input[name="due_end"]')?.value || '');
+    params.set('receipt_start', document.querySelector('input[name="receipt_start"]')?.value || '');
+    params.set('receipt_end', document.querySelector('input[name="receipt_end"]')?.value || '');
     params.set('group_by', document.querySelector('select[name="group_by"]')?.value || document.querySelector('input[name="group_by"]')?.value || 'sales');
     params.set('focus_user_type', DashboardConfig.focusUserType);
     params.set('focus_user_id', String(DashboardConfig.focusUserId));
