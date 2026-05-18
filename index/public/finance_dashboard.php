@@ -252,7 +252,7 @@ if ($viewMode === 'staff_summary') {
     }
     if ($dueEnd !== '') {
         $sql .= ' AND c.sign_date <= :due_end';
-        $params['due_end'] = $dueEnd;
+        $params['due_end'] = $dueEnd . ' 23:59:59';
     }
     $sql .= ' GROUP BY uid
     ) cs ON cs.uid = u.id
@@ -584,10 +584,10 @@ if ($dueStart !== '') {
 if ($dueEnd !== '') {
     if ($viewMode === 'installment') {
         $sql .= ' AND c.sign_date <= :due_end';
-        $params['due_end'] = $dueEnd;
+        $params['due_end'] = $dueEnd . ' 23:59:59';
     } elseif ($viewMode === 'contract') {
         $sql .= ' AND c.sign_date <= :due_end';
-        $params['due_end'] = $dueEnd;
+        $params['due_end'] = $dueEnd . ' 23:59:59';
     }
 }
 
@@ -734,7 +734,7 @@ if ($viewMode === 'contract' || $viewMode === 'installment') {
     }
     if ($dueEnd !== '') {
         $timeClause .= ' AND c.sign_date <= :sum_due_end';
-        $commonParams['sum_due_end'] = $dueEnd;
+        $commonParams['sum_due_end'] = $dueEnd . ' 23:59:59';
     }
     if ($receiptStart !== '' || $receiptEnd !== '') {
         $rc = 'r.amount_applied > 0';

@@ -349,8 +349,8 @@ class FinanceDashboardService
             if ($dueEnd !== '') {
                 $sql .= ' AND c.sign_date <= :due_end';
                 $countSql .= ' AND c.sign_date <= :due_end';
-                $params['due_end'] = $dueEnd;
-                $countParams['due_end'] = $dueEnd;
+                $params['due_end'] = $dueEnd . ' 23:59:59';
+                $countParams['due_end'] = $dueEnd . ' 23:59:59';
             }
 
             // 按实收日期筛选：筛选在该时间段内有收款的合同
