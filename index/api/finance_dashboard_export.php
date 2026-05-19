@@ -25,6 +25,9 @@ $dueStart = trim($_GET['due_start'] ?? '');
 $dueEnd = trim($_GET['due_end'] ?? '');
 $receiptStart = trim($_GET['receipt_start'] ?? '');
 $receiptEnd = trim($_GET['receipt_end'] ?? '');
+// 「期内已收」列用的时段：签约/实收筛选互斥，取非空者；与财务工作台明细一致
+$periodStart = $dueStart !== '' ? $dueStart : $receiptStart;
+$periodEnd = $dueEnd !== '' ? $dueEnd : $receiptEnd;
 
 $groupBy = trim((string)($_GET['group_by'] ?? 'sales'));
 if (!in_array($groupBy, ['sales', 'owner'], true)) {
@@ -263,7 +266,15 @@ if ($viewMode === 'staff_summary') {
         SUM(i.amount_due) AS total_due,
         SUM(i.amount_paid) AS total_paid,
         SUM(i.amount_due - i.amount_paid) AS total_unpaid,
-        MAX(ragg.last_received_date) AS last_received_date
+        MAX(ragg.last_received_date) AS last_received_date,
+        c.currency AS contract_currency,
+        COALESCE((
+            SELECT SUM(r_pr.amount_applied)
+            FROM finance_receipts r_pr
+            WHERE r_pr.contract_id = c.id AND r_pr.amount_applied > 0'
+            . ($periodStart !== '' ? ' AND r_pr.received_date >= :pr_start' : '')
+            . ($periodEnd !== '' ? ' AND r_pr.received_date <= :pr_end' : '') . '
+        ), 0) AS period_received_amount
     FROM finance_contracts c
     INNER JOIN customers cu ON cu.id = c.customer_id
     LEFT JOIN users u ON u.id = c.sales_user_id
@@ -296,7 +307,15 @@ if ($viewMode === 'staff_summary') {
             WHEN i.amount_due > i.amount_paid AND i.due_date < CURDATE() THEN DATEDIFF(CURDATE(), i.due_date)
             ELSE 0
         END AS overdue_days,
-        (i.amount_due - i.amount_paid) AS amount_unpaid
+        (i.amount_due - i.amount_paid) AS amount_unpaid,
+        c.currency AS contract_currency,
+        COALESCE((
+            SELECT SUM(r_pr.amount_applied)
+            FROM finance_receipts r_pr
+            WHERE r_pr.installment_id = i.id AND r_pr.amount_applied > 0'
+            . ($periodStart !== '' ? ' AND r_pr.received_date >= :pr_start' : '')
+            . ($periodEnd !== '' ? ' AND r_pr.received_date <= :pr_end' : '') . '
+        ), 0) AS period_received_amount
     FROM finance_installments i
     INNER JOIN finance_contracts c ON c.id = i.contract_id
     INNER JOIN customers cu ON cu.id = i.customer_id
@@ -427,6 +446,12 @@ $sql .= ($viewMode === 'contract'
         ? ' ORDER BY contract_amount DESC, receipt_amount DESC, unpaid_amount DESC, u.id DESC'
         : ' ORDER BY i.due_date ASC, overdue_days DESC, i.id DESC'));
 
+// 「期内已收」子查询的时段参数（仅合同/分期视图 SELECT 引用）
+if ($viewMode !== 'staff_summary') {
+    if ($periodStart !== '') { $params['pr_start'] = $periodStart . ' 00:00:00'; }
+    if ($periodEnd !== '') { $params['pr_end'] = $periodEnd . ' 23:59:59'; }
+}
+
 $rows = Db::query($sql, $params);
 
 $filename = 'finance_dashboard_' . $viewMode . '_' . date('Ymd_His') . '.csv';
@@ -449,7 +474,7 @@ if ($viewMode === 'staff_summary') {
         ]);
     }
 } elseif ($viewMode === 'contract') {
-    fputcsv($out, ['客户名称', '客户编号', '活动标签', '合同号', '合同标题', '销售', '创建人(归属)', '分期数', '应收', '已收', '未收', '状态', '最近收款日期']);
+    fputcsv($out, ['客户名称', '客户编号', '活动标签', '合同号', '合同标题', '销售', '创建人(归属)', '分期数', '货币', '应收', '累计已收', '期内已收', '未收', '状态', '最近收款日期']);
     foreach ($rows as $row) {
         $statusLabel = mapContractStatusLabelExport(($row['contract_status'] ?? ''), ($row['contract_manual_status'] ?? ''));
         fputcsv($out, [
@@ -461,15 +486,17 @@ if ($viewMode === 'staff_summary') {
             (string)($row['sales_name'] ?? ''),
             (string)($row['owner_name'] ?? ''),
             (int)($row['installment_count'] ?? 0),
+            (string)($row['contract_currency'] ?? 'TWD'),
             number_format((float)($row['total_due'] ?? 0), 2, '.', ''),
             number_format((float)($row['total_paid'] ?? 0), 2, '.', ''),
+            number_format((float)($row['period_received_amount'] ?? 0), 2, '.', ''),
             number_format((float)($row['total_unpaid'] ?? 0), 2, '.', ''),
             $statusLabel,
             (string)($row['last_received_date'] ?? ''),
         ]);
     }
 } else {
-    fputcsv($out, ['客户名称', '客户编号', '活动标签', '合同号', '合同标题', '销售', '创建人(归属)', '创建时间', '到期日', '应收', '已收', '未收', '逾期天数', '状态', '最近收款日期']);
+    fputcsv($out, ['客户名称', '客户编号', '活动标签', '合同号', '合同标题', '销售', '创建人(归属)', '创建时间', '到期日', '货币', '应收', '累计已收', '期内已收', '未收', '逾期天数', '状态', '最近收款日期']);
     foreach ($rows as $row) {
         $statusLabel = mapInstallmentStatusLabelExport(($row['amount_due'] ?? 0), ($row['amount_paid'] ?? 0), ($row['due_date'] ?? ''), ($row['manual_status'] ?? ''));
         $createTime = !empty($row['create_time']) ? date('Y-m-d H:i', (int)$row['create_time']) : '';
@@ -483,8 +510,10 @@ if ($viewMode === 'staff_summary') {
             (string)($row['owner_name'] ?? ''),
             $createTime,
             (string)($row['due_date'] ?? ''),
+            (string)($row['contract_currency'] ?? 'TWD'),
             number_format((float)($row['amount_due'] ?? 0), 2, '.', ''),
             number_format((float)($row['amount_paid'] ?? 0), 2, '.', ''),
+            number_format((float)($row['period_received_amount'] ?? 0), 2, '.', ''),
             number_format((float)($row['amount_unpaid'] ?? 0), 2, '.', ''),
             (int)($row['overdue_days'] ?? 0),
             $statusLabel,
