@@ -2357,6 +2357,14 @@ const AjaxDashboard = {
 
         this.totalRecords = data.total || 0;
 
+        // 分组合计随 AJAX 刷新：把接口返回的分组数据写回 config 数据属性，
+        // 供 renderGroupedTable 与按签约人/归属人分组渲染读取最新值
+        const cfgEl = document.getElementById('dashboardConfig');
+        if (cfgEl) {
+            if (data.groupStats) cfgEl.setAttribute('data-group-stats', JSON.stringify(data.groupStats));
+            if (data.ownerGroupStats) cfgEl.setAttribute('data-owner-group-stats', JSON.stringify(data.ownerGroupStats));
+        }
+
         if (data.rows.length === 0 && !this.isAppendMode) {
             tbody.innerHTML = '<tr><td colspan="20" class="text-center py-5 text-muted">暂无数据</td></tr>';
             this.updateLoadStatus('nodata');
@@ -2437,7 +2445,7 @@ const AjaxDashboard = {
     renderGroupedTable(data, tbody) {
         const groups = {};
         data.rows.forEach(row => {
-            const key = row.sales_name || '未分配销售';
+            const key = row.sales_name || '未分配签约人';
             if (!groups[key]) groups[key] = [];
             groups[key].push(row);
         });

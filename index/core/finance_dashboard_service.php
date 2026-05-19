@@ -205,20 +205,22 @@ class FinanceDashboardService
 
         $summary = [];
         $groupStats = [];
+        $ownerGroupStats = [];
 
         if ($viewMode !== 'staff_summary') {
             $summary = $this->getSummary($viewMode, $filters);
-
-            if (!empty($groupBy) && $groupBy[0] === 'sales_user') {
-                $groupStats = $this->getGroupStats($viewMode, $filters);
-            }
+            // 分组合计（按签约人/归属人，by_currency 口径）随 summary 一并返回，
+            // 前端每次 AJAX 刷新都据此更新，不再依赖整页 SSR
+            $groupStats = $summary['group_stats'] ?? [];
+            $ownerGroupStats = $summary['owner_group_stats'] ?? [];
         }
 
         return [
             'rows' => $rows,
             'total' => $total,
             'summary' => $summary,
-            'groupStats' => $groupStats
+            'groupStats' => $groupStats,
+            'ownerGroupStats' => $ownerGroupStats
         ];
     }
 
@@ -607,6 +609,76 @@ class FinanceDashboardService
             }
         }
 
+        // 分组合计（按签约人 / 归属人）—— 仅合同视图，与 finance_dashboard.php SSR 完全一致
+        // 应收/未收 累计；已收：签约模式累计、实收模式走期内实收
+        $groupStats = [];
+        $ownerGroupStats = [];
+        if ($viewMode === 'contract') {
+            $gsAggCols = 'COUNT(DISTINCT c.id) AS contract_count,
+                COALESCE(SUM(i.amount_due), 0) AS sum_due,
+                COALESCE(SUM(i.amount_paid), 0) AS sum_paid,
+                COALESCE(SUM(GREATEST(i.amount_due - i.amount_paid, 0)), 0) AS sum_unpaid';
+            $gsParams = array_merge($commonParams, $statusParams);
+
+            $gsSql = 'SELECT u.realname AS group_name, c.currency AS contract_currency, ' . $gsAggCols . '
+                FROM finance_contracts c
+                INNER JOIN customers cu ON cu.id = c.customer_id
+                LEFT JOIN finance_installments i ON i.contract_id = c.id AND i.deleted_at IS NULL
+                LEFT JOIN users u ON u.id = c.sales_user_id
+                WHERE 1=1' . $commonWhere . $statusClauseForDue . $timeClause . '
+                GROUP BY u.id, u.realname, c.currency';
+            $ogsSql = 'SELECT ou.realname AS group_name, c.currency AS contract_currency, ' . $gsAggCols . '
+                FROM finance_contracts c
+                INNER JOIN customers cu ON cu.id = c.customer_id
+                LEFT JOIN finance_installments i ON i.contract_id = c.id AND i.deleted_at IS NULL
+                LEFT JOIN users ou ON ou.id = cu.owner_user_id
+                WHERE 1=1' . $commonWhere . $statusClauseForDue . $timeClause . '
+                GROUP BY ou.id, ou.realname, c.currency';
+            $accGroup = function (array &$bucket, array $gr, $defaultKey, $withPaid) {
+                $key = $gr['group_name'] ?: $defaultKey;
+                $cur = $gr['contract_currency'] ?: 'TWD';
+                if (!isset($bucket[$key])) { $bucket[$key] = ['count' => 0, 'by_currency' => []]; }
+                if (!isset($bucket[$key]['by_currency'][$cur])) {
+                    $bucket[$key]['by_currency'][$cur] = ['sum_due' => 0, 'sum_paid' => 0, 'sum_unpaid' => 0];
+                }
+                if (array_key_exists('contract_count', $gr)) {
+                    $bucket[$key]['count'] += (int)$gr['contract_count'];
+                    $bucket[$key]['by_currency'][$cur]['sum_due'] += (float)$gr['sum_due'];
+                    $bucket[$key]['by_currency'][$cur]['sum_unpaid'] += (float)$gr['sum_unpaid'];
+                }
+                if ($withPaid) {
+                    $bucket[$key]['by_currency'][$cur]['sum_paid'] += (float)$gr['sum_paid'];
+                }
+            };
+            foreach (Db::query($gsSql, $gsParams) as $gr)  { $accGroup($groupStats, $gr, '未分配签约人', !$receiptMode); }
+            foreach (Db::query($ogsSql, $gsParams) as $gr) { $accGroup($ownerGroupStats, $gr, '未分配归属人', !$receiptMode); }
+
+            if ($receiptMode) {
+                // 实收模式：各组已收 = 期内实际收款额
+                $grcptWhere = '';
+                if ($receiptStart !== '') { $grcptWhere .= ' AND r.received_date >= :sum_rcpt_start'; }
+                if ($receiptEnd !== '')   { $grcptWhere .= ' AND r.received_date <= :sum_rcpt_end'; }
+                $gsPaidSql = 'SELECT u.realname AS group_name, c.currency AS contract_currency,
+                    COALESCE(SUM(r.amount_applied), 0) AS sum_paid
+                    FROM finance_receipts r
+                    INNER JOIN finance_contracts c ON c.id = r.contract_id
+                    INNER JOIN customers cu ON cu.id = c.customer_id
+                    LEFT JOIN users u ON u.id = c.sales_user_id
+                    WHERE r.amount_applied > 0' . $grcptWhere . $commonWhere . $statusClauseForDue . '
+                    GROUP BY u.id, u.realname, c.currency';
+                $ogsPaidSql = 'SELECT ou.realname AS group_name, c.currency AS contract_currency,
+                    COALESCE(SUM(r.amount_applied), 0) AS sum_paid
+                    FROM finance_receipts r
+                    INNER JOIN finance_contracts c ON c.id = r.contract_id
+                    INNER JOIN customers cu ON cu.id = c.customer_id
+                    LEFT JOIN users ou ON ou.id = cu.owner_user_id
+                    WHERE r.amount_applied > 0' . $grcptWhere . $commonWhere . $statusClauseForDue . '
+                    GROUP BY ou.id, ou.realname, c.currency';
+                foreach (Db::query($gsPaidSql, $gsParams) as $gr)  { $accGroup($groupStats, $gr, '未分配签约人', true); }
+                foreach (Db::query($ogsPaidSql, $gsParams) as $gr) { $accGroup($ownerGroupStats, $gr, '未分配归属人', true); }
+            }
+        }
+
         return [
             'contract_count' => $row['contract_count'],
             'installment_count' => $row['installment_count'],
@@ -615,6 +687,8 @@ class FinanceDashboardService
             'sum_unpaid' => $row['sum_unpaid'],
             'by_currency' => $byCurrency,
             'order_type_by_currency' => $orderTypeByCurrency,
+            'group_stats' => $groupStats,
+            'owner_group_stats' => $ownerGroupStats,
         ];
     }
 
