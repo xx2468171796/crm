@@ -849,7 +849,7 @@ $sql .= ($viewMode === 'contract'
 // 不再使用分页，显示全部数据
 $rows = Db::query($sql, $params);
 
-// 分组合计（按签约人 / 归属人）—— 与顶部合计同口径单查询，随下拉变化
+// 分组合计（按签约人 / 归属人）—— 与顶部合计同口径：实收模式已收走期内实收
 $groupStats = [];
 $ownerGroupStats = [];
 if ($viewMode === 'contract') {
@@ -879,8 +879,10 @@ if ($viewMode === 'contract') {
             $groupStats[$key]['by_currency'][$currency] = ['sum_due' => 0, 'sum_paid' => 0, 'sum_unpaid' => 0];
         }
         $groupStats[$key]['by_currency'][$currency]['sum_due'] += (float)$row['sum_due'];
-        $groupStats[$key]['by_currency'][$currency]['sum_paid'] += (float)$row['sum_paid'];
         $groupStats[$key]['by_currency'][$currency]['sum_unpaid'] += (float)$row['sum_unpaid'];
+        if (!$receiptMode) {
+            $groupStats[$key]['by_currency'][$currency]['sum_paid'] += (float)$row['sum_paid'];
+        }
     }
 
     // 按归属人
@@ -902,8 +904,60 @@ if ($viewMode === 'contract') {
             $ownerGroupStats[$key]['by_currency'][$currency] = ['sum_due' => 0, 'sum_paid' => 0, 'sum_unpaid' => 0];
         }
         $ownerGroupStats[$key]['by_currency'][$currency]['sum_due'] += (float)$row['sum_due'];
-        $ownerGroupStats[$key]['by_currency'][$currency]['sum_paid'] += (float)$row['sum_paid'];
         $ownerGroupStats[$key]['by_currency'][$currency]['sum_unpaid'] += (float)$row['sum_unpaid'];
+        if (!$receiptMode) {
+            $ownerGroupStats[$key]['by_currency'][$currency]['sum_paid'] += (float)$row['sum_paid'];
+        }
+    }
+
+    // 实收模式：各组「已收」改为期内实际收款额（finance_receipts.amount_applied）
+    // 与顶部已收同口径，使分组之和 = 顶部合计
+    if ($receiptMode) {
+        $grcptWhere = '';
+        if ($receiptStart !== '') { $grcptWhere .= ' AND r.received_date >= :sum_rcpt_start'; }
+        if ($receiptEnd !== '')   { $grcptWhere .= ' AND r.received_date <= :sum_rcpt_end'; }
+
+        // 按签约人
+        $gsPaidSql = 'SELECT u.realname AS group_name, c.currency AS contract_currency,
+            COALESCE(SUM(r.amount_applied), 0) AS sum_paid
+            FROM finance_receipts r
+            INNER JOIN finance_contracts c ON c.id = r.contract_id
+            INNER JOIN customers cu ON cu.id = c.customer_id
+            LEFT JOIN users u ON u.id = c.sales_user_id
+            WHERE r.amount_applied > 0' . $grcptWhere . $commonWhere . $statusClauseForDue . '
+            GROUP BY u.id, u.realname, c.currency';
+        foreach (Db::query($gsPaidSql, $gsParams) as $row) {
+            $key = $row['group_name'] ?: '未分配签约人';
+            $currency = $row['contract_currency'] ?: 'TWD';
+            if (!isset($groupStats[$key])) {
+                $groupStats[$key] = ['count' => 0, 'by_currency' => []];
+            }
+            if (!isset($groupStats[$key]['by_currency'][$currency])) {
+                $groupStats[$key]['by_currency'][$currency] = ['sum_due' => 0, 'sum_paid' => 0, 'sum_unpaid' => 0];
+            }
+            $groupStats[$key]['by_currency'][$currency]['sum_paid'] += (float)$row['sum_paid'];
+        }
+
+        // 按归属人
+        $ogsPaidSql = 'SELECT ou.realname AS group_name, c.currency AS contract_currency,
+            COALESCE(SUM(r.amount_applied), 0) AS sum_paid
+            FROM finance_receipts r
+            INNER JOIN finance_contracts c ON c.id = r.contract_id
+            INNER JOIN customers cu ON cu.id = c.customer_id
+            LEFT JOIN users ou ON ou.id = cu.owner_user_id
+            WHERE r.amount_applied > 0' . $grcptWhere . $commonWhere . $statusClauseForDue . '
+            GROUP BY ou.id, ou.realname, c.currency';
+        foreach (Db::query($ogsPaidSql, $gsParams) as $row) {
+            $key = $row['group_name'] ?: '未分配归属人';
+            $currency = $row['contract_currency'] ?: 'TWD';
+            if (!isset($ownerGroupStats[$key])) {
+                $ownerGroupStats[$key] = ['count' => 0, 'by_currency' => []];
+            }
+            if (!isset($ownerGroupStats[$key]['by_currency'][$currency])) {
+                $ownerGroupStats[$key]['by_currency'][$currency] = ['sum_due' => 0, 'sum_paid' => 0, 'sum_unpaid' => 0];
+            }
+            $ownerGroupStats[$key]['by_currency'][$currency]['sum_paid'] += (float)$row['sum_paid'];
+        }
     }
 }
 
