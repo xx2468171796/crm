@@ -518,7 +518,7 @@ class FinanceDashboardService
             }
         }
 
-        // 单查询：按货币 + 新单/复购 分组，与 finance_dashboard.php SSR sumRow 完全一致
+        // 应收/未收/合同数：按 contracts+installments 汇总（受 $timeClause 约束，累计口径）
         $sumSql = 'SELECT
             c.currency AS currency,
             CASE WHEN c.id = fc.first_contract_id THEN "new" ELSE "repurchase" END AS order_type,
@@ -536,6 +536,10 @@ class FinanceDashboardService
         WHERE 1=1' . $commonWhere . $statusClauseForDue . $timeClause . '
         GROUP BY c.currency, order_type';
 
+        // 实收模式：已收/新单/复购 = 期内实际收款额(finance_receipts.amount_applied)
+        // 签约模式：已收 = 累计 amount_paid。应收/未收 两种模式均保持累计口径。
+        $receiptMode = ($receiptStart !== '' || $receiptEnd !== '');
+
         $row = ['contract_count' => 0, 'installment_count' => 0, 'sum_due' => 0, 'sum_paid' => 0, 'sum_unpaid' => 0];
         $byCurrency = [];
         $orderTypeByCurrency = ['new_order' => [], 'repurchase' => []];
@@ -548,21 +552,59 @@ class FinanceDashboardService
             $row['contract_count'] += (int)($sr['contract_count'] ?? 0);
             $row['installment_count'] += (int)($sr['installment_count'] ?? 0);
             $row['sum_due'] += $due;
-            $row['sum_paid'] += $paid;
             $row['sum_unpaid'] += $unpaid;
 
             if (!isset($byCurrency[$code])) {
                 $byCurrency[$code] = ['sum_due' => 0, 'sum_paid' => 0, 'sum_unpaid' => 0];
             }
             $byCurrency[$code]['sum_due'] += $due;
-            $byCurrency[$code]['sum_paid'] += $paid;
             $byCurrency[$code]['sum_unpaid'] += $unpaid;
 
-            $otKey = ($sr['order_type'] === 'new') ? 'new_order' : 'repurchase';
-            if (!isset($orderTypeByCurrency[$otKey][$code])) {
-                $orderTypeByCurrency[$otKey][$code] = 0;
+            if (!$receiptMode) {
+                $row['sum_paid'] += $paid;
+                $byCurrency[$code]['sum_paid'] += $paid;
+                $otKey = ($sr['order_type'] === 'new') ? 'new_order' : 'repurchase';
+                if (!isset($orderTypeByCurrency[$otKey][$code])) {
+                    $orderTypeByCurrency[$otKey][$code] = 0;
+                }
+                $orderTypeByCurrency[$otKey][$code] += $paid;
             }
-            $orderTypeByCurrency[$otKey][$code] += $paid;
+        }
+
+        if ($receiptMode) {
+            // 期内实收：汇总 finance_receipts.amount_applied，按合同货币 + 新单/复购 分组
+            $rcptWhere = '';
+            if ($receiptStart !== '') { $rcptWhere .= ' AND r.received_date >= :sum_rcpt_start'; }
+            if ($receiptEnd !== '')   { $rcptWhere .= ' AND r.received_date <= :sum_rcpt_end'; }
+            $rcptJoinInst = ($viewMode === 'installment')
+                ? ' INNER JOIN finance_installments i ON i.id = r.installment_id AND i.deleted_at IS NULL'
+                : '';
+            $paidSql = 'SELECT
+                c.currency AS currency,
+                CASE WHEN c.id = fc.first_contract_id THEN "new" ELSE "repurchase" END AS order_type,
+                COALESCE(SUM(r.amount_applied), 0) AS sum_paid
+            FROM finance_receipts r
+            INNER JOIN finance_contracts c ON c.id = r.contract_id
+            INNER JOIN customers cu ON cu.id = c.customer_id
+            INNER JOIN (
+                SELECT customer_id, MIN(id) AS first_contract_id FROM finance_contracts GROUP BY customer_id
+            ) fc ON fc.customer_id = c.customer_id' . $rcptJoinInst . '
+            WHERE r.amount_applied > 0' . $rcptWhere . $commonWhere . $statusClauseForDue . '
+            GROUP BY c.currency, order_type';
+            foreach (Db::query($paidSql, array_merge($commonParams, $statusParams)) as $pr) {
+                $code = $pr['currency'] ?: 'TWD';
+                $paid = (float)($pr['sum_paid'] ?? 0);
+                $row['sum_paid'] += $paid;
+                if (!isset($byCurrency[$code])) {
+                    $byCurrency[$code] = ['sum_due' => 0, 'sum_paid' => 0, 'sum_unpaid' => 0];
+                }
+                $byCurrency[$code]['sum_paid'] += $paid;
+                $otKey = ($pr['order_type'] === 'new') ? 'new_order' : 'repurchase';
+                if (!isset($orderTypeByCurrency[$otKey][$code])) {
+                    $orderTypeByCurrency[$otKey][$code] = 0;
+                }
+                $orderTypeByCurrency[$otKey][$code] += $paid;
+            }
         }
 
         return [
