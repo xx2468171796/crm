@@ -3,6 +3,7 @@ require_once __DIR__ . '/../core/api_init.php';
 require_once __DIR__ . '/../core/db.php';
 require_once __DIR__ . '/../core/auth.php';
 require_once __DIR__ . '/../core/rbac.php';
+require_once __DIR__ . '/../core/dict.php';
 
 header('Content-Type: application/json; charset=utf-8');
 
@@ -14,12 +15,14 @@ if (!canOrAdmin(PermissionCode::FINANCE_EDIT)) {
     exit;
 }
 
-echo json_encode(['success' => false, 'message' => '合同创建后不允许手工编辑分期，请使用“重生成分期”调整'], JSON_UNESCAPED_UNICODE);
-exit;
-
 $installmentId = (int)($_POST['installment_id'] ?? 0);
 $dueDate = trim((string)($_POST['due_date'] ?? ''));
 $amountDue = (float)($_POST['amount_due'] ?? 0);
+
+// 可选字段：只有 POST 里出现才视为修改
+$currencyInput  = array_key_exists('currency', $_POST)          ? trim((string)$_POST['currency'])          : null;
+$collectorInput = array_key_exists('collector_user_id', $_POST) ? (int)$_POST['collector_user_id']         : null;
+$methodInput    = array_key_exists('payment_method', $_POST)    ? trim((string)$_POST['payment_method'])    : null;
 
 if ($installmentId <= 0) {
     echo json_encode(['success' => false, 'message' => '参数错误：installment_id'], JSON_UNESCAPED_UNICODE);
@@ -36,11 +39,39 @@ if ($amountDue <= 0) {
     exit;
 }
 
+// 校验可选字段（提交了才校验）
+if ($currencyInput !== null && $currencyInput !== '') {
+    $cur = Db::queryOne('SELECT code FROM currencies WHERE code = :c AND status = 1 LIMIT 1', ['c' => $currencyInput]);
+    if (!$cur) {
+        echo json_encode(['success' => false, 'message' => '货币无效：' . $currencyInput], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+}
+if ($collectorInput !== null && $collectorInput > 0) {
+    $u = Db::queryOne('SELECT id FROM users WHERE id = :id AND status = 1 LIMIT 1', ['id' => $collectorInput]);
+    if (!$u) {
+        echo json_encode(['success' => false, 'message' => '收款人无效'], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+}
+if ($methodInput !== null && $methodInput !== '') {
+    $m = Db::queryOne(
+        "SELECT dict_code FROM system_dict WHERE dict_type = 'payment_method' AND dict_code = :c AND is_enabled = 1 LIMIT 1",
+        ['c' => $methodInput]
+    );
+    if (!$m) {
+        echo json_encode(['success' => false, 'message' => '收款方式无效：' . $methodInput], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+}
+
 try {
     Db::beginTransaction();
 
     $row = Db::queryOne(
-        'SELECT i.id, i.contract_id, i.customer_id, i.due_date, i.amount_due, i.amount_paid, c.net_amount, c.sales_user_id, cu.owner_user_id
+        'SELECT i.id, i.contract_id, i.customer_id, i.due_date, i.amount_due, i.amount_paid,
+                i.currency, i.collector_user_id, i.payment_method,
+                c.net_amount, c.sales_user_id, cu.owner_user_id
          FROM finance_installments i
          INNER JOIN finance_contracts c ON c.id = i.contract_id
          INNER JOIN customers cu ON cu.id = i.customer_id
@@ -65,38 +96,98 @@ try {
 
     $oldDue = (string)($row['due_date'] ?? '');
     $oldAmt = round((float)($row['amount_due'] ?? 0), 2);
-    $paid = round((float)($row['amount_paid'] ?? 0), 2);
+    $paid   = round((float)($row['amount_paid'] ?? 0), 2);
     $newAmt = round((float)$amountDue, 2);
 
     if ($newAmt + 0.00001 < $paid) {
         Db::rollback();
-        echo json_encode(['success' => false, 'message' => '分期应收金额不得小于已收金额(' . number_format($paid, 2) . ')'], JSON_UNESCAPED_UNICODE);
+        echo json_encode([
+            'success' => false,
+            'message' => '分期应收金额不得小于已收金额(' . number_format($paid, 2) . ')',
+        ], JSON_UNESCAPED_UNICODE);
         exit;
     }
 
+    // 动态拼装 UPDATE：必填两项 + 可选三项（提交且确实变化才更新）
+    $sets   = ['due_date = :due_date', 'amount_due = :amount_due', 'update_time = :t', 'update_user_id = :uid'];
+    $params = [
+        'due_date'   => $dueDate,
+        'amount_due' => $newAmt,
+        't'          => time(),
+        'uid'        => (int)($user['id'] ?? 0),
+        'id'         => $installmentId,
+    ];
+    $diffNotes = [];
+    if ($oldDue !== $dueDate) {
+        $diffNotes[] = '到期日 ' . ($oldDue !== '' ? $oldDue : '-') . ' → ' . $dueDate;
+    }
+    if (abs($oldAmt - $newAmt) > 0.005) {
+        $diffNotes[] = '金额 ' . number_format($oldAmt, 2) . ' → ' . number_format($newAmt, 2);
+    }
+
+    $oldCurrency = (string)($row['currency'] ?? '');
+    if ($currencyInput !== null) {
+        $newCurrency = $currencyInput === '' ? null : $currencyInput;
+        if ($oldCurrency !== (string)$newCurrency) {
+            $sets[] = 'currency = :currency';
+            $params['currency'] = $newCurrency;
+            $diffNotes[] = '货币 ' . ($oldCurrency !== '' ? $oldCurrency : '-') . ' → ' . ($newCurrency ?? '-');
+        }
+    }
+
+    $oldCollector = (int)($row['collector_user_id'] ?? 0);
+    if ($collectorInput !== null) {
+        $newCollectorId = $collectorInput > 0 ? $collectorInput : null;
+        if ($oldCollector !== (int)($newCollectorId ?? 0)) {
+            $sets[] = 'collector_user_id = :collector_user_id';
+            $params['collector_user_id'] = $newCollectorId;
+            $oldName = $oldCollector > 0
+                ? (Db::queryOne('SELECT realname FROM users WHERE id = :id LIMIT 1', ['id' => $oldCollector])['realname'] ?? '')
+                : '';
+            $newName = $newCollectorId
+                ? (Db::queryOne('SELECT realname FROM users WHERE id = :id LIMIT 1', ['id' => $newCollectorId])['realname'] ?? '')
+                : '';
+            $diffNotes[] = '收款人 ' . ($oldName ?: '-') . ' → ' . ($newName ?: '-');
+        }
+    }
+
+    $oldMethod = (string)($row['payment_method'] ?? '');
+    if ($methodInput !== null) {
+        $newMethod = $methodInput === '' ? null : $methodInput;
+        if ($oldMethod !== (string)$newMethod) {
+            $sets[] = 'payment_method = :payment_method';
+            $params['payment_method'] = $newMethod;
+            $diffNotes[] = '收款方式 ' . ($oldMethod !== '' ? getPaymentMethodLabel($oldMethod) : '-')
+                         . ' → ' . ($newMethod !== null ? getPaymentMethodLabel($newMethod) : '-');
+        }
+    }
+
     Db::execute(
-        'UPDATE finance_installments SET due_date = :due_date, amount_due = :amount_due, update_time = :t, update_user_id = :uid WHERE id = :id',
-        [
-            'due_date' => $dueDate,
-            'amount_due' => $newAmt,
-            't' => time(),
-            'uid' => (int)($user['id'] ?? 0),
-            'id' => $installmentId,
-        ]
+        'UPDATE finance_installments SET ' . implode(', ', $sets) . ' WHERE id = :id',
+        $params
     );
 
     $contractId = (int)$row['contract_id'];
     $customerId = (int)$row['customer_id'];
 
-    $sumRow = Db::queryOne('SELECT COALESCE(SUM(amount_due),0) AS s FROM finance_installments WHERE contract_id = :cid AND deleted_at IS NULL', ['cid' => $contractId]);
+    // 分期合计 == 折后金额（与原有护栏一致）
+    $sumRow = Db::queryOne(
+        'SELECT COALESCE(SUM(amount_due),0) AS s FROM finance_installments WHERE contract_id = :cid AND deleted_at IS NULL',
+        ['cid' => $contractId]
+    );
     $sum = round((float)($sumRow['s'] ?? 0), 2);
     $net = round((float)($row['net_amount'] ?? 0), 2);
 
     if (abs($sum - $net) > 0.01) {
         Db::rollback();
-        echo json_encode(['success' => false, 'message' => '分期合计(' . number_format($sum,2) . ') 必须等于 折后金额(' . number_format($net,2) . ')'], JSON_UNESCAPED_UNICODE);
+        echo json_encode([
+            'success' => false,
+            'message' => '分期合计(' . number_format($sum, 2) . ') 必须等于 折后金额(' . number_format($net, 2) . ')',
+        ], JSON_UNESCAPED_UNICODE);
         exit;
     }
+
+    $note = '编辑分期' . (count($diffNotes) > 0 ? '：' . implode('；', $diffNotes) : '（无字段变更）');
 
     Db::execute(
         'INSERT INTO finance_installment_change_logs (
@@ -108,15 +199,15 @@ try {
         )',
         [
             'installment_id' => $installmentId,
-            'contract_id' => $contractId,
-            'customer_id' => $customerId,
-            'actor_user_id' => (int)($user['id'] ?? 0),
-            'change_time' => time(),
-            'old_due_date' => $oldDue !== '' ? $oldDue : null,
-            'new_due_date' => $dueDate,
+            'contract_id'    => $contractId,
+            'customer_id'    => $customerId,
+            'actor_user_id'  => (int)($user['id'] ?? 0),
+            'change_time'    => time(),
+            'old_due_date'   => $oldDue !== '' ? $oldDue : null,
+            'new_due_date'   => $dueDate,
             'old_amount_due' => $oldAmt,
             'new_amount_due' => $newAmt,
-            'note' => '编辑分期',
+            'note'           => mb_substr($note, 0, 250, 'UTF-8'),
         ]
     );
 

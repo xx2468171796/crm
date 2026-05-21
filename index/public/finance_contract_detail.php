@@ -135,6 +135,15 @@ if (!in_array(($user['role'] ?? ''), ['sales'], true)) {
     $allUsers = Db::query('SELECT id, realname FROM users WHERE status = 1 ORDER BY realname ASC, id ASC');
 }
 
+// 分期编辑：需 FINANCE_EDIT 权限；销售经服务端限制为本人名下客户
+$canEditInstallment = canOrAdmin(PermissionCode::FINANCE_EDIT);
+$collectorUsers = $canEditInstallment
+    ? Db::query('SELECT id, realname FROM users WHERE status = 1 ORDER BY realname ASC, id ASC')
+    : [];
+$paymentMethods = $canEditInstallment
+    ? Db::query("SELECT dict_code, dict_label FROM system_dict WHERE dict_type = 'payment_method' AND is_enabled = 1 ORDER BY sort_order ASC, dict_code ASC")
+    : [];
+
 layout_header('合同详情');
 
 ?>
@@ -430,6 +439,17 @@ layout_header('合同详情');
                                 <input type="file" class="instFileInput d-none" data-installment-id="<?= (int)($i['id'] ?? 0) ?>" multiple accept="image/*,.pdf">
                             </td>
                             <td>
+                                <?php if ($canEditInstallment): ?>
+                                <button type="button" class="btn btn-outline-primary btn-sm btnInstEdit me-1"
+                                    data-id="<?= (int)($i['id'] ?? 0) ?>"
+                                    data-due-date="<?= htmlspecialchars((string)($i['due_date'] ?? '')) ?>"
+                                    data-amount-due="<?= htmlspecialchars(number_format((float)($i['amount_due'] ?? 0), 2, '.', '')) ?>"
+                                    data-amount-paid="<?= htmlspecialchars(number_format((float)($i['amount_paid'] ?? 0), 2, '.', '')) ?>"
+                                    data-currency="<?= htmlspecialchars((string)($i['currency'] ?? 'TWD')) ?>"
+                                    data-collector-id="<?= (int)($i['collector_user_id'] ?? 0) ?>"
+                                    data-payment-method="<?= htmlspecialchars((string)($i['payment_method'] ?? '')) ?>"
+                                >编辑</button>
+                                <?php endif; ?>
                                 <button type="button" class="btn btn-outline-warning btn-sm btnInstStatus" data-id="<?= (int)($i['id'] ?? 0) ?>" data-current-status="<?= htmlspecialchars($statusLabel) ?>"<?= $isFullyPaid ? ' disabled' : '' ?>>改状态</button>
                             </td>
                         </tr>
@@ -585,6 +605,65 @@ layout_header('合同详情');
         </div>
     </div>
 </div>
+
+<?php if ($canEditInstallment): ?>
+<div class="modal fade" id="editInstModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">编辑分期</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="editInstId">
+                <div class="row g-2">
+                    <div class="col-6">
+                        <label class="form-label">到期日</label>
+                        <input type="date" class="form-control" id="editInstDueDate">
+                    </div>
+                    <div class="col-6">
+                        <label class="form-label">货币</label>
+                        <select class="form-select" id="editInstCurrency">
+                            <?php foreach (getCurrencies() as $c): ?>
+                                <option value="<?= htmlspecialchars($c['code']) ?>"><?= htmlspecialchars($c['code']) ?> - <?= htmlspecialchars($c['name'] ?? '') ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                </div>
+                <div class="mb-2 mt-2">
+                    <label class="form-label">应收金额</label>
+                    <input type="number" step="0.01" min="0" class="form-control" id="editInstAmount">
+                    <div class="form-text">新金额不得小于已收金额，且所有分期合计需等于合同折后金额。</div>
+                </div>
+                <div class="row g-2">
+                    <div class="col-6">
+                        <label class="form-label">收款人</label>
+                        <select class="form-select" id="editInstCollector">
+                            <option value="0">- 未指定 -</option>
+                            <?php foreach ($collectorUsers as $cu): ?>
+                                <option value="<?= (int)$cu['id'] ?>"><?= htmlspecialchars($cu['realname'] ?? '') ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                    <div class="col-6">
+                        <label class="form-label">收款方式</label>
+                        <select class="form-select" id="editInstMethod">
+                            <option value="">- 未指定 -</option>
+                            <?php foreach ($paymentMethods as $pm): ?>
+                                <option value="<?= htmlspecialchars($pm['dict_code']) ?>"><?= htmlspecialchars($pm['dict_label'] ?? $pm['dict_code']) ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-primary" id="btnSubmitInstEdit">保存</button>
+            </div>
+        </div>
+    </div>
+</div>
+<?php endif; ?>
 
 <div class="modal fade" id="statusModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog">
@@ -1056,6 +1135,56 @@ document.querySelectorAll('.btnInstStatus').forEach(btn => {
         openStatusModal('installment', Number(this.getAttribute('data-id') || 0), currentStatus);
     });
 });
+
+// 编辑分期
+let modalInstEdit = null;
+document.querySelectorAll('.btnInstEdit').forEach(btn => {
+    btn.addEventListener('click', function() {
+        document.getElementById('editInstId').value = this.dataset.id || '';
+        document.getElementById('editInstDueDate').value = this.dataset.dueDate || '';
+        document.getElementById('editInstAmount').value = this.dataset.amountDue || '';
+        const curEl = document.getElementById('editInstCurrency');
+        if (curEl) curEl.value = this.dataset.currency || 'TWD';
+        const colEl = document.getElementById('editInstCollector');
+        if (colEl) colEl.value = String(this.dataset.collectorId || '0');
+        const mtdEl = document.getElementById('editInstMethod');
+        if (mtdEl) mtdEl.value = this.dataset.paymentMethod || '';
+        if (!modalInstEdit) modalInstEdit = ensureModal('editInstModal');
+        modalInstEdit.show();
+    });
+});
+
+const btnSubmitInstEdit = document.getElementById('btnSubmitInstEdit');
+if (btnSubmitInstEdit) {
+    btnSubmitInstEdit.addEventListener('click', () => {
+        const id = Number(document.getElementById('editInstId').value || 0);
+        const dueDate = (document.getElementById('editInstDueDate').value || '').trim();
+        const amount = (document.getElementById('editInstAmount').value || '').trim();
+        if (!id || !dueDate || amount === '' || Number(amount) <= 0) {
+            showAlertModal('请填写到期日和金额（金额需大于 0）', 'warning');
+            return;
+        }
+        const fd = new FormData();
+        fd.append('installment_id', String(id));
+        fd.append('due_date', dueDate);
+        fd.append('amount_due', amount);
+        fd.append('currency', document.getElementById('editInstCurrency').value || '');
+        fd.append('collector_user_id', String(document.getElementById('editInstCollector').value || '0'));
+        fd.append('payment_method', document.getElementById('editInstMethod').value || '');
+        btnSubmitInstEdit.disabled = true;
+        fetch(apiUrl('finance_installment_update.php'), { method: 'POST', body: fd })
+            .then(r => r.json())
+            .then(res => {
+                btnSubmitInstEdit.disabled = false;
+                if (!res.success) {
+                    showAlertModal(res.message || '提交失败', 'error');
+                    return;
+                }
+                showAlertModal('已保存', 'success', () => location.reload());
+            })
+            .catch(() => { btnSubmitInstEdit.disabled = false; showAlertModal('提交失败，请查看控制台错误信息', 'error'); });
+    });
+}
 
 document.getElementById('receiptCurrency').addEventListener('change', updateReceiptAmountDefault);
 
