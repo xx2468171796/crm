@@ -630,11 +630,17 @@ layout_header('合同详情');
                         </select>
                     </div>
                 </div>
-                <div class="mb-2 mt-2">
-                    <label class="form-label">应收金额</label>
-                    <input type="number" step="0.01" min="0" class="form-control" id="editInstAmount">
-                    <div class="form-text">新金额不得小于已收金额，且所有分期合计需等于合同折后金额。</div>
+                <div class="row g-2 mt-2">
+                    <div class="col-6">
+                        <label class="form-label">应收金额</label>
+                        <input type="number" step="0.01" min="0" class="form-control" id="editInstAmount">
+                    </div>
+                    <div class="col-6">
+                        <label class="form-label">已收金额</label>
+                        <input type="number" step="0.01" min="0" class="form-control" id="editInstAmountPaid">
+                    </div>
                 </div>
+                <div class="form-text mb-2">管理员可自由调整，无关联校验；如合计与合同折后金额不平，会在变更日志记入差额。</div>
                 <div class="row g-2">
                     <div class="col-6">
                         <label class="form-label">收款人</label>
@@ -1143,6 +1149,7 @@ document.querySelectorAll('.btnInstEdit').forEach(btn => {
         document.getElementById('editInstId').value = this.dataset.id || '';
         document.getElementById('editInstDueDate').value = this.dataset.dueDate || '';
         document.getElementById('editInstAmount').value = this.dataset.amountDue || '';
+        document.getElementById('editInstAmountPaid').value = this.dataset.amountPaid || '0.00';
         const curEl = document.getElementById('editInstCurrency');
         if (curEl) curEl.value = this.dataset.currency || 'TWD';
         const colEl = document.getElementById('editInstCollector');
@@ -1164,10 +1171,16 @@ if (btnSubmitInstEdit) {
             showAlertModal('请填写到期日和金额（金额需大于 0）', 'warning');
             return;
         }
+        const amountPaid = (document.getElementById('editInstAmountPaid').value || '').trim();
+        if (amountPaid !== '' && Number(amountPaid) < 0) {
+            showAlertModal('已收金额不可为负数', 'warning');
+            return;
+        }
         const fd = new FormData();
         fd.append('installment_id', String(id));
         fd.append('due_date', dueDate);
         fd.append('amount_due', amount);
+        fd.append('amount_paid', amountPaid === '' ? '0' : amountPaid);
         fd.append('currency', document.getElementById('editInstCurrency').value || '');
         fd.append('collector_user_id', String(document.getElementById('editInstCollector').value || '0'));
         fd.append('payment_method', document.getElementById('editInstMethod').value || '');

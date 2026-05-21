@@ -20,9 +20,11 @@ $dueDate = trim((string)($_POST['due_date'] ?? ''));
 $amountDue = (float)($_POST['amount_due'] ?? 0);
 
 // 可选字段：只有 POST 里出现才视为修改
-$currencyInput  = array_key_exists('currency', $_POST)          ? trim((string)$_POST['currency'])          : null;
-$collectorInput = array_key_exists('collector_user_id', $_POST) ? (int)$_POST['collector_user_id']         : null;
-$methodInput    = array_key_exists('payment_method', $_POST)    ? trim((string)$_POST['payment_method'])    : null;
+$currencyInput   = array_key_exists('currency', $_POST)          ? trim((string)$_POST['currency'])          : null;
+$collectorInput  = array_key_exists('collector_user_id', $_POST) ? (int)$_POST['collector_user_id']         : null;
+$methodInput     = array_key_exists('payment_method', $_POST)    ? trim((string)$_POST['payment_method'])    : null;
+// 已收金额：管理员可直接调整（含修正录入错误）。不与应收金额做关联校验。
+$amountPaidInput = array_key_exists('amount_paid', $_POST)       ? (float)$_POST['amount_paid']             : null;
 
 if ($installmentId <= 0) {
     echo json_encode(['success' => false, 'message' => '参数错误：installment_id'], JSON_UNESCAPED_UNICODE);
@@ -36,6 +38,11 @@ if ($dueDate === '' || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $dueDate)) {
 
 if ($amountDue <= 0) {
     echo json_encode(['success' => false, 'message' => '分期金额必须大于 0'], JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
+if ($amountPaidInput !== null && $amountPaidInput < 0) {
+    echo json_encode(['success' => false, 'message' => '已收金额不可为负数'], JSON_UNESCAPED_UNICODE);
     exit;
 }
 
@@ -94,21 +101,14 @@ try {
         }
     }
 
-    $oldDue = (string)($row['due_date'] ?? '');
-    $oldAmt = round((float)($row['amount_due'] ?? 0), 2);
-    $paid   = round((float)($row['amount_paid'] ?? 0), 2);
-    $newAmt = round((float)$amountDue, 2);
+    $oldDue  = (string)($row['due_date'] ?? '');
+    $oldAmt  = round((float)($row['amount_due'] ?? 0), 2);
+    $oldPaid = round((float)($row['amount_paid'] ?? 0), 2);
+    $newAmt  = round((float)$amountDue, 2);
 
-    if ($newAmt + 0.00001 < $paid) {
-        Db::rollback();
-        echo json_encode([
-            'success' => false,
-            'message' => '分期应收金额不得小于已收金额(' . number_format($paid, 2) . ')',
-        ], JSON_UNESCAPED_UNICODE);
-        exit;
-    }
+    // 注意：已撤销「新应收 ≥ 已收」护栏，管理员可自由调整（含修正录入错误）
 
-    // 动态拼装 UPDATE：必填两项 + 可选三项（提交且确实变化才更新）
+    // 动态拼装 UPDATE：必填两项 + 可选四项（提交且确实变化才更新）
     $sets   = ['due_date = :due_date', 'amount_due = :amount_due', 'update_time = :t', 'update_user_id = :uid'];
     $params = [
         'due_date'   => $dueDate,
@@ -122,7 +122,16 @@ try {
         $diffNotes[] = '到期日 ' . ($oldDue !== '' ? $oldDue : '-') . ' → ' . $dueDate;
     }
     if (abs($oldAmt - $newAmt) > 0.005) {
-        $diffNotes[] = '金额 ' . number_format($oldAmt, 2) . ' → ' . number_format($newAmt, 2);
+        $diffNotes[] = '应收 ' . number_format($oldAmt, 2) . ' → ' . number_format($newAmt, 2);
+    }
+
+    if ($amountPaidInput !== null) {
+        $newPaid = round((float)$amountPaidInput, 2);
+        if (abs($oldPaid - $newPaid) > 0.005) {
+            $sets[] = 'amount_paid = :amount_paid';
+            $params['amount_paid'] = $newPaid;
+            $diffNotes[] = '已收 ' . number_format($oldPaid, 2) . ' → ' . number_format($newPaid, 2);
+        }
     }
 
     $oldCurrency = (string)($row['currency'] ?? '');
@@ -170,21 +179,17 @@ try {
     $contractId = (int)$row['contract_id'];
     $customerId = (int)$row['customer_id'];
 
-    // 分期合计 == 折后金额（与原有护栏一致）
+    // 注意：已撤销「分期合计 = 合同折后金额」硬护栏。改后若不平，仅记录差额到变更日志，不阻塞。
     $sumRow = Db::queryOne(
         'SELECT COALESCE(SUM(amount_due),0) AS s FROM finance_installments WHERE contract_id = :cid AND deleted_at IS NULL',
         ['cid' => $contractId]
     );
     $sum = round((float)($sumRow['s'] ?? 0), 2);
     $net = round((float)($row['net_amount'] ?? 0), 2);
-
-    if (abs($sum - $net) > 0.01) {
-        Db::rollback();
-        echo json_encode([
-            'success' => false,
-            'message' => '分期合计(' . number_format($sum, 2) . ') 必须等于 折后金额(' . number_format($net, 2) . ')',
-        ], JSON_UNESCAPED_UNICODE);
-        exit;
+    $imbalance = $sum - $net;
+    if (abs($imbalance) > 0.01) {
+        $diffNotes[] = '⚠ 分期合计 ' . number_format($sum, 2) . ' 与合同折后金额 ' . number_format($net, 2)
+                     . ' 不平 (' . ($imbalance > 0 ? '+' : '') . number_format($imbalance, 2) . ')';
     }
 
     $note = '编辑分期' . (count($diffNotes) > 0 ? '：' . implode('；', $diffNotes) : '（无字段变更）');
